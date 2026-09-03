@@ -27,7 +27,7 @@
 <body>
 <nav class="navbar navbar-dark sticky-top p-0" style="width: 225px;">
     <a class="navbar-brand col-sm-3 col-md-2 mr-0" href="#">
-        <img src="../images/logo/MOMMYAMBOL.png" alt="">
+        <img src="../images/logo/everafter-crest.png" alt="Everafter Planner" style="height:30px; margin:12px;">
     </a>
 </nav>
 

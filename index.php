@@ -328,7 +328,7 @@
     <div style="max-width:1180px; margin:0 auto; padding:0 16px;">
         <div class="d-flex flex-wrap justify-content-between align-items-center" style="gap:12px; border-top:1px solid rgba(255,255,255,.12); padding-top:18px;">
             <div class="d-flex align-items-center" style="gap:.6rem;">
-                <img src="images/logo/WPMSlogo.png" alt="" style="height:22px; filter:brightness(0) invert(1); opacity:.9;">
+                <img src="images/logo/everafter-crest.png" alt="Everafter Planner" style="height:24px;">
                 <span style="font-weight:700; letter-spacing:-.02em;">WPMS Kenya</span>
                 <span style="color:#A8A29E; font-size:12px;">· KSh pricing · M-Pesa · Africa's Talking</span>
             </div>

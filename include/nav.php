@@ -1,9 +1,9 @@
 
-<nav class="navbar navbar-expand-lg wpms-nav fixed-top">
+<nav class="navbar navbar-expand-xl wpms-nav fixed-top">
     <div class="container-fluid" style="max-width:1180px;">
-        <a class="navbar-brand d-flex align-items-center gap-2" href="index.php" style="gap:.6rem;">
-            <img src="images/logo/WPMSlogo.png" alt="WPMS Kenya" style="height:32px;">
-            <span style="font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; letter-spacing:-.02em; color:var(--kenya-black);">WPMS<span style="color:var(--kenya-green);"> Kenya</span></span>
+        <a class="navbar-brand wpms-brand d-flex align-items-center" href="index.php">
+            <img class="wpms-brand-logo" src="images/logo/everafter-crest.png" alt="Everafter Planner logo">
+            <span class="wpms-brand-text">WPMS<span class="text-kenya"> Kenya</span></span>
         </a>
         <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNavDropdown"
                 aria-controls="navbarNavDropdown" aria-expanded="false" aria-label="Toggle navigation" style="border:none;">

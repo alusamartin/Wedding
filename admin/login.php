@@ -134,7 +134,7 @@
 <body class="text-center">
 <form class="form-signin" action="" method="post">
     <?= $session->csrf_field(); ?>
-    <a href="../index.php"><img class="mb-4" src="../images/logo/WPMSlogo.png" width="190"></a>
+    <a href="../index.php"><img class="mb-4" src="../images/logo/everafter-crest.png" alt="Everafter Planner" style="height:104px;"></a>
     <div class="secure-badge" style="display:inline-flex; align-items:center; gap:.35rem; background:#FFFBEB; border:1px solid #FDE68A; color:#92400E; font-size:11px; font-weight:600; padding:4px 10px; border-radius:999px; margin:0 auto 14px;"><i class="mdi mdi-shield-check-outline"></i> Secure · 15-min rotation · KSh</div>
     <h5 class="h5 mb-2 font-weight-normal" style="color:#0B0F14; font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; letter-spacing:-.02em;">WPMS Admin</h5>
     <p class="admin-sub">Nairobi · Mombasa · Kisumu — M-Pesa ready</p>

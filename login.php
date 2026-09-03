@@ -129,7 +129,7 @@
 
 <body class="text-center">
 <form class="form-signin" action="login.php" method="post">
-    <a href="index.php"><img class="mb-4" src="images/logo/WPMSlogo.png" width="190" ></a>
+    <a href="index.php"><img class="mb-4" src="images/logo/everafter-crest.png" alt="Everafter Planner" style="height:104px;"></a>
     <h3 class="h3 mb-3 font-weight-normal">Login Your Account</h3>
     <p class="login-sub">Welcome back — sign in to access your account</p>
     <?php

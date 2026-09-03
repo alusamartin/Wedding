@@ -49,13 +49,29 @@ a{ text-underline-offset:3px; }
   text-transform:none !important;
   font-weight:500 !important;
 }
-.navbar.wpms-nav .navbar-brand img{ height:32px; width:auto; }
+/* Brand: logo + wordmark sized to never crowd the first nav link */
+.navbar.wpms-nav .wpms-brand{ flex:0 0 auto; width:max-content; gap:.55rem; margin-right:.5rem; padding-top:0; padding-bottom:0; white-space:nowrap; font-family:'Plus Jakarta Sans','Inter',sans-serif; font-weight:800; letter-spacing:-.02em; color:var(--kenya-black) !important; }
+.navbar.wpms-nav .wpms-brand-logo{ height:30px; width:auto; }
+.navbar.wpms-nav .wpms-brand-text{ font-size:1.05rem; line-height:1; }
+.navbar.wpms-nav .wpms-brand-text .text-kenya{ color:var(--kenya-green); }
+.navbar.wpms-nav .navbar-collapse{ min-width:0; }
+/* Compact band (expanded via xl but snug until ~1280): keeps the brand clear of Home */
+@media (min-width:1200px) and (max-width:1279.98px){
+  .navbar.wpms-nav .wpms-brand{ margin-right:.7rem; }
+  .navbar.wpms-nav .wpms-brand-logo{ height:26px; }
+  .navbar.wpms-nav .wpms-brand-text{ font-size:.98rem; }
+  .navbar.wpms-nav .nav-link{ padding:.5rem .65rem !important; font-size:13.5px !important; }
+  .navbar.wpms-nav .navbar-nav{ gap:.1rem; }
+  .navbar.wpms-nav .wpms-cta,
+  .navbar.wpms-nav .wpms-cta-ghost{ padding:.5rem .85rem !important; font-size:13.5px !important; }
+}
 .navbar.wpms-nav .nav-link{
   font-weight:500 !important;
   color:var(--text) !important;
   font-size:14px !important;
   padding:.5rem .9rem !important;
   border-radius:999px;
+  white-space:nowrap;
   transition:all .18s ease;
 }
 .navbar.wpms-nav .nav-link:hover{ background:var(--surface-2); color:var(--kenya-green) !important; }
