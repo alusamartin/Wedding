@@ -1,0 +1,10 @@
+# Agent / tooling metadata
+.freebuff/
+
+# Logs
+*.log
+
+# OS junk
+Thumbs.db
+.DS_Store
+desktop.ini

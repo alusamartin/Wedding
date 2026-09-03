@@ -1,0 +1,107 @@
+<!--
+  WPMS Kenya v2.1 — Task 1.2 Frontend Snippet
+  Drop this into admin/login.php (or any admin layout) to complement the
+  hardened Session.php. Mobile-first, no jQuery required.
+
+  Features:
+  - CSRF field via $session->csrf_field()
+  - Secure autocomplete + inputmode for M-Pesa phones
+  - Inactivity warning (105 min → warn, 120 min → auto-logout)
+  - Fingerprint-aware: shows "Session secured to this device" badge
+-->
+<?php /* at top of login.php */ ?>
+<?php require_once __DIR__ . '/admin/include/init.php'; ?>
+<?php if (!isset($session)) { $session = new Session(); } ?>
+
+<!-- ===== LOGIN FORM (mobile-first, Bootstrap 4) ===== -->
+<form method="post" action="login.php" autocomplete="on" novalidate>
+  <?= $session->csrf_field(); ?>
+  <div class="form-group">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" class="form-control"
+           required autocomplete="username" inputmode="email"
+           placeholder="you@business.co.ke">
+  </div>
+  <div class="form-group">
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" class="form-control"
+           required autocomplete="current-password" minlength="8">
+  </div>
+  <button type="submit" class="btn btn-primary btn-block">Log In</button>
+  <small class="text-muted d-block mt-2 text-center">
+    <i class="mdi mdi-shield-check"></i> Session secured to this device (15-min rotation)
+  </small>
+</form>
+
+<!-- ===== INACTIVITY WARNING (include on every admin page) ===== -->
+<div id="session-warning" class="alert alert-warning alert-dismissible fade"
+     role="alert" style="display:none; position:fixed; bottom:16px; left:50%; transform:translateX(-50%); z-index:9999; max-width:90vw;">
+  <strong>Still there?</strong> Your session expires in <span id="session-countdown">15</span> min due to inactivity.
+  <button type="button" class="btn btn-sm btn-warning ml-2" onclick="sessionKeepAlive()">Keep me signed in</button>
+  <button type="button" class="close" data-dismiss="alert"><span>&times;</span></button>
+</div>
+
+<script>
+/**
+ * WPMS Kenya — Session Keep-Alive (v2.1 hardened)
+ * - Warns at 105 min (15 min before 120 min timeout)
+ * - Auto-redirects to logout at 120 min
+ * - "Keep me signed in" pings server to slide _last_activity
+ * - Works offline? No — session is server-bound by design (M-Pesa culture needs server auth)
+ */
+(function() {
+  const INACTIVITY_MS = 7200 * 1000; // 2h matches Session.php
+  const WARN_AT_MS    = 6300 * 1000; // 105 min
+  let warningShown = false;
+  let lastActivity = Date.now();
+
+  // Reset on user interaction (mobile-friendly: touch + scroll)
+  ['click','keydown','touchstart','scroll'].forEach(ev =>
+    document.addEventListener(ev, () => { lastActivity = Date.now(); if (warningShown) hideWarn(); }, {passive:true})
+  );
+
+  function showWarn() {
+    const el = document.getElementById('session-warning');
+    if (!el) return;
+    el.style.display = 'block';
+    el.classList.add('show');
+    let mins = 15;
+    const iv = setInterval(() => {
+      mins -= 1;
+      const c = document.getElementById('session-countdown');
+      if (c) c.textContent = Math.max(0, mins);
+      if (mins <= 0) clearInterval(iv);
+    }, 60000);
+    warningShown = true;
+  }
+  function hideWarn() {
+    const el = document.getElementById('session-warning');
+    if (!el) return;
+    el.style.display = 'none';
+    el.classList.remove('show');
+    warningShown = false;
+  }
+  window.sessionKeepAlive = function() {
+    fetch('ping.php', {method:'POST', credentials:'same-origin',
+      headers:{'X-Requested-With':'fetch'}})
+      .then(()=>{ lastActivity = Date.now(); hideWarn(); })
+      .catch(()=> location.reload());
+  };
+
+  setInterval(() => {
+    const idle = Date.now() - lastActivity;
+    if (!warningShown && idle >= WARN_AT_MS) showWarn();
+    if (idle >= INACTIVITY_MS) {
+      // Server will also force logout; redirect to login with message
+      location.href = 'logout.php?reason=timeout';
+    }
+  }, 60000); // check every minute (battery-friendly for phones)
+})();
+</script>
+
+<!-- ===== OPTIONAL: ping.php (create this file) ===== -->
+<?php
+// admin/ping.php — slides _last_activity without rotating fingerprint
+// require_once __DIR__ . '/include/init.php';
+// if ($session->is_signed_in()) { $_SESSION['_last_activity'] = time(); http_response_code(204); } else { http_response_code(401); }
+?>

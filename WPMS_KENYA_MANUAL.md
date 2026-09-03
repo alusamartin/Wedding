@@ -1,0 +1,1564 @@
+# WPMS KENYA — COMPLETE SYSTEM MANUAL
+## Wedding Planning Management System v2.0 (Kenyan Market Edition)
+
+---
+
+# TABLE OF CONTENTS
+
+1. [System Overview](#1-system-overview)
+2. [Architecture & Technology Stack](#2-architecture--technology-stack)
+3. [Installation & Setup](#3-installation--setup)
+4. [Database Schema](#4-database-schema)
+5. [User Roles & Access](#5-user-roles--access)
+6. [Core Modules](#6-core-modules)
+7. [Monetization Module](#7-monetization-module)
+8. [Admin Workflows](#8-admin-workflows)
+9. [Vendor Workflows](#9-vendor-workflows)
+10. [Couple/Client Workflows](#10-coupleclient-workflows)
+11. [Security Features](#11-security-features)
+12. [Configuration Reference](#12-configuration-reference)
+13. [Cron Jobs & Automation](#13-cron-jobs--automation)
+14. [Troubleshooting](#14-troubleshooting)
+
+---
+
+# 1. SYSTEM OVERVIEW
+
+## What is WPMS Kenya?
+
+WPMS Kenya is a comprehensive wedding planning management system designed specifically for the Kenyan wedding industry. It serves three primary user types:
+
+- **Wedding Planners/Organizers** — Manage clients, events, guests, budgets
+- **Vendors** — List services, receive bookings, manage packages
+- **Couples** — Register weddings, track planning, share wedding websites
+
+## Key Features
+
+| Feature | Description |
+|---------|-------------|
+| Client Management | Full CRM for wedding clients with booking lifecycle |
+| Guest List Management | Kenyan-specific: harambee tracking, upcountry guests, transport |
+| Budget & Payments | M-Pesa integration, payment tracking by method |
+| Event Calendar | FullCalendar with Kenyan wedding event types |
+| Vendor Marketplace | Categorized vendor listings with booking system |
+| SMS Center | Bulk SMS via Africa's Talking for invitations/reminders |
+| Wedding Websites | Public-facing pages with RSVP, gallery, countdown |
+| Subscription System | SaaS monetization with 3 tiers |
+| Gallery Management | Photo uploads linked to bookings |
+| Blog/Events | Showcase real Kenyan weddings |
+
+## Kenyan Market Customizations
+
+- **Currency**: All prices in KSh (Kenyan Shillings)
+- **Packages**: Traditional Ruracio/Dowry, Church Wedding, Civil Registration, Reception, After-Party
+- **Guest Features**: Harambee contributions, upcountry accommodation, transport tracking
+- **Payment Methods**: Cash, M-Pesa (with transaction codes), Bank Transfer
+- **Locations**: All Kenyan counties and major towns
+- **SMS**: Africa's Talking integration for bulk messaging
+- **Vendor Categories**: Catering, Decor, Photography, Music, Transport, MC, Venue, Cakes, Flowers
+
+---
+
+# 2. ARCHITECTURE & TECHNOLOGY STACK
+
+## Technology Stack
+
+| Layer | Technology |
+|-------|------------|
+| **Backend** | PHP 7.4+ (Procedural + OOP) |
+| **Database** | MySQL 5.7+ via mysqli extension |
+| **Frontend** | Bootstrap 4, jQuery 3.x |
+| **Calendar** | FullCalendar v3 + Moment.js |
+| **SMS** | Africa's Talking API |
+| **Payments** | M-Pesa (manual code entry, Daraja API ready) |
+| **Server** | XAMPP / Apache (Windows/Linux) |
+
+## Architecture Pattern
+
+WPMS uses a **custom MVC-lite pattern** with Active Record ORM:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        PRESENTATION LAYER                    │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
+│  │ index.php   │  │ admin/*.php │  │ site.php (public)   │ │
+│  │ (frontend)  │  │ (backend)   │  │ (wedding websites)  │ │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘ │
+├─────────────────────────────────────────────────────────────┤
+│                         CONTROLLER LAYER                     │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │ include/init.php — Bootstrap, load all models           ││
+│  │ include/Session.php — Auth, CSRF, Flash messages       ││
+│  │ include/Helper.php — Utility functions                 ││
+│  └─────────────────────────────────────────────────────────┘│
+├─────────────────────────────────────────────────────────────┤
+│                           MODEL LAYER                        │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │ include/db_object.php — Active Record ORM base class    ││
+│  │ include/Database.php — MySQLi connection wrapper        ││
+│  │                                                         ││
+│  │ Domain Models:                                          ││
+│  │ • Accounts, Account_Details, Booking, BookingEvent      ││
+│  │ • Guest, Categories, Features, Events, Gallery          ││
+│  │ • Users, EventWedding, Liquidation, Organizer           ││
+│  │                                                         ││
+│  │ Monetization Models:                                    ││
+│  │ • Subscription, Vendor, SMS, WeddingWebsite             ││
+│  └─────────────────────────────────────────────────────────┘│
+├─────────────────────────────────────────────────────────────┤
+│                         DATABASE LAYER                       │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │ MySQL Database: dbwedding                               ││
+│  │ 22 tables (11 core + 11 monetization)                   ││
+│  └─────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────┘
+```
+
+## File Structure
+
+```
+Wedding/
+├── index.php                     ← Frontend landing + registration
+├── site.php                      ← Public wedding website viewer
+├── thankyou.php                  ← Post-registration confirmation
+├── login.php                     ← Client login
+├── register.php                  ← Client registration
+├── pricing.php                   ← Package pricing page
+├── gallery.php                   ← Public gallery
+├── contact.php                   ← Contact form
+├── about.php                     ← About page
+├── include/
+│   └── nav.php                   ← Frontend navigation
+├── admin/
+│   ├── index.php                 ← Admin landing
+│   ├── login.php                 ← Admin login
+│   ├── logout.php                ← Admin logout
+│   ├── dashboard.php             ← Admin dashboard with stats
+│   ├── subscription.php          ← SaaS subscription management
+│   ├── vendors.php               ← Vendor marketplace
+│   ├── vendor_register.php       ← Vendor registration form
+│   ├── sms_center.php            ← SMS credits & sending
+│   ├── client.php                ← Client list (pending/confirmed)
+│   ├── client_add.php            ← Add new client
+│   ├── client_edit.php           ← Edit client
+│   ├── client_assign.php         ← Assign/confirm booking
+│   ├── client_manage_*.php       ← Client management sub-pages
+│   ├── budget.php                ← Budget overview
+│   ├── budget_add.php            ← Record payment
+│   ├── budget_edit.php           ← Edit budget item
+│   ├── budget_liquidate.php      ← Liquidate budget
+│   ├── events.php                ← Events list
+│   ├── events_add.php            ← Add event
+│   ├── guest_list.php            ← Guest list
+│   ├── guest_add.php             ← Add guest
+│   ├── guest_edit.php            ← Edit guest
+│   ├── guest_delete.php          ← Delete guest
+│   ├── task_calendar.php         ← FullCalendar task view
+│   ├── task_event_save.php       ← Save calendar event
+│   ├── task_editEvent*.php       ← Edit calendar event
+│   ├── gallery.php               ← Gallery management
+│   ├── photos_add.php            ← Upload photo
+│   ├── photos_edit.php           ← Edit photo
+│   ├── photos_view.php           ← View photos
+│   ├── photo_delete.php          ← Delete photo
+│   ├── service_list.php          ← Services list
+│   ├── services_add.php          ← Add service
+│   ├── package_add.php           ← Add package
+│   ├── package_edit.php          ← Edit package
+│   ├── package_delete.php        ← Delete package
+│   ├── feature_add.php           ← Add feature
+│   ├── feature_edit.php          ← Edit feature
+│   ├── feature_delete.php        ← Delete feature
+│   ├── blog_events.php           ← Blog/Event posts
+│   ├── blog_events_add.php       ← Add blog post
+│   ├── blog_events_edit.php      ← Edit blog post
+│   ├── blog_events_delete.php    ← Delete blog post
+│   ├── users.php                 ← Admin users list
+│   ├── users_add.php             ← Add admin user
+│   ├── users_edit.php            ← Edit admin user
+│   ├── users_delete.php          ← Delete admin user
+│   ├── users_profile.php         ← User profile
+│   ├── include/
+│   │   ├── init.php              ← Bootstrap: loads all classes
+│   │   ├── config.php            ← DB credentials
+│   │   ├── database.php          ← Database connection class
+│   │   ├── db_object.php         ← Base ORM class (Active Record)
+│   │   ├── Session.php           ← Session, CSRF, Password hashing
+│   │   ├── Helper.php            ← Utility functions
+│   │   ├── Accounts.php          ← Admin accounts model
+│   │   ├── Account_Details.php   ← Client details model
+│   │   ├── Booking.php           ← Wedding booking model
+│   │   ├── BookingEvent.php      ← Event booking model
+│   │   ├── Guest.php             ← Guest model (Kenyan fields)
+│   │   ├── Categories.php        ← Wedding package categories
+│   │   ├── Features.php          ← Package features model
+│   │   ├── EventWedding.php      ← Blog/Event posts model
+│   │   ├── Events.php            ← Calendar events model
+│   │   ├── Gallery.php           ← Gallery/photos model
+│   │   ├── Users.php             ← Admin users model
+│   │   ├── Liquidation.php       ← Budget liquidation model
+│   │   ├── Organizer.php         ← Organizer (placeholder)
+│   │   ├── Monetization.php      ← Subscription, Vendor, SMS, Website
+│   │   ├── sidebar.php           ← Admin sidebar navigation
+│   │   ├── footer.php            ← Admin footer
+│   │   └── nav.php               ← Admin top nav
+│   ├── upload/
+│   │   ├── categories/           ← Category preview images
+│   │   ├── events/               ← Event blog images
+│   │   ├── gallery/              ← Gallery photos
+│   │   └── users/                ← User profile pictures
+│   ├── css/                      ← Admin stylesheets
+│   ├── js/                       ← Admin JS files
+│   └── calendar/                 ← FullCalendar assets
+└── sql/
+    └── kenyan_schema.sql          ← Kenyan market schema + seed data
+```
+
+---
+
+# 3. INSTALLATION & SETUP
+
+## Prerequisites
+
+- XAMPP (PHP 7.4+, MySQL 5.7+) or similar Apache/MySQL/PHP stack
+- Web browser (Chrome, Firefox, Edge)
+- Africa's Talking account (for SMS features)
+- M-Pesa Paybill/Till (for payment collection)
+
+## Step-by-Step Installation
+
+### 1. Copy Files
+```
+Copy the Wedding/ folder to C:\xampp\htdocs\Wedding\
+```
+
+### 2. Start XAMPP
+```
+Start Apache and MySQL from XAMPP Control Panel
+```
+
+### 3. Create Database
+```sql
+CREATE DATABASE dbwedding;
+```
+
+### 4. Import Schema
+```bash
+mysql -u root dbwedding < C:\xampp\htdocs\Wedding\kenyan_schema.sql
+```
+
+### 5. Configure Database
+Edit `admin/include/config.php`:
+```php
+define('DB_HOST','localhost');
+define('DB_USER','root');
+define('DB_PASS','');
+define('DB_NAME','dbwedding');
+```
+
+### 6. Set Timezone
+In `admin/include/init.php`, ensure:
+```php
+date_default_timezone_set('Africa/Nairobi');
+```
+
+### 7. Set Base Path
+In `admin/include/init.php`, ensure:
+```php
+$webroot = "C:/xampp/htdocs/";
+```
+
+### 8. Access the System
+```
+Frontend: http://localhost/Wedding/
+Admin:    http://localhost/Wedding/admin/login.php
+```
+
+### 9. Default Admin Login
+```
+Email:    admin@wpms.co.ke
+Password: Admin@2024!
+```
+
+## Directory Permissions
+
+Ensure these folders are writable by Apache:
+```
+admin/upload/categories/
+admin/upload/events/
+admin/upload/gallery/
+admin/upload/users/
+```
+
+---
+
+# 4. DATABASE SCHEMA
+
+## Core Tables (11)
+
+### tblusers — Admin Users
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| firstname | VARCHAR(100) | First name |
+| lastname | VARCHAR(100) | Last name |
+| gender | ENUM('male','female') | Gender |
+| username | VARCHAR(50) | Login username |
+| password | VARCHAR(255) | Bcrypt hash |
+| email | VARCHAR(100) | Login email |
+| designation | VARCHAR(50) | Role designation |
+| address | TEXT | Physical address |
+| access_level | VARCHAR(20) | RBAC level |
+| profile_picture | VARCHAR(255) | Profile photo path |
+| date_created | VARCHAR(50) | Creation timestamp |
+
+### tblaccounts — Client Accounts
+| Column | Type | Description |
+|--------|------|-------------|
+| user_id | INT PK | Links to tblaccounts_detail |
+| user_email | VARCHAR(100) | Login email |
+| user_password | VARCHAR(255) | Bcrypt hash |
+| access_level | VARCHAR(20) | Access level |
+
+### tblaccounts_detail — Client Details
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| user_id | INT FK | Links to tblaccounts |
+| firstname | VARCHAR(100) | First name |
+| lastname | VARCHAR(100) | Last name |
+| phone | VARCHAR(20) | Phone number |
+| city | VARCHAR(100) | City/Town |
+| datetime_created | VARCHAR(50) | Registration date |
+| description | TEXT | Notes |
+| location | VARCHAR(200) | Wedding location |
+| expectation_visitor | VARCHAR(50) | Expected guest count |
+| cash_advanced | DECIMAL(12,2) | Initial payment |
+| status | ENUM('pending','confirm','cancel','fraud') | Booking status |
+| date_signed | VARCHAR(50) | Date signed |
+| organizer_id | INT | Assigned organizer |
+
+### tblweddingbook — Wedding Bookings
+| Column | Type | Description |
+|--------|------|-------------|
+| booking_id | INT PK | Auto-increment |
+| user_id | INT FK | Client user ID |
+| bride | VARCHAR(100) | Bride's name |
+| groom | VARCHAR(100) | Groom's name |
+| wedding_type | INT FK | Category ID |
+| user_email | VARCHAR(100) | Contact email |
+| wedding_date | VARCHAR(50) | Wedding date |
+| organizer_id | INT | Assigned organizer |
+
+### tblweddingcategories — Wedding Packages
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| wedding_type | VARCHAR(100) | Package name |
+| price | DECIMAL(10,2) | Package price (KSh) |
+| preview_image | VARCHAR(255) | Preview image path |
+
+### tbl_features — Package Features
+| Column | Type | Description |
+|--------|------|-------------|
+| feature_id | INT PK | Auto-increment |
+| category_id | INT FK | Package ID |
+| title | VARCHAR(200) | Feature name |
+| description | TEXT | Feature description |
+
+### tblguest — Guest List
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| booking_id | INT FK | Booking ID |
+| fullname | VARCHAR(100) | Full name |
+| guestname | VARCHAR(100) | Display name |
+| address | TEXT | Physical address |
+| state | CHAR(4) | County |
+| zipcode | CHAR(10) | Postal code |
+| priority | ENUM('A','B','C','D','E') | Priority level |
+| out_of_town | ENUM('y','n') | Upcountry guest |
+| relationship | VARCHAR(32) | Relationship/group |
+| tracks_and_gifts | TEXT | Gift tracking notes |
+| city | VARCHAR(100) | City/Town |
+| upcountry_accommodation | TINYINT(1) | Needs accommodation |
+| harambee_contribution | DECIMAL(12,2) | Harambee amount (KSh) |
+| dietary_requirements | VARCHAR(100) | Dietary needs |
+| transport_needed | TINYINT(1) | Needs transport |
+
+### events — Calendar Events
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| booking_id | INT FK | Booking ID |
+| title | VARCHAR(200) | Event name |
+| location | VARCHAR(200) | Venue |
+| date_created | VARCHAR(50) | Creation date |
+| color | VARCHAR(10) | Calendar color code |
+| start | VARCHAR(50) | Start datetime |
+| end | VARCHAR(50) | End datetime |
+
+### tbleventbooking — Event Booking Link
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| booking_id | INT FK | Booking ID |
+| wedding_id | INT | Wedding ID |
+| features_id | INT | Feature ID |
+| family | INT | Family count |
+| individual | INT | Individual count |
+
+### tblgallery — Gallery Photos
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| booking_id | INT FK | Booking ID |
+| title | VARCHAR(200) | Photo title |
+| caption | VARCHAR(200) | Photo caption |
+| description | TEXT | Description |
+| filename | VARCHAR(255) | File name |
+| alternate_text | VARCHAR(200) | Alt text |
+| type | VARCHAR(50) | MIME type |
+| size | VARCHAR(50) | File size |
+
+### tblpostwedding — Blog/Event Posts
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| title | VARCHAR(200) | Post title |
+| description | TEXT | Post content |
+| preview_image | VARCHAR(255) | Featured image |
+| location | VARCHAR(200) | Location |
+| status | TINYINT(1) | Published status |
+| wedding_date | VARCHAR(50) | Wedding date |
+| wedding_type | VARCHAR(100) | Wedding type |
+| date_created | VARCHAR(50) | Creation date |
+| date_published | VARCHAR(50) | Publish date |
+
+### tbl_liquidation — Budget Payments
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| event_id | INT FK | Event ID |
+| booking_id | INT FK | Booking ID |
+| user_id | INT FK | User ID |
+| payment | DECIMAL(10,2) | Total amount |
+| cash | DECIMAL(10,2) | Cash portion |
+| credit | DECIMAL(10,2) | Bank transfer portion |
+| mpesa_code | VARCHAR(20) | M-Pesa transaction code |
+| date_issue | VARCHAR(100) | Payment date |
+| date_modified | VARCHAR(100) | Last modified |
+
+## Monetization Tables (11)
+
+### tblsubscriptions — User Subscriptions
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| user_id | INT FK | Admin user ID |
+| plan | ENUM('starter','professional','agency') | Plan type |
+| amount | DECIMAL(10,2) | Amount paid |
+| mpesa_code | VARCHAR(20) | M-Pesa code |
+| start_date | DATE | Subscription start |
+| expiry_date | DATE | Subscription expiry |
+| status | ENUM('active','expired','cancelled') | Status |
+| created_at | TIMESTAMP | Creation time |
+| updated_at | TIMESTAMP | Last update |
+
+### tblsubscription_plans — Plan Definitions
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| plan_slug | VARCHAR(20) | Unique slug |
+| name | VARCHAR(100) | Display name |
+| price | DECIMAL(10,2) | Monthly price |
+| wedding_limit INT | Annual wedding limit |
+| features | TEXT | Feature list |
+| is_active | TINYINT(1) | Active status |
+
+### tblsubscription_payments — Payment History
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| subscription_id | INT FK | Subscription ID |
+| user_id | INT FK | User ID |
+| amount | DECIMAL(10,2) | Amount |
+| mpesa_code | VARCHAR(20) | M-Pesa code |
+| payment_date | TIMESTAMP | Payment time |
+| status | ENUM('pending','completed','failed') | Status |
+
+### tblvendors — Vendor Profiles
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| user_id | INT FK | Owner user ID |
+| business_name | VARCHAR(200) | Business name |
+| category | ENUM(...) | Service category |
+| description | TEXT | Business description |
+| phone | VARCHAR(20) | Contact phone |
+| email | VARCHAR(100) | Contact email |
+| location | VARCHAR(100) | Town |
+| county | VARCHAR(50) | County |
+| logo | VARCHAR(255) | Logo image |
+| is_premium | TINYINT(1) | Premium listing |
+| is_approved | TINYINT(1) | Approval status |
+| rating | DECIMAL(3,2) | Average rating |
+| total_bookings | INT | Total bookings |
+| created_at | TIMESTAMP | Registration time |
+
+### tblvendor_packages — Vendor Service Packages
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| vendor_id | INT FK | Vendor ID |
+| title | VARCHAR(200) | Package name |
+| description | TEXT | Description |
+| price | DECIMAL(10,2) | Price (KSh) |
+| capacity | INT | Guest capacity |
+| duration_hours | INT | Service duration |
+| is_active | TINYINT(1) | Active status |
+| created_at | TIMESTAMP | Creation time |
+
+### tblvendor_bookings — Vendor Bookings
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| vendor_id | INT FK | Vendor ID |
+| booking_id | INT FK | Wedding booking ID |
+| package_id | INT FK | Package ID |
+| event_date | DATE | Event date |
+| amount | DECIMAL(10,2) | Booking amount |
+| commission | DECIMAL(10,2) | WPMS commission |
+| status | ENUM('pending','confirmed','completed','cancelled') | Status |
+| notes | TEXT | Notes |
+| created_at | TIMESTAMP | Creation time |
+
+### tblsms_logs — SMS History
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| user_id | INT FK | Sender user ID |
+| booking_id | INT FK | Related booking |
+| phone | VARCHAR(20) | Recipient phone |
+| message | TEXT | Message content |
+| status | ENUM('pending','sent','failed') | Send status |
+| cost | DECIMAL(6,2) | SMS cost (KSh) |
+| sent_at | TIMESTAMP | Send time |
+| created_at | TIMESTAMP | Creation time |
+
+### tblsms_credits — SMS Credit Balances
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| user_id | INT FK | User ID |
+| credits | INT | Available credits |
+| total_purchased | INT | Lifetime purchased |
+| total_used | INT | Lifetime used |
+
+### tblwedding_websites — Public Wedding Pages
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| booking_id | INT FK | Booking ID |
+| slug | VARCHAR(100) UNIQUE | URL slug |
+| title | VARCHAR(200) | Page title |
+| story | TEXT | Couple's story |
+| venue | VARCHAR(200) | Venue name |
+| venue_address | TEXT | Venue address |
+| wedding_date | DATE | Wedding date |
+| cover_image | VARCHAR(255) | Cover photo |
+| is_published | TINYINT(1) | Published |
+| views | INT | View count |
+| created_at | TIMESTAMP | Creation time |
+
+---
+
+# 5. USER ROLES & ACCESS
+
+## Role Hierarchy
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      SUPER ADMIN                            │
+│  • Full system access                                       │
+│  • Manage admin users                                       │
+│  • Approve vendors                                          │
+│  • View all analytics                                       │
+│  • Configure system settings                                │
+├─────────────────────────────────────────────────────────────┤
+│                   WEDDING PLANNER                           │
+│  • Manage own clients                                       │
+│  • Manage own bookings                                      │
+│  • Access vendor marketplace                                │
+│  • Send SMS (with credits)                                  │
+│  • Create wedding websites                                  │
+├─────────────────────────────────────────────────────────────┤
+│                        VENDOR                               │
+│  • Manage own profile                                       │
+│  • Manage own packages                                      │
+│  • Receive bookings                                         │
+│  • View booking requests                                    │
+├─────────────────────────────────────────────────────────────┤
+│                        COUPLE                               │
+│  • Register wedding                                         │
+│  • View wedding website                                     │
+│  • Submit RSVP                                              │
+│  • Track planning progress                                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Access Control
+
+| Feature | Super Admin | Planner | Vendor | Couple |
+|---------|-------------|---------|--------|--------|
+| Dashboard | ✅ | ✅ | ❌ | ❌ |
+| Client Management | ✅ All | ✅ Own | ❌ | ❌ |
+| Vendor Marketplace | ✅ | ✅ | ✅ Own | ❌ |
+| SMS Center | ✅ | ✅ | ❌ | ❌ |
+| Subscription | ✅ | ✅ Own | ❌ | ❌ |
+| User Management | ✅ | ❌ | ❌ | ❌ |
+| Vendor Approval | ✅ | ❌ | ❌ | ❌ |
+| Blog Management | ✅ | ❌ | ❌ | ❌ |
+| Gallery | ✅ All | ✅ Own | ❌ | ❌ |
+| Budget | ✅ All | ✅ Own | ❌ | ❌ |
+| Guest List | ✅ All | ✅ Own | ❌ | ❌ |
+| Calendar | ✅ All | ✅ Own | ❌ | ❌ |
+
+---
+
+# 6. CORE MODULES
+
+## 6.1 Authentication Module
+
+### Login Flow
+```
+1. User visits /admin/login.php
+2. Submits email + password + CSRF token
+3. System validates CSRF token
+4. Users::user_account_login() queries with prepared statement
+5. password_verify() checks bcrypt hash
+6. On success: Session sets $_SESSION['id']
+7. System checks Subscription::get_active()
+8. If active → dashboard.php
+9. If expired → subscription.php
+```
+
+### Password Security
+- All passwords stored as bcrypt hashes (password_hash)
+- Verification via password_verify()
+- Legacy MD5 support removed
+- Session regeneration every 30 minutes
+
+### CSRF Protection
+- Token generated per session via random_bytes(32)
+- Token embedded in every POST form via $session->csrf_field()
+- Token verified on every POST request via $session->verify_csrf()
+- Timing-safe comparison via hash_equals()
+
+## 6.2 Client Management Module
+
+### Client Lifecycle
+```
+┌──────────┐    ┌───────────┐    ┌───────────┐    ┌──────────┐
+│ PENDING  │───→│ ASSIGNED  │───→│ CONFIRMED │───→│ COMPLETED│
+│          │    │           │    │           │    │          │
+│ Registered│    │ Admin fills│    │ Ready for │    │ Wedding  │
+│ via form │    │ details   │    │ planning  │    │ done     │
+└──────────┘    └───────────┘    └───────────┘    └──────────┘
+      │
+      └────→ CANCELLED / FRAUD
+```
+
+### Registration (Frontend)
+1. Couple fills form on index.php
+2. System validates: empty fields, email format, date availability, email uniqueness
+3. Creates Account_Detail → Accounts → Booking records
+4. Status set to 'pending'
+5. Redirects to thank_you.php
+
+### Assignment (Admin)
+1. Admin reviews pending client in client.php
+2. Clicks "Assign" → client_assign.php
+3. Fills: bride, groom, wedding_type, organizer, location, phone, etc.
+4. Status changes to 'confirm'
+5. Client now appears in confirmed list
+
+### Key Files
+- `index.php` — Frontend registration
+- `admin/client.php` — Client list (pending/confirmed tabs)
+- `admin/client_assign.php` — Assignment form
+- `admin/client_edit.php` — Edit client details
+- `admin/client_manage_*.php` — Sub-pages for each client
+
+## 6.3 Guest List Module
+
+### Kenyan-Specific Features
+
+| Feature | Description |
+|---------|-------------|
+| **Harambee Tracking** | Per-guest contribution amount + total per wedding |
+| **Upcountry Guests** | Flag for guests needing accommodation |
+| **Transport Tracking** | Flag for guests needing transport |
+| **Priority Levels** | A=VIP/Elders, B=Bridal Train, C=Close Family, D=Regular, E=General |
+| **Relationship Types** | Family Elder (Mzee), Bridal Train, Upcountry Guest, VC Member, etc. |
+| **Dietary Requirements** | Halal, Vegetarian, No Beef, Diabetic, etc. |
+| **Town/County Dropdowns** | All major Kenyan locations |
+
+### Guest Statistics Dashboard
+- Total guest count
+- Upcountry guest count
+- Total harambee contributions
+- Transport-needed count
+
+### Key Files
+- `admin/include/Guest.php` — Model with Kenyan fields
+- `admin/guest_add.php` — Add guest form
+- `admin/guest_edit.php` — Edit guest form
+- `admin/guest_list.php` — Guest list with stats
+- `admin/guest_delete.php` — Delete guest
+
+## 6.4 Budget & Payment Module
+
+### Payment Methods
+| Method | Tracking |
+|--------|----------|
+| **Cash** | Amount recorded in `cash` column |
+| **M-Pesa** | Amount in `payment`, code in `mpesa_code` |
+| **Bank Transfer** | Amount in `credit` column |
+
+### Budget Views
+- **Summary Cards**: Package price, total paid, balance due, item count
+- **Payment Breakdown**: M-Pesa (green), Cash (blue), Bank (orange)
+- **Detailed Table**: Date, event, method, M-Pesa code, amount
+
+### Key Methods
+```php
+Liquidation::getTotalsByMethod($booking_id)
+// Returns: ['mpesa_total', 'cash_total', 'credit_total', 'grand_total']
+```
+
+### Key Files
+- `admin/include/Liquidation.php` — Model with M-Pesa support
+- `admin/budget.php` — Budget overview with breakdown
+- `admin/budget_add.php` — Record payment form
+- `admin/budget_edit.php` — Edit payment
+- `admin/budget_liquidate.php` — Liquidation view
+
+## 6.5 Events & Calendar Module
+
+### Kenyan Wedding Event Types
+| Event | Color | Description |
+|-------|-------|-------------|
+| Ruracio Ceremony | 🔴 Red | Dowry negotiation ceremony |
+| Church Wedding | 🟣 Purple | Church blessing/ceremony |
+| Reception | 🟢 Green | Main reception (garden/hotel) |
+| After-Party | 🟠 Orange | Late-night celebration |
+| VC Meeting | 🔵 Blue | Wedding committee meeting |
+| Civil Registration | ⚫ Dark | Government registration |
+| Bridal Shower | 🩷 Pink | Pre-wedding bridal event |
+| Engagement Party | 🟧 Orange | Engagement celebration |
+
+### Venue Options
+- Nairobi: Carnivore Grounds, Garden Wedding (Karen), Hotel (Serena/Sankara/Villa Rosa), KICC
+- Mombasa: Diani Beach, Nyali/English Point
+- Nakuru: Elementaita, Lake Naivasha
+- Nyeri: Upcountry Home
+- Kisumu: Lakeside Hotel
+- Eldoret: Farm/Agricultural Society
+- Kiambu: Church + Reception Hall
+- Machakos: Open Air
+
+### Key Files
+- `admin/include/Events.php` — Model with prepared statements
+- `admin/task_calendar.php` — FullCalendar with Kenyan events
+- `admin/task_event_save.php` — Save event (CSRF-protected)
+- `admin/task_editEventTitle.php` — Edit event title
+- `admin/task_editEventDate.php` — Edit event date
+
+## 6.6 Gallery Module
+
+### Features
+- Upload photos linked to bookings
+- Image validation (type, size, duplicates)
+- Automatic file naming
+- Photo deletion (DB + physical file)
+- Gallery view with DataTables
+
+### Key Files
+- `admin/include/Gallery.php` — Model with image handling
+- `admin/photos_add.php` — Upload form
+- `admin/photos_edit.php` — Edit photo details
+- `admin/photos_view.php` — View gallery
+- `admin/photo_delete.php` — Delete photo
+
+## 6.7 Blog/Events Module
+
+### Features
+- Showcase real Kenyan weddings
+- Card-based display on frontend
+- Status: draft/published
+- Location and date tracking
+
+### Sample Content
+- "A Modern Ruracio in Nyeri"
+- "Beach Wedding in Diani, Mombasa"
+- "Garden Wedding at Lake Naivasha"
+- "Traditional Kikuyu Wedding in Murang'a"
+
+### Key Files
+- `admin/include/EventWedding.php` — Blog model
+- `admin/blog_events.php` — Blog list
+- `admin/blog_events_add.php` — Add post
+- `admin/blog_events_edit.php` — Edit post
+- `admin/blog_events_delete.php` — Delete post
+
+## 6.8 Packages Module
+
+### Kenyan Wedding Packages
+| Package | Price (KSh) | Features |
+|---------|-------------|----------|
+| Traditional Ruracio/Dowry | 150,000 | Nyama Choma, Bridal Train, Upcountry Transport, M-Pesa, MC/DJ |
+| Church Wedding | 250,000 | Church Decor, Bridal Car, Wedding Cake, Photography |
+| Civil Registration | 50,000 | Marriage Certificate, Witness Arrangement |
+| Reception Package | 350,000 | Venue Hire, Catering, MC & Entertainment, Tents & Chairs |
+| After-Party Celebration | 100,000 | DJ & Sound, Drinks & Beverages, Late Night Snacks |
+
+### Key Files
+- `admin/include/Categories.php` — Package model
+- `admin/include/Features.php` — Feature model
+- `admin/package_add.php` — Add package
+- `admin/package_edit.php` — Edit package
+- `admin/package_delete.php` — Delete package
+- `admin/feature_add.php` — Add feature
+- `admin/feature_edit.php` — Edit feature
+- `admin/feature_delete.php` — Delete feature
+
+---
+
+# 7. MONETIZATION MODULE
+
+## 7.1 Subscription System (SaaS)
+
+### Plans
+
+| Plan | Price (KSh/mo) | Weddings | Key Features |
+|------|----------------|----------|--------------|
+| **Starter** | 2,999 | 3/year | Guest list, Budget tracker, Basic calendar |
+| **Professional** | 7,999 | Unlimited | All features, M-Pesa, SMS, Gallery |
+| **Agency** | 14,999 | Unlimited | Multi-user, White-label, API, Priority support |
+
+### Subscription Lifecycle
+```
+┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+│  SIGNUP  │───→│  ACTIVE  │───→│  EXPIRED │───→│ RENEWED  │
+│          │    │          │    │          │    │          │
+│ User picks│    │ Full     │    │ Grace    │    │ Back to  │
+│ plan     │    │ access   │    │ period   │    │ active   │
+└──────────┘    └──────────┘    └──────────┘    └──────────┘
+```
+
+### Payment Flow
+1. User selects plan on subscription.php
+2. Modal shows M-Pesa payment instructions
+3. User pays via Paybill 123456, Account: WPMS
+4. User enters M-Pesa transaction code (10 chars)
+5. System creates subscription record (30-day validity)
+6. Admin verifies payment (manual for now, Daraja API ready)
+
+### Subscription Check on Login
+```php
+// After successful login
+$sub = Subscription::get_active($logged->id);
+if (!$sub) {
+    redirect_to("subscription.php");  // Force subscription
+} else {
+    redirect_to("dashboard.php");
+}
+```
+
+### Key Methods
+```php
+Subscription::get_active($user_id)     // Get current active subscription
+Subscription::is_active($user_id)      // Boolean check
+Subscription::create_subscription(...) // Create new subscription
+Subscription::get_plan($plan_slug)     // Get plan details
+Subscription::get_all_plans()          // Get all active plans
+```
+
+### Key Files
+- `admin/include/Monetization.php` — Subscription class
+- `admin/subscription.php` — Subscription UI
+
+---
+
+## 7.2 Vendor Marketplace
+
+### Vendor Categories
+| Category | Icon | Examples |
+|----------|------|----------|
+| Catering | 🍽️ | Nyama Choma Masters, Pilau Plus |
+| Decor | 🌸 | Floral Dreams, Elegant Decor |
+| Photography | 📷 | Flash Photography KE, Lens Masters |
+| Music | 🎵 | DJ Mix, Live Band Kenya |
+| Transport | 🚌 | Safari Transport, Matatu Hire |
+| MC | 🎤 | MC Ken, Master of Ceremonies |
+| Venue | 🏨 | Diani Beach, Carnivore Grounds |
+| Cakes | 🎂 | Sweet Cakes Nairobi |
+| Flowers | 🌹 | Flower Palace |
+| Other | 📦 | Miscellaneous |
+
+### Vendor Registration Flow
+```
+1. User clicks "Register as Vendor" in marketplace
+2. Fills business info, category, location
+3. Adds service packages (name, price, description)
+4. Submits for admin approval
+5. Admin approves/rejects
+6. Approved vendors appear in marketplace
+```
+
+### Commission Structure
+- **Standard**: 10% commission on bookings through WPMS
+- **Premium Vendors**: 15% commission (higher visibility)
+- Commission stored in `tblvendor_bookings.commission`
+
+### Premium Vendor Features
+- Priority listing (appears first)
+- "Premium" badge on profile
+- Unlimited photos
+- Analytics dashboard
+- Price: KSh 3,000/month
+
+### Key Methods
+```php
+Vendor::get_approved($category)  // Get approved vendors
+Vendor::get_by_user($user_id)    // Get vendor by owner
+```
+
+### Key Files
+- `admin/include/Monetization.php` — Vendor class
+- `admin/vendors.php` — Marketplace UI
+- `admin/vendor_register.php` — Registration form
+
+---
+
+## 7.3 SMS Center
+
+### SMS Packages
+| Package | Credits | Price (KSh) |
+|---------|---------|-------------|
+| Basic | 100 | 999 |
+| Standard | 500 | 2,499 |
+| Premium | Unlimited/mo | 4,999 |
+
+### SMS Cost Calculation
+- 1 SMS = 160 characters
+- Cost: KSh 1 per SMS
+- Long messages split: ceil(length / 160) × KSh 1
+
+### Quick Templates
+1. **Wedding Invitation**: "You are invited to [Bride] & [Groom] wedding on [Date] at [Venue]..."
+2. **Transport Reminder**: "Your wedding transport departs [Pickup] at [Time]..."
+3. **Harambee Thanks**: "Thank you for your generous contribution of KSh [Amount]..."
+4. **Day Before Reminder**: "[Bride] & [Groom] wedding is tomorrow!..."
+
+### Send Options
+- **All Guests**: Bulk send to entire guest list
+- **Upcountry Only**: Guests with out_of_town = 'y'
+- **VIP Only**: Guests with priority = 'A'
+
+### Phone Formatting
+- Accepts: 0712345678, +254712345678, 254712345678
+- Normalizes to: 254712345678 (Africa's Talking format)
+
+### Africa's Talking Integration
+```php
+// In production, set API key:
+SMS::africastalking_send($phone, $message);
+// Uses: https://api.africastalking.com/version1/message
+```
+
+### Key Methods
+```php
+SMS::send($phone, $message, $user_id, $booking_id)
+SMS::send_bulk($booking_id, $message, $user_id)
+SMS::calculate_cost($message)
+SMS::format_phone($phone)
+SMS::get_credits($user_id)
+SMS::add_credits($user_id, $credits)
+SMS::deduct_credits($user_id, $credits)
+```
+
+### Key Files
+- `admin/include/Monetization.php` — SMS class
+- `admin/sms_center.php` — SMS UI
+
+---
+
+## 7.4 Wedding Websites
+
+### Features
+- Public-facing pages at `/wedding/site.php?slug=bride-groom`
+- Hero section with cover image
+- Countdown timer
+- Couple's story section
+- Photo gallery grid
+- RSVP form
+- View tracking
+
+### URL Structure
+```
+http://localhost/Wedding/site.php?slug=john-mary
+```
+
+### Slug Generation
+```php
+// Auto-generated from bride + groom names
+WeddingWebsite::generate_slug('John', 'Mary');
+// Returns: john-mary (or john-mary-1 if exists)
+```
+
+### RSVP Flow
+1. Guest visits wedding website
+2. Fills RSVP form (name, attending, guest count, dietary)
+3. Submission stored (can be extended to email admin)
+
+### Key Methods
+```php
+WeddingWebsite::get_by_slug($slug)
+WeddingWebsite::get_by_booking($booking_id)
+WeddingWebsite::generate_slug($bride, $groom)
+WeddingWebsite::increment_views($id)
+```
+
+### Key Files
+- `admin/include/Monetization.php` — WeddingWebsite class
+- `site.php` — Public wedding website template
+
+---
+
+## 7.5 Revenue Summary
+
+| Revenue Stream | Model | Price Range |
+|----------------|-------|-------------|
+| SaaS Subscriptions | Monthly recurring | KSh 2,999 – 14,999/mo |
+| Vendor Commission | Per booking | 10-15% of booking value |
+| SMS Credits | Per message | KSh 1/SMS (bulk packages) |
+| Vendor Premium | Monthly recurring | KSh 3,000/mo |
+| Wedding Websites | Per wedding | KSh 1,999 (premium feature) |
+| White-label License | Setup + annual | KSh 150,000 – 500,000 |
+| Data/Analytics | Per report or subscription | KSh 5,000 – 45,000/yr |
+
+---
+
+# 8. ADMIN WORKFLOWS
+
+## 8.1 Daily Operations
+
+### Morning Checklist
+1. **Check Dashboard** — Review pending clients, upcoming weddings
+2. **Review New Registrations** — client.php → Pending tab
+3. **Assign Planners** — client_assign.php for new bookings
+4. **Check SMS Credits** — Ensure sufficient balance
+5. **Review Vendor Applications** — Approve/reject new vendors
+
+### Client Management Workflow
+```
+1. New client registers on frontend
+2. Admin sees notification on dashboard
+3. Reviews client in client.php (Pending tab)
+4. Clicks "Assign" → client_assign.php
+5. Fills: bride, groom, wedding type, date, location, organizer
+6. Sets status to "confirm"
+7. Client moves to Confirmed tab
+8. Now accessible for: guest list, budget, events, gallery
+```
+
+### Event Planning Workflow
+```
+1. Navigate to client → "Task Calendar"
+2. Add events: Ruracio, Church, Reception, After-Party
+3. Set dates, times, venues
+4. Color-code by event type
+5. View in month/week/day format
+6. Edit events as needed
+```
+
+### Guest Management Workflow
+```
+1. Navigate to client → "Guest List"
+2. Click "Add New Guest"
+3. Fill: name, relationship, location, priority
+4. Set: upcountry, transport, accommodation, harambee
+5. View stats: total, upcountry, harambee total, transport
+6. Send bulk SMS to all/upcountry/VIP
+```
+
+### Budget Tracking Workflow
+```
+1. Navigate to client → "Budget"
+2. View summary: package price, paid, balance
+3. Click "Record Payment"
+4. Select event, method (Cash/M-Pesa/Bank)
+5. Enter M-Pesa code if applicable
+6. View payment breakdown by method
+```
+
+## 8.2 Monthly Tasks
+
+### Subscription Management
+1. Review expiring subscriptions
+2. Send renewal reminders
+3. Process M-Pesa payments
+4. Update subscription records
+
+### Vendor Management
+1. Review new vendor applications
+2. Approve/reject with notes
+3. Set premium status for top vendors
+4. Review commission reports
+
+### Analytics
+1. Total weddings this month
+2. Revenue by source (subscriptions, commissions, SMS)
+3. Top vendors by bookings
+4. Average wedding budget by region
+
+---
+
+# 9. VENDOR WORKFLOWS
+
+## 9.1 Getting Started
+
+### Registration
+1. Visit admin panel → Vendor Marketplace
+2. Click "Register as Vendor"
+3. Fill business information
+4. Select category
+5. Add service packages
+6. Submit for approval
+
+### After Approval
+1. Log in to admin panel
+2. Access vendor dashboard
+3. Update profile (logo, photos, description)
+4. Manage packages (add/edit/remove)
+5. Receive booking notifications
+6. Confirm/complete bookings
+
+## 9.2 Managing Packages
+
+### Package Structure
+- **Name**: e.g. "Premium Catering Package"
+- **Description**: What's included
+- **Price**: In KSh
+- **Capacity**: Max guests (optional)
+- **Duration**: Hours of service (optional)
+
+### Best Practices
+- Offer 3 tiers (Basic, Standard, Premium)
+- Include all costs (no hidden fees)
+- Update seasonal pricing
+- Add photos to each package
+
+## 9.3 Receiving Bookings
+
+### Booking Notification
+1. Couple browses marketplace
+2. Clicks "Contact Vendor"
+3. Fills event date + message
+4. Vendor receives notification
+5. Vendor responds to confirm
+
+### Commission
+- WPMS takes 10-15% commission
+- Deducted automatically from booking amount
+- Vendor receives net payout
+
+---
+
+# 10. COUPLE/CLIENT WORKFLOWS
+
+## 10.1 Registration
+
+### Step 1: Visit Website
+```
+http://localhost/Wedding/
+```
+
+### Step 2: Fill Registration Form
+- First name, last name
+- Email address
+- Phone number
+- Wedding date
+
+### Step 3: Confirmation
+- System checks date availability
+- Creates pending booking
+- Shows thank you page
+- Admin reviews and contacts you
+
+## 10.2 After Assignment
+
+### What Happens Next
+1. Admin assigns wedding planner
+2. Planner contacts you for consultation
+3. Full details entered into system
+4. You get access to planning tools
+
+### Planning Tools Available
+- Guest list management
+- Budget tracking
+- Event calendar
+- Vendor marketplace
+- SMS invitations
+- Wedding website
+
+## 10.3 Wedding Website
+
+### Access
+```
+http://localhost/Wedding/site.php?slug=your-names
+```
+
+### Features
+- Share with guests
+- RSVP tracking
+- Photo gallery
+- Countdown timer
+- Venue details
+
+---
+
+# 11. SECURITY FEATURES
+
+## 11.1 Authentication
+
+| Feature | Implementation |
+|---------|---------------|
+| Password Hashing | bcrypt via password_hash() |
+| Password Verification | password_verify() |
+| Session Management | PHP sessions with regeneration |
+| Session Fixation | Regenerate ID every 30 minutes |
+| Brute Force | No built-in rate limiting (add via .htaccess) |
+
+## 11.2 CSRF Protection
+
+| Feature | Implementation |
+|---------|---------------|
+| Token Generation | random_bytes(32) → bin2hex |
+| Token Storage | $_SESSION['_token'] |
+| Form Embedding | $session->csrf_field() hidden input |
+| Verification | hash_equals() timing-safe comparison |
+| Coverage | All POST forms |
+
+## 11.3 SQL Injection Prevention
+
+| Feature | Implementation |
+|---------|---------------|
+| Prepared Statements | mysqli_prepare + bind_param |
+| Input Escaping | mysqli_real_escape_string (legacy) |
+| Input Casting | (int) for all ID parameters |
+| Affected Methods | Login, Guest queries, Events, Liquidation, Vendors |
+
+## 11.4 XSS Prevention
+
+| Feature | Implementation |
+|---------|---------------|
+| Output Encoding | htmlspecialchars() on all output |
+| Input Sanitization | clean() → htmlentities(strip_tags(trim())) |
+| CSRF Token Output | htmlspecialchars() on token value |
+
+## 11.5 Access Control
+
+| Feature | Implementation |
+|---------|---------------|
+| Session Check | isset($_SESSION['id']) on every admin page |
+| Subscription Check | Subscription::get_active() on login |
+| Redirect to Login | redirect_to("../") if not authenticated |
+
+## 11.6 Security Recommendations
+
+1. **Enable HTTPS** — Install SSL certificate
+2. **Rate Limiting** — Add login attempt limiting
+3. **Backup** — Daily database backups
+4. **File Uploads** — Validate MIME types, limit size
+5. **Error Display** — Set display_errors=Off in production
+6. **Database User** — Use limited-privilege MySQL user
+7. **Admin Path** — Consider renaming /admin/ to custom path
+
+---
+
+# 12. CONFIGURATION REFERENCE
+
+## 12.1 Database Configuration
+```php
+// admin/include/config.php
+define('DB_HOST','localhost');
+define('DB_USER','root');
+define('DB_PASS','');
+define('DB_NAME','dbwedding');
+```
+
+## 12.2 Path Configuration
+```php
+// admin/include/init.php
+$webroot = "C:/xampp/htdocs/";  // Change for production
+define('DS', DIRECTORY_SEPARATOR);
+define('SITE_ROOT', $webroot.DS.'Wedding'.DS.'admin');
+define('INCLUDES_PATH', SITE_ROOT.DS.'include');
+```
+
+## 12.3 Timezone
+```php
+// admin/include/init.php
+date_default_timezone_set('Africa/Nairobi');
+```
+
+## 12.4 M-Pesa Configuration
+```php
+// For subscription payments
+Paybill: 123456
+Account: WPMS
+
+// For Daraja API (future)
+Consumer Key: [from Safaricom Developer Portal]
+Consumer Secret: [from Safaricom Developer Portal]
+Passkey: [from Safaricom Developer Portal]
+Shortcode: 174379 (sandbox) or your Till/Paybill
+```
+
+## 12.5 Africa's Talking Configuration
+```php
+// In SMS::africastalking_send()
+$username = 'wpms';  // Your AT username
+$api_key = '';       // Your AT API key (get from dashboard)
+```
+
+## 12.6 File Upload Limits
+```php
+// php.ini settings
+upload_max_filesize = 10M
+post_max_size = 10M
+max_file_uploads = 20
+```
+
+---
+
+# 13. CRON JOBS & AUTOMATION
+
+## 13.1 Subscription Expiry Check
+```bash
+# Run daily at midnight
+0 0 * * * /usr/bin/php /path/to/Wedding/cron/subscription_expiry.php
+```
+
+```php
+<?php
+// cron/subscription_expiry.php
+include '../admin/include/init.php';
+
+// Mark expired subscriptions
+$db->query("UPDATE tblsubscriptions SET status = 'expired' WHERE expiry_date < CURDATE() AND status = 'active'");
+
+// Log the run
+error_log("Subscription expiry check completed at " . date('Y-m-d H:i:s'));
+```
+
+## 13.2 SMS Credit Reminder
+```bash
+# Run weekly on Mondays
+0 9 * * 1 /usr/bin/php /path/to/Wedding/cron/sms_reminder.php
+```
+
+```php
+<?php
+// cron/sms_reminder.php
+include '../admin/include/init.php';
+
+// Find users with low credits
+$sql = "SELECT u.id, u.email, sc.credits FROM tblusers u 
+        JOIN tblsms_credits sc ON sc.user_id = u.id 
+        WHERE sc.credits < 10";
+$result = $db->query($sql);
+
+while ($row = mysqli_fetch_object($result)) {
+    // Send reminder email (implement email sending)
+    // mail($row->email, "Low SMS Credits", "You have {$row->credits} credits remaining.");
+}
+```
+
+## 13.3 Database Backup
+```bash
+# Run daily at 2 AM
+0 2 * * * /usr/bin/mysqldump -u root dbwedding > /backups/wedding_$(date +\%Y\%m\%d).sql
+```
+
+## 13.4 Analytics Aggregation
+```bash
+# Run monthly on 1st
+0 3 1 * * /usr/bin/php /path/to/Wedding/cron/analytics.php
+```
+
+---
+
+# 14. TROUBLESHOOTING
+
+## 14.1 Common Issues
+
+### White Screen / 500 Error
+```
+1. Check PHP error log: C:\xampp\logs\php_error_log
+2. Check Apache error log: C:\xampp\logs\error.log
+3. Verify file permissions on upload/ directories
+4. Check database connection in config.php
+```
+
+### Database Connection Failed
+```
+1. Verify MySQL is running in XAMPP
+2. Check DB_HOST, DB_USER, DB_PASS, DB_NAME in config.php
+3. Test: mysql -u root -p dbwedding
+```
+
+### Session Not Persisting
+```
+1. Check session.save_path in php.ini
+2. Verify cookies are enabled in browser
+3. Check if output before session_start()
+```
+
+### File Upload Fails
+```
+1. Check upload_max_filesize in php.ini
+2. Check folder permissions (writable by Apache)
+3. Check file type (only images allowed)
+4. Check for duplicate filenames
+```
+
+### SMS Not Sending
+```
+1. Verify Africa's Talking API key is set
+2. Check username is 'wpms' (sandbox) or your production username
+3. Verify phone format (254XXXXXXXXX)
+4. Check SMS credits balance
+```
+
+### Subscription Not Activating
+```
+1. Verify M-Pesa code is 10 characters
+2. Check tblsubscriptions table for new record
+3. Verify expiry_date is set correctly
+4. Check for PHP errors in error log
+```
+
+## 14.2 Performance Optimization
+
+### Database
+```sql
+-- Add indexes for frequently queried columns
+CREATE INDEX idx_booking_id ON tblguest(booking_id);
+CREATE INDEX idx_booking_id ON tbl_liquidation(booking_id);
+CREATE INDEX idx_booking_id ON events(booking_id);
+CREATE INDEX idx_user_id ON tblsubscriptions(user_id);
+CREATE INDEX idx_status ON tblsubscriptions(status);
+CREATE INDEX idx_slug ON tblwedding_websites(slug);
+```
+
+### PHP
+```php
+// php.ini optimizations for production
+opcache.enable=1
+opcache.memory_consumption=128
+opcache.max_accelerated_files=10000
+realpath_cache_size=4096K
+```
+
+### Apache
+```apache
+# Enable compression
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css text/javascript application/javascript
+</IfModule>
+
+# Enable caching
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/jpg "access plus 1 month"
+    ExpiresByType image/jpeg "access plus 1 month"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType text/css "access plus 1 week"
+    ExpiresByType application/javascript "access plus 1 week"
+</IfModule>
+```
+
+## 14.3 Support Contacts
+
+| Issue | Contact |
+|-------|---------|
+| Technical Support | support@wpms.co.ke |
+| Billing/Subscription | billing@wpms.co.ke |
+| Vendor Applications | vendors@wpms.co.ke |
+| M-Pesa Integration | payments@wpms.co.ke |
+| Africa's Talking | support@africastalking.com |
+
+---
+
+# APPENDIX
+
+## A. Database ERD (Entity Relationship)
+
+```
+tblusers ──┬── tblsubscriptions ─── tblsubscription_payments
+           ├── tblsms_credits
+           ├── tblsms_logs
+           └── tblvendors ─── tblvendor_packages
+                            └── tblvendor_bookings
+
+tblaccounts ─── tblaccounts_detail ─── tblweddingbook ──┬── tblguest
+                                                        ├── tbl_liquidation
+                                                        ├── events
+                                                        ├── tbleventbooking
+                                                        ├── tblgallery
+                                                        └── tblwedding_websites
+
+tblweddingcategories ─── tbl_features
+
+tblpostwedding (standalone blog)
+```
+
+## B. API Endpoints (Future)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| /api/v1/bookings | GET | List all bookings |
+| /api/v1/bookings/:id | GET | Get booking details |
+| /api/v1/guests | GET | List guests |
+| /api/v1/vendors | GET | List vendors |
+| /api/v1/payments | POST | Record payment |
+| /api/v1/sms | POST | Send SMS |
+
+## C. Glossary
+
+| Term | Definition |
+|------|------------|
+| **Harambee** | Kenyan tradition of community contribution/gathering |
+| **Ruracio** | Traditional Kikuyu/Kamba dowry negotiation ceremony |
+| **Mzee** | Respectful term for elder (Swahili) |
+| **Mgeni wa Mbali** | Guest from far/upcountry |
+| **VC** | Wedding committee/organizing group |
+| **Kitenge** | Colorful African fabric worn at weddings |
+| **Shuka** | Maasai traditional cloth, popular at Kenyan weddings |
+| **Nyama Choma** | Roasted meat, staple at Kenyan celebrations |
+| **Pilau** | Spiced rice dish served at celebrations |
+| **Paybill** | M-Pesa business payment number |
+| **Till Number** | M-Pesa merchant payment number |
+| **STK Push** | M-Pesa prompt sent to customer's phone |
+| **Daraja** | Safaricom's API platform for M-Pesa integration |
+
+---
+
+**Document Version**: 2.0
+**Last Updated**: September 2026
+**Author**: WPMS Kenya Development Team
+**License**: Proprietary — All rights reserved

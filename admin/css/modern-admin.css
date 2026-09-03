@@ -1,0 +1,69 @@
+/* WPMS Admin — Modern 2026 (slate, glass, KSh-first) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700&display=swap');
+:root{
+  --admin-bg:#F8FAFC;
+  --admin-surface:#FFFFFF;
+  --admin-line:#E2E8F0;
+  --admin-text:#0F172A;
+  --admin-muted:#64748B;
+  --admin-accent:#065F46;
+  --admin-accent-2:#0EA5A0;
+  --admin-warning:#D97706;
+  --admin-danger:#DC2626;
+  --sidebar-bg:#0F172A;
+  --sidebar-active:#1E293B;
+  --sidebar-muted:#94A3B8;
+  --radius:16px;
+  --radius-sm:10px;
+  --shadow:0 4px 20px rgba(15,23,42,.06), 0 1px 3px rgba(15,23,42,.04);
+}
+html,body{ font-family:'Inter',system-ui,sans-serif !important; background:var(--admin-bg) !important; color:var(--admin-text); }
+h1,h2,h3,h4{ font-family:'Plus Jakarta Sans','Inter',sans-serif; letter-spacing:-.015em; }
+
+/* Top brand bar — replace flat red */
+nav.navbar.sticky-top{ background:var(--sidebar-bg) !important; width:100% !important; border-bottom:1px solid rgba(255,255,255,.06); padding:.6rem 1rem !important; }
+nav.navbar.sticky-top .navbar-brand{ color:#fff !important; font-weight:700; letter-spacing:-.02em; }
+
+/* Sidebar */
+.sidebar{ background:var(--sidebar-bg) !important; border-right:1px solid rgba(255,255,255,.06); padding-top:6px !important; min-height:calc(100vh - 48px); }
+.sidebar-sticky{ padding:0 8px; }
+.sidebar .user-button{ color:#fff; text-decoration:none; display:block; }
+.sidebar .user-profile{ color:#fff; font-weight:600; font-size:13px; margin-top:8px; }
+.sidebar .nav-link{ color:var(--sidebar-muted) !important; font-size:13px; font-weight:500; padding:.52rem .7rem !important; border-radius:10px; margin:1px 4px; display:flex; align-items:center; }
+.sidebar .nav-link:hover{ background:var(--sidebar-active); color:#fff !important; }
+.sidebar .nav-link .mdi{ color:var(--sidebar-muted) !important; }
+.sidebar .dropdown-divider{ border-color:rgba(255,255,255,.07) !important; margin:.35rem 0; }
+.sidebar .text-uppercase{ color:#38BDF8 !important; opacity:.9; }
+
+/* Main area offset fix */
+main.col-md-9.ml-sm-auto.col-lg-10{ background:transparent; padding-top:18px; margin-top:0 !important; z-index:auto !important; }
+main .navbar{ background:#fff !important; border:1px solid var(--admin-line) !important; border-radius:14px; box-shadow:var(--shadow); margin:0 0 16px !important; padding:.6rem .9rem !important; }
+main .navbar .nav-link{ color:var(--admin-text) !important; font-weight:600; }
+
+/* Cards — modern stat cards (dashboard) */
+.card-counter{ border:none !important; border-radius:var(--radius) !important; box-shadow:var(--shadow) !important; height:108px !important; padding:14px 16px !important; position:relative; overflow:hidden; }
+.card-counter.primary{ background:linear-gradient(135deg,#0EA5A0 0%, #065F46 100%) !important; }
+.card-counter.success{ background:linear-gradient(135deg,#10B981 0%, #047857 100%) !important; }
+.card-counter.danger{ background:linear-gradient(135deg,#F59E0B 0%, #D97706 100%) !important; }
+.card-counter.info{ background:linear-gradient(135deg,#38BDF8 0%, #0EA5A0 100%) !important; }
+.card-counter i{ font-size:2.6rem !important; opacity:.22 !important; position:absolute; left:16px; top:50%; transform:translateY(-50%); }
+.card-counter .count-numbers{ right:18px !important; top:18px !important; font-weight:800 !important; font-size:28px !important; letter-spacing:-.02em; }
+.card-counter .count-name{ right:18px !important; top:62px !important; font-size:12px !important; letter-spacing:.06em; text-transform:uppercase; opacity:.9 !important; }
+
+/* Tables / DataTables */
+table.table{ background:#fff; border-radius:12px; overflow:hidden; }
+table.table thead th{ background:#F8FAFC; border-bottom:1px solid var(--admin-line) !important; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--admin-muted); font-weight:700; }
+div.dataTables_wrapper .dataTables_paginate .paginate_button.current{ background:var(--admin-accent) !important; color:#fff !important; border-color:var(--admin-accent) !important; border-radius:999px; }
+
+/* Forms / buttons */
+.btn{ border-radius:999px !important; font-weight:600 !important; font-size:13px !important; padding:.5rem 1rem !important; }
+.btn-primary{ background:var(--admin-accent) !important; border-color:var(--admin-accent) !important; }
+.btn-primary:hover{ background:#0a7a5c !important; }
+.form-control{ border-radius:10px !important; border-color:var(--admin-line) !important; font-size:13px !important; }
+.form-control:focus{ border-color:var(--admin-accent) !important; box-shadow:0 0 0 4px rgba(6,95,70,.12) !important; }
+
+/* Alerts */
+.alert{ border-radius:12px !important; border:none !important; font-size:13px; }
+
+/* DataTables small */
+table.table.table-striped.table-bordered.table-sm{ font-size:12px !important; }

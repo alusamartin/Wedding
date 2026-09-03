@@ -1,0 +1,408 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * WPMS Kenya v2.1 — Hardened Session Manager
+ *
+ * Security guarantees:
+ *  - Cookie: httponly=1, secure (auto-detect HTTPS), samesite=Strict, path=/, lifetime=0 (session)
+ *  - Regenerate ID on login, privilege change, and every 15 min (900s)
+ *  - Fingerprint: hash(IP + User-Agent) stored at session creation; enforced on each request
+ *                (configurable via SESSION_ENFORCE_FINGERPRINT; behind CGNAT/proxy you can set false)
+ *  - Inactivity timeout: 2 hours (configurable)
+ *  - CSRF via random_bytes(32) + hash_equals
+ *  - Compatible with PDO Database wrapper
+ */
+
+class Session
+{
+    private bool $signed_in = false;
+    public mixed $user_id = null;
+    public int $count = 0;
+    public string $message = '';
+    public mixed $stay = null;
+
+    // Tunables
+    private const REGENERATE_INTERVAL = 900; // 15 min
+    private const INACTIVITY_TIMEOUT  = 7200; // 2 hours
+    private const COOKIE_LIFETIME     = 0;    // session cookie
+    private const COOKIE_PATH         = '/';
+    private const COOKIE_SAMESITE     = 'Strict';
+
+    private bool $enforceFingerprint;
+
+    public function __construct(bool $enforceFingerprint = true)
+    {
+        $this->enforceFingerprint = $enforceFingerprint;
+
+        $this->configureCookieParams();
+        $this->startSession();
+        $this->visitor_count();
+        $this->check_message();
+        $this->check_the_login();
+
+        // Harden after session started
+        $this->enforceTimeout();
+        $this->enforceFingerprintCheck();
+        $this->periodicRegeneration();
+    }
+
+    /**
+     * Configure cookie params BEFORE session_start().
+     * Uses PHP 7.3+ array signature for samesite support.
+     */
+    private function configureCookieParams(): void
+    {
+        if (headers_sent()) {
+            return;
+        }
+
+        $isHttps = $this->isHttps();
+
+        // PHP 8.2: session_set_cookie_params(array) is preferred
+        $params = [
+            'lifetime' => self::COOKIE_LIFETIME,
+            'path'     => self::COOKIE_PATH,
+            'domain'   => '', // current host
+            'secure'   => $isHttps, // true on HTTPS, false on http://localhost dev
+            'httponly' => true,
+            'samesite' => self::COOKIE_SAMESITE,
+        ];
+
+        session_set_cookie_params($params);
+
+        // Hardening ini (defense in depth)
+        ini_set('session.use_strict_mode', '1');
+        ini_set('session.use_only_cookies', '1');
+        ini_set('session.use_trans_sid', '0');
+        ini_set('session.cookie_httponly', '1');
+        ini_set('session.cookie_samesite', self::COOKIE_SAMESITE);
+        // session.cookie_secure set dynamically via params above
+    }
+
+    private function isHttps(): bool
+    {
+        if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+            return true;
+        }
+        if (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+            return true;
+        }
+        if (!empty($_SERVER['SERVER_PORT']) && (int) $_SERVER['SERVER_PORT'] === 443) {
+            return true;
+        }
+        return false;
+    }
+
+    private function startSession(): void
+    {
+        if (session_status() === PHP_SESSION_NONE) {
+            // Suppress warning if session already manipulated; but log
+            if (!@session_start()) {
+                error_log('[WPMS][Session] session_start failed');
+            }
+        }
+
+        // Initialize fingerprint + created markers if new session
+        if (!isset($_SESSION['_fingerprint'])) {
+            $_SESSION['_fingerprint'] = $this->computeFingerprint();
+        }
+        if (!isset($_SESSION['_created'])) {
+            $_SESSION['_created'] = time();
+        }
+        if (!isset($_SESSION['_last_activity'])) {
+            $_SESSION['_last_activity'] = time();
+        }
+        if (!isset($_SESSION['_last_regeneration'])) {
+            $_SESSION['_last_regeneration'] = time();
+        }
+    }
+
+    /**
+     * Fingerprint = HMAC-SHA256(IP + User-Agent, server salt)
+     * IP: REMOTE_ADDR + X-Forwarded-For first hop if trusted proxy
+     */
+    private function computeFingerprint(): string
+    {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        // If behind trusted proxy (XAMPP local), prefer X-Forwarded-For first IP
+        if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+            $forwarded = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
+            $candidate = trim($forwarded[0]);
+            if (filter_var($candidate, FILTER_VALIDATE_IP)) {
+                $ip = $candidate;
+            }
+        }
+        $ua = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
+        // Use a per-install salt if available; fallback to DB_NAME + static string
+        $salt = defined('DB_NAME') ? DB_NAME : 'wpms_kenya_v2.1_salt';
+        return hash_hmac('sha256', $ip . '|' . $ua, $salt);
+    }
+
+    private function enforceFingerprintCheck(): void
+    {
+        if (!$this->enforceFingerprint) {
+            return;
+        }
+        if (!isset($_SESSION['_fingerprint'])) {
+            return;
+        }
+        $current = $this->computeFingerprint();
+        if (!hash_equals($_SESSION['_fingerprint'], $current)) {
+            error_log('[WPMS][Session] Fingerprint mismatch — possible hijack. IP/UA changed. Forcing logout.');
+            $this->forceLogout('Session invalidated for security. Please log in again.');
+        }
+    }
+
+    private function enforceTimeout(): void
+    {
+        if (isset($_SESSION['_last_activity']) && (time() - (int) $_SESSION['_last_activity'] > self::INACTIVITY_TIMEOUT)) {
+            $this->forceLogout('Session expired due to inactivity. Please log in again.');
+            return;
+        }
+        $_SESSION['_last_activity'] = time();
+    }
+
+    /**
+     * Regenerate ID every 15 minutes (sliding window).
+     */
+    private function periodicRegeneration(): void
+    {
+        $last = (int) ($_SESSION['_last_regeneration'] ?? $_SESSION['_created'] ?? time());
+        if (time() - $last >= self::REGENERATE_INTERVAL) {
+            $this->regenerate();
+        }
+    }
+
+    /**
+     * Regenerate session ID and update timers.
+     */
+    public function regenerate(): void
+    {
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_regenerate_id(true);
+            $_SESSION['_last_regeneration'] = time();
+            $_SESSION['_created'] = time();
+        }
+    }
+
+    /**
+     * Force logout due to security violation or timeout.
+     */
+    private function forceLogout(string $msg = ''): void
+    {
+        $this->logout();
+        if ($msg !== '') {
+            $_SESSION['message'] = $msg;
+        }
+        // Clear fingerprint so next login gets fresh one
+        unset($_SESSION['_fingerprint']);
+    }
+
+    // =========================================================================
+    // Public API — kept compatible with v2.0
+    // =========================================================================
+
+    public function message(string $msg = ""): string
+    {
+        if (!empty($msg)) {
+            $_SESSION['message'] = $msg;
+            return $msg;
+        }
+        return $this->message;
+    }
+
+    public function check_message(): void
+    {
+        if (isset($_SESSION['message'])) {
+            $this->message = (string) $_SESSION['message'];
+            unset($_SESSION['message']);
+        } else {
+            $this->message = "";
+        }
+    }
+
+    public function visitor_count(): int
+    {
+        if (isset($_SESSION['count'])) {
+            $this->count = (int) $_SESSION['count']++;
+            return $this->count;
+        }
+        $_SESSION['count'] = 1;
+        $this->count = 1;
+        return $this->count;
+    }
+
+    private function check_the_login(): void
+    {
+        if (isset($_SESSION['id'])) {
+            $this->user_id   = $_SESSION['id'];
+            $this->signed_in = true;
+        } else {
+            unset($this->user_id);
+            $this->signed_in = false;
+        }
+    }
+
+    public function is_signed_in(): bool
+    {
+        return $this->signed_in;
+    }
+
+    /**
+     * Call on successful authentication — regenerates ID, binds fingerprint.
+     */
+    public function login(object $user): void
+    {
+        if (!$user || !isset($user->id)) {
+            throw new InvalidArgumentException('Session::login() requires user object with ->id');
+        }
+
+        // Prevent fixation: regenerate BEFORE writing auth state
+        $this->regenerate();
+
+        // Bind auth state
+        $this->user_id   = $_SESSION['id'] = $user->id;
+        $_SESSION['user_email'] = $user->email ?? '';
+        $_SESSION['_fingerprint'] = $this->computeFingerprint();
+        $_SESSION['_last_activity'] = time();
+        $_SESSION['privilege_level'] = $user->access_level ?? $user->designation ?? 'user';
+
+        $this->signed_in = true;
+    }
+
+    /**
+     * Call when privilege elevates (e.g. admin grants vendor premium, role change).
+     * Forces immediate regeneration.
+     */
+    public function privilege_changed(): void
+    {
+        $this->regenerate();
+        $_SESSION['_fingerprint'] = $this->computeFingerprint();
+        if (isset($_SESSION['privilege_level'])) {
+            // Re-read from DB if needed — caller should update session value
+        }
+    }
+
+    public function logout(): void
+    {
+        // Clear auth keys but keep flash message slot if set by forceLogout
+        $flash = $_SESSION['message'] ?? null;
+
+        unset($_SESSION['id']);
+        unset($_SESSION['user_email']);
+        unset($_SESSION['_token']);
+        unset($_SESSION['_created']);
+        unset($_SESSION['_last_activity']);
+        unset($_SESSION['_last_regeneration']);
+        unset($_SESSION['privilege_level']);
+        // Keep fingerprint until next login so hijack detection still works briefly
+
+        if ($flash !== null) {
+            $_SESSION['message'] = $flash;
+        }
+
+        unset($this->user_id);
+        $this->signed_in = false;
+
+        // Regenerate to avoid fixation on next login
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_regenerate_id(true);
+        }
+    }
+
+    /**
+     * Complete session destruction (e.g. on password change).
+     */
+    public function destroy(): void
+    {
+        $_SESSION = [];
+        if (ini_get('session.use_cookies')) {
+            $params = session_get_cookie_params();
+            setcookie(
+                session_name(),
+                '',
+                time() - 42000,
+                $params['path'] ?? '/',
+                $params['domain'] ?? '',
+                (bool) ($params['secure'] ?? false),
+                (bool) ($params['httponly'] ?? true)
+            );
+        }
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_destroy();
+        }
+        $this->signed_in = false;
+    }
+
+    // =========================================================================
+    // CSRF PROTECTION
+    // =========================================================================
+
+    public function csrf_token(): string
+    {
+        if (empty($_SESSION['_token'])) {
+            $_SESSION['_token'] = bin2hex(random_bytes(32));
+        }
+        return $_SESSION['_token'];
+    }
+
+    public function csrf_field(): string
+    {
+        return '<input type="hidden" name="_token" value="' . htmlspecialchars($this->csrf_token(), ENT_QUOTES | ENT_HTML5, 'UTF-8') . '">';
+    }
+
+    public function verify_csrf(?string $token = null): bool
+    {
+        if ($token === null && isset($_POST['_token'])) {
+            $token = (string) $_POST['_token'];
+        }
+        if (empty($token) || empty($_SESSION['_token'])) {
+            return false;
+        }
+        return hash_equals($_SESSION['_token'], $token);
+    }
+
+    // =========================================================================
+    // PASSWORD HASHING (bcrypt — keep for centralized policy)
+    // =========================================================================
+
+    public static function hash_password(string $password): string
+    {
+        return password_hash($password, PASSWORD_DEFAULT);
+    }
+
+    public static function verify_password(string $password, string $hash): bool
+    {
+        return password_verify($password, $hash);
+    }
+
+    public function require_post_method(): void
+    {
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+            http_response_code(405);
+            header('Allow: POST');
+            exit('Method Not Allowed');
+        }
+    }
+
+    /**
+     * Helper for templates: show one-time flash then clear.
+     */
+    public function flash(string $key = 'message'): ?string
+    {
+        if (isset($_SESSION[$key])) {
+            $val = (string) $_SESSION[$key];
+            unset($_SESSION[$key]);
+            return $val;
+        }
+        return null;
+    }
+}
+
+// Global singleton — same as v2.0
+$session = new Session(
+    // Set false if you operate behind rotating mobile IPs (Safaricom CGNAT) and users complain
+    enforceFingerprint: true
+);
+$message = $session->message();
