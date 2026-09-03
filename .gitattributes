@@ -1,0 +1,21 @@
+# Normalize text files: LF in the repository, native (CRLF on Windows) in the
+# working tree via core.autocrlf. Silences add/checkout line-ending warnings.
+* text=auto
+
+# Binaries — never convert, never diff
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.otf binary
+*.pdf binary
+*.zip binary
+
+# Windows batch scripts must stay CRLF even when checked out on Unix
+*.bat text eol=crlf

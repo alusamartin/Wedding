@@ -1,0 +1,163 @@
+# WPMS Kenya — Wedding Planning Management System
+
+Kenyan-market edition of the Wedding Planner Management System (v2.1): package
+catalog + sign-up hero, client/couple portal, planner & vendor admin area,
+wedding bookings, guest lists, budgets (KSh), calendar, subscriptions, and
+M-Pesa-ready pricing. Modernized 2026 theme (`css/modern.css`), PDO-based data
+layer, hardened sessions (CSRF, fingerprinting, audit log).
+
+> 📖 The full operator manual lives in [`WPMS_KENYA_MANUAL.md`](WPMS_KENYA_MANUAL.md)
+> (feature walkthrough, directory map, API/troubleshooting). This README is the
+> quick start.
+
+---
+
+## Requirements
+
+| Dependency | Version | Notes |
+|---|---|---|
+| PHP | **^8.2** | `pdo`, `pdo_mysql`, `mbstring`, `json`, `openssl`, `curl` extensions (see `composer.json`) |
+| MySQL / MariaDB | 5.7+ | utf8mb4 collation used throughout |
+| Web server | Apache (XAMPP) | Project hard-codes the XAMPP path — see below |
+| Composer | any recent | Only needed for dev tooling/tests |
+
+**Location matters.** `admin/include/init.php` hard-codes the install path:
+
+```php
+$webroot = "C:/xampp/htdocs/";
+define('SITE_ROOT', $webroot . '/Wedding/admin');
+```
+
+Copy the project to **`C:\xampp\htdocs\Wedding\`** (the standard XAMPP setup),
+or edit `$webroot` / `SITE_ROOT` in `admin/include/init.php` for a different path.
+
+---
+
+## Installation
+
+### 1. Start XAMPP
+Start **Apache** and **MySQL** from the XAMPP Control Panel.
+
+### 2. Create the database
+
+```bash
+mysql -u root -p -e "CREATE DATABASE dbwedding CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+```
+
+### 3. Import schema + data (fresh install — order matters)
+
+```bash
+# (a) Base schema & original sample data  — creates all core tables
+mysql -u root -p dbwedding < "DATABASE FILE/dbwedding.sql"
+
+# (b) Kenyan schema additions — KSh categories, Kenyan guest columns, M-Pesa fields
+mysql -u root -p dbwedding < kenyan_schema.sql
+
+# (c) Kenya-only audited seed — purges US/legacy demo rows, inserts Kenyan
+#     data + v2.1-only tables (subscriptions, vendors, SMS, session audits)
+mysql -u root -p dbwedding < "DATABASE FILE/seed_v2.1_full_test_KENYA_ONLY.sql"
+
+# (d) Optional but recommended — idempotent v2.1 hardening helpers
+mysql -u root -p dbwedding < migrations/v2.1_phase1_hardening.sql
+```
+
+**Already running a v2.0 database?** Apply (b) and (d) only. Skip (a)/(c),
+which reset demo data to the Kenyan seed set.
+
+`DATABASE FILE/dbwedding.sql` is the original phpMyAdmin dump; the Kenya seed
+purges its US/Philippine-era rows and replaces them with Kenyan counties,
+venues and KSh pricing — don't be surprised if those disappear after (c).
+
+### 4. Database credentials (no edit needed on XAMPP)
+
+`admin/include/config.php` reads credentials from environment variables and
+falls back to the stock XAMPP dev defaults (`localhost` / `root` / empty
+password / `dbwedding`):
+
+| Env var | Default |
+|---|---|
+| `WPMS_DB_HOST` | `localhost` |
+| `WPMS_DB_USER` | `root` |
+| `WPMS_DB_PASS` | *(empty)* |
+| `WPMS_DB_NAME` | `dbwedding` |
+
+For staging/production set these in the server environment (Apache `SetEnv`,
+CLI `export`, Docker `environment:`). Never commit real credentials — see
+section 12.1 of the manual for full examples.
+
+### 5. Access the system
+
+| Entry | URL |
+|---|---|
+| Public site (home + sign-up hero) | http://localhost/Wedding/ |
+| Dedicated sign-up page | http://localhost/Wedding/sign_up.php |
+| Client / couple login | http://localhost/Wedding/login.php |
+| Admin login | http://localhost/Wedding/admin/login.php |
+
+Ensure Apache can write to `admin/upload/{categories,events,gallery,users}/`.
+
+---
+
+## Demo logins
+
+Passwords are stored as bcrypt hashes in the seed — these plaintext values were
+verified against the seed hashes.
+
+### Admin area → `admin/login.php`
+(redirects to the dashboard; first login may route to the subscription page)
+
+| Role | Email | Password |
+|---|---|---|
+| Super Admin | `wafula@wpms.co.ke` | `Admin@2024!` |
+| Super Admin (alt) | `abdi@wpms.co.ke` | `Admin@2024!` |
+| Wedding Planner | `amina@wpms.co.ke` | `Test@1234` |
+| Vendor Lead | `kamau@nyamachoma.co.ke` | `Vendor@2024` |
+
+### Client / couple portal → public `login.php`
+(redirects to the client dashboard under `/admin/client.php`)
+
+| Role | Email | Password |
+|---|---|---|
+| Couple (client) | `brian.wafula@gmail.com` | `Test@1234` |
+| Couple (client) | `faith.njeri@yahoo.com` | `Test@1234` |
+
+> The legacy template login (`admin@mail.com` / `Password@123`, listed in the
+> bundled `01 LOGIN DETAILS & PROJECT INFO.txt`) belongs to the original
+> pre-bcrypt dump and **will not authenticate** on v2.1 — use the Kenyan seed
+> accounts above.
+
+---
+
+## Development
+
+```bash
+composer install                 # dev tooling (PHPUnit)
+composer test                    # run the PHPUnit suite (tests/)
+composer lint                    # php -l over every admin/*.php file
+composer migrate:db-compat       # mysqli -> PDO compat helper (scripts/)
+```
+
+Project layout at a glance:
+
+```
+index.php, sign_up.php, login.php …   public site pages
+admin/                                client + staff backend (login, dashboard, …)
+admin/include/                        models + PDO Database wrapper + config
+css/, js/, images/                    shared front-end assets
+DATABASE FILE/                        base dump + v2.1 seeds
+kenyan_schema.sql                     Kenyan schema additions
+migrations/                           v2.1 hardening migration (idempotent)
+tests/                                PHPUnit tests (DB + session hardening)
+```
+
+---
+
+## Notes & cautions
+
+- **Security hardening is in place** — PDO prepared statements everywhere,
+  CSRF tokens on login/register, session regeneration + fingerprint binding,
+  and audit logging (`tblsession_audits`). Don't regress them.
+- **Live integrations** (Africa's Talking SMS, M-Pesa Paybill/Till) require
+  your own accounts; see the manual before enabling.
+- This is a starter product, not turnkey production software — review
+  `WPMS_KENYA_MANUAL.md` §11 (production checklist) before going live.

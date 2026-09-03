@@ -248,13 +248,14 @@ mysql -u root dbwedding < C:\xampp\htdocs\Wedding\kenyan_schema.sql
 ```
 
 ### 5. Configure Database
-Edit `admin/include/config.php`:
-```php
-define('DB_HOST','localhost');
-define('DB_USER','root');
-define('DB_PASS','');
-define('DB_NAME','dbwedding');
+`admin/include/config.php` reads credentials from environment variables and falls back to stock XAMPP dev values (`localhost` / `root` / empty pass / `dbwedding`) when unset, so no edit is needed on a fresh XAMPP install. For any other environment (staging, production, Docker) set:
+```bash
+WPMS_DB_HOST=localhost
+WPMS_DB_USER=db_user
+WPMS_DB_PASS=secret
+WPMS_DB_NAME=dbwedding
 ```
+See section 12.1 for examples per server setup.
 
 ### 6. Set Timezone
 In `admin/include/init.php`, ensure:
@@ -1292,12 +1293,34 @@ http://localhost/Wedding/site.php?slug=your-names
 # 12. CONFIGURATION REFERENCE
 
 ## 12.1 Database Configuration
+`admin/include/config.php` no longer hard-codes credentials — it reads environment variables with XAMPP dev fallbacks (host `localhost`, user `root`, empty password, db `dbwedding`):
 ```php
 // admin/include/config.php
-define('DB_HOST','localhost');
-define('DB_USER','root');
-define('DB_PASS','');
-define('DB_NAME','dbwedding');
+// Effective constants resolve as: env value -> fallback default
+// WPMS_DB_HOST -> 'localhost'
+// WPMS_DB_USER -> 'root'
+// WPMS_DB_PASS -> ''
+// WPMS_DB_NAME -> 'dbwedding'
+```
+Set the variables per environment (never commit real credentials):
+```bash
+# CLI / cron / tests
+export WPMS_DB_HOST=localhost WPMS_DB_USER=db_user WPMS_DB_PASS=secret WPMS_DB_NAME=dbwedding
+```
+```apache
+# Apache vhost or .htaccess (mod_env)
+SetEnv WPMS_DB_HOST "localhost"
+SetEnv WPMS_DB_USER "db_user"
+SetEnv WPMS_DB_PASS "secret"
+SetEnv WPMS_DB_NAME "dbwedding"
+```
+```yaml
+# Docker Compose
+environment:
+  - WPMS_DB_HOST=mysql
+  - WPMS_DB_USER=db_user
+  - WPMS_DB_PASS=secret
+  - WPMS_DB_NAME=dbwedding
 ```
 
 ## 12.2 Path Configuration
@@ -1417,8 +1440,8 @@ while ($row = mysqli_fetch_object($result)) {
 ### Database Connection Failed
 ```
 1. Verify MySQL is running in XAMPP
-2. Check DB_HOST, DB_USER, DB_PASS, DB_NAME in config.php
-3. Test: mysql -u root -p dbwedding
+2. Confirm the WPMS_DB_* environment variables are set (see section 12.1); fallbacks assume XAMPP defaults
+3. Test the connection manually: mysql -h HOST -u USER -pPASS dbwedding
 ```
 
 ### Session Not Persisting
