@@ -1,6 +1,13 @@
 # Agent / tooling metadata
 .freebuff/
 
+# Dependencies
+/vendor/
+
+# Test artifacts
+.phpunit.result.cache
+.phpunit.cache/
+
 # Logs
 *.log
 

@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -9,7 +10,7 @@ use PHPUnit\Framework\TestCase;
  * Or:   composer test
  *
  * These are unit tests that do NOT require a live MySQL connection
- * where noted; integration tests (marked @group integration) do.
+ * where noted; integration tests (marked with the 'integration' group) do.
  */
 final class DatabasePDOTest extends TestCase
 {
@@ -99,9 +100,7 @@ final class DatabasePDOTest extends TestCase
     // Integration tests — require live DB (skip if no connection)
     // -----------------------------------------------------------------
 
-    /**
-     * @group integration
-     */
+    #[Group('integration')]
     public function testLivePDOConnectionAndCharset(): void
     {
         if (!file_exists(__DIR__ . '/../admin/include/config.php')) {
@@ -129,9 +128,7 @@ final class DatabasePDOTest extends TestCase
         self::assertSame('+03:00', $tz, 'Session TZ must be Africa/Nairobi (+03:00)');
     }
 
-    /**
-     * @group integration
-     */
+    #[Group('integration')]
     public function testPreparedStatementPreventsInjection(): void
     {
         require_once __DIR__ . '/../admin/include/config.php';

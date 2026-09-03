@@ -20,8 +20,12 @@ final class SessionHardeningTest extends TestCase
     {
         $src = (string) file_get_contents(__DIR__ . '/../admin/include/Session.php');
         self::assertStringContainsString("'httponly' => true", $src, 'httponly must be true');
-        self::assertStringContainsString("'samesite' => 'Strict'", $src, 'samesite must be Strict');
-        self::assertStringContainsString("'path'     => '/'", $src, 'path must be /');
+        // Cookie params were refactored to private constants (v2.1) — assert the constant
+        // definitions (spacing-tolerant) and that the params array sources from them.
+        self::assertMatchesRegularExpression("/const COOKIE_SAMESITE\\s+=\\s*'Strict';/", $src, 'samesite must be Strict');
+        self::assertStringContainsString("'samesite' => self::COOKIE_SAMESITE", $src, 'cookie params must source from COOKIE_SAMESITE');
+        self::assertMatchesRegularExpression("/const COOKIE_PATH\\s+=\\s*'\\/';/", $src, 'path must be /');
+        self::assertStringContainsString("'path'     => self::COOKIE_PATH", $src, 'cookie params must source from COOKIE_PATH');
         self::assertStringContainsString("'secure'   =>", $src, 'secure must be set (auto-detect HTTPS)');
         self::assertStringContainsString('session.use_strict_mode', $src);
         self::assertStringContainsString('session.use_only_cookies', $src);
