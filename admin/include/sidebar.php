@@ -3,7 +3,7 @@
 <nav class="navbar sticky-top p-0" style="width: 16.7%;background-color: #f44336;">
     <a class="navbar-brand col-sm-3 col-md-2 mr-0" style="color:white;" href="dashboard.php">
         <!-- <img src="images/admin.png" alt="" style="width: 200px;"> -->
-        WPMS Admin Panel
+        Everafter Planner
     </a>
 </nav>
 

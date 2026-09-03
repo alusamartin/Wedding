@@ -149,7 +149,7 @@
         </label>
     </div>
     <button class="btn btn-lg btn-success btn-block" type="submit" name="login">Login</button>
-    <p class="mt-5 mb-3 text-muted">&copy; <?php echo date('Y')?> WPMS Kenya</p>
+    <p class="mt-5 mb-3 text-muted">&copy; <?php echo date('Y')?> Everafter Planner</p>
 </form>
 <script src="js/jquery-3.2.1.slim.min.js"></script>
 <script src="js/jquery.min.js"></script>

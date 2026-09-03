@@ -122,7 +122,7 @@ $gallery = Gallery::find_by_event_all($website->booking_id);
     </div>
 
     <footer>
-        <p>Powered by <strong>WPMS Kenya</strong> — Wedding Planning Made Easy</p>
+        <p>Powered by <strong>Everafter Planner</strong> — Wedding Planning Made Easy</p>
         <p style="font-size: 11px; margin-top: 10px;">Page views: <?= number_format($website->views); ?></p>
     </footer>
 

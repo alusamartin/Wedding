@@ -93,7 +93,7 @@
             <h5 style="font-family:'Plus Jakarta Sans',sans-serif; font-weight:700;">Vendors — KSh pricing:</h5>
             <p>Faith & James — Diani Reef, Kwale County, 15 Nov 2025. 180 guests.</p>
             <p>Venue: Diani Reef Beach Resort — KSh 120,000</p>
-            <p>Planner: WPMS — Amina Hassan (Nairobi/Mombasa)</p>
+            <p>Wedding Planner: Amina Hassan (Nairobi/Mombasa)</p>
             <p>Catering: Nyama Choma Masters — KSh 120,000</p>
             <p>Decor: Floral Dreams — KSh 80,000</p>
             <p>Photography: Flash Photography KE — KSh 45,000</p>

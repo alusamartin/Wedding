@@ -3,7 +3,7 @@
     <div class="container-fluid" style="max-width:1180px;">
         <a class="navbar-brand wpms-brand d-flex align-items-center" href="index.php">
             <img class="wpms-brand-logo" src="images/logo/everafter-crest.png" alt="Everafter Planner logo">
-            <span class="wpms-brand-text">WPMS<span class="text-kenya"> Kenya</span></span>
+            <span class="wpms-brand-text">Everafter<span class="text-kenya"> Planner</span></span>
         </a>
         <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNavDropdown"
                 aria-controls="navbarNavDropdown" aria-expanded="false" aria-label="Toggle navigation" style="border:none;">

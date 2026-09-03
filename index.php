@@ -183,7 +183,7 @@
                             </div>
                         </div>
                         <div class="text-center mt-3">
-                            <p style="font-size: 11px;color:white;">By clicking "Sign Up" you agree to WPMS's <a
+                            <p style="font-size: 11px;color:white;">By clicking "Sign Up" you agree to Everafter Planner's <a
                                         href="" title="" style="color: #b81717;font-weight: bold;">Terms of Use</a></p>
                             <button type="submit" name="register" class="btn btn-danger btn-sm text-uppercase fb"
                                     style="margin-top: -5px;">Sign Up
@@ -329,10 +329,10 @@
         <div class="d-flex flex-wrap justify-content-between align-items-center" style="gap:12px; border-top:1px solid rgba(255,255,255,.12); padding-top:18px;">
             <div class="d-flex align-items-center" style="gap:.6rem;">
                 <img src="images/logo/everafter-crest.png" alt="Everafter Planner" style="height:24px;">
-                <span style="font-weight:700; letter-spacing:-.02em;">WPMS Kenya</span>
+                <span style="font-weight:700; letter-spacing:-.02em;">Everafter Planner</span>
                 <span style="color:#A8A29E; font-size:12px;">· KSh pricing · M-Pesa · Africa's Talking</span>
             </div>
-            <small style="color:#A8A29E;">&copy; <?php echo date('Y')?> WPMS Kenya — Crafted for ruracio, church & reception. All amounts in KSh.</small>
+            <small style="color:#A8A29E;">&copy; <?php echo date('Y')?> Everafter Planner — Crafted for ruracio, church & reception. All amounts in KSh.</small>
         </div>
     </div>
 </footer>

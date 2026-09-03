@@ -354,7 +354,7 @@ if (isset($_POST['register'])) {
                                 </div>
                             </div>
                             <div class="text-center mt-3">
-                                <p style="font-size: 11px;color:white;">By clicking "Sign Up" you agree to WPMS's <a
+                                <p style="font-size: 11px;color:white;">By clicking "Sign Up" you agree to Everafter Planner's <a
                                             href="" title="" style="color: #b81717;font-weight: bold;">Terms of Use</a></p>
                                 <button type="submit" name="register" class="btn btn-danger btn-sm text-uppercase fb"
                                         style="margin-top: -5px;">Sign Up

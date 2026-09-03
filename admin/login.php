@@ -136,7 +136,7 @@
     <?= $session->csrf_field(); ?>
     <a href="../index.php"><img class="mb-4" src="../images/logo/everafter-crest.png" alt="Everafter Planner" style="height:104px;"></a>
     <div class="secure-badge" style="display:inline-flex; align-items:center; gap:.35rem; background:#FFFBEB; border:1px solid #FDE68A; color:#92400E; font-size:11px; font-weight:600; padding:4px 10px; border-radius:999px; margin:0 auto 14px;"><i class="mdi mdi-shield-check-outline"></i> Secure · 15-min rotation · KSh</div>
-    <h5 class="h5 mb-2 font-weight-normal" style="color:#0B0F14; font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; letter-spacing:-.02em;">WPMS Admin</h5>
+    <h5 class="h5 mb-2 font-weight-normal" style="color:#0B0F14; font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; letter-spacing:-.02em;">Everafter Planner</h5>
     <p class="admin-sub">Nairobi · Mombasa · Kisumu — M-Pesa ready</p>
     <?php
         if ($session->message()) {
@@ -150,7 +150,7 @@
     <input type="password" id="inputPassword" name="input_password" class="form-control" placeholder="Password" required>
 
     <button class="btn btn-md btn-danger btn-block" type="submit" name="login">Log In</button>
-    <p class="mt-5 mb-3 text-muted">&copy; <?php echo date('Y')?> - WPMS Kenya</p>
+    <p class="mt-5 mb-3 text-muted">&copy; <?php echo date('Y')?> - Everafter Planner</p>
 </form>
 <script src="js/jquery-3.2.1.slim.min.js"></script>
 <script src="js/jquery.min.js"></script>
