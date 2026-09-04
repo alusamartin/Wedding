@@ -293,6 +293,7 @@ final class Smoke
                     'couple overview'  => '/admin/client_manage_account_details.php?' . $ids,
                     'couple guest list' => '/admin/client_guests.php?' . $ids,
                     'couple payments'   => '/admin/client_budget.php?' . $ids,
+                    'couple deposit'    => '/admin/client_deposit.php?' . $ids,
                 ] as $label => $path) {
                     $this->expectPage($label, $path, true);
                 }

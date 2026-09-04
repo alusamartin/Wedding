@@ -57,7 +57,13 @@
                 <?= $couple !== '&' ? htmlspecialchars($couple) . ' — ' : ''; ?>every payment made toward your day
             </p>
         </div>
-        <div class="readonly-note"><i class="mdi mdi-eye-outline mr-1"></i>Read-only — M-Pesa deposits are recorded by your planner</div>
+        <?php if (is_staff()): ?>
+            <div class="readonly-note"><i class="mdi mdi-eye-outline mr-1"></i>Read-only preview — planner tools live on Budget</div>
+        <?php else: ?>
+            <a href="client_deposit.php?<?= $links; ?>" class="btn btn-success btn-sm">
+                <i class="mdi mdi-cellphone-arrow-down mr-1"></i> Deposit via M-Pesa
+            </a>
+        <?php endif; ?>
     </div>
 
     <div class="row">
