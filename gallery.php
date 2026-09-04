@@ -112,6 +112,9 @@
             <h4 class="text-center mb-0 mt-5">Wedding Photos</h4>
             <p class="text-center mt-0 text-muted">Photos That Capture Your Moment</p>
 
+            <?php if (empty($gallery)) : ?>
+                <?php empty_state('Photos are coming soon', 'Real weddings from our couples will appear here — follow along as Everafter Planner grows.', 'mdi-image-multiple-outline'); ?>
+            <?php else : ?>
             <div class="card-columns">
                 <?php foreach($gallery as $galleries) : ?>
                 <div class="card" style="position: relative;">
@@ -124,6 +127,7 @@
                 </div><!-- end of body -->
                 <?php endforeach; ?>
             </div><!-- end of card columns -->
+            <?php endif; ?>
         </div>
     </div>
 

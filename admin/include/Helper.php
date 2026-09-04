@@ -88,6 +88,30 @@ function format_ksh($amount, $decimals = 0)
 }
 
 /**
+ * Shared empty-state block: icon circle + title + muted text + optional CTA.
+ * Used by every list page so empty states look identical across the admin.
+ */
+function empty_state(string $title, string $text, string $icon = 'mdi-inbox-outline', string $ctaHref = '', string $ctaLabel = '', string $ctaIcon = 'mdi-plus'): void
+{
+    echo '<div class="empty-state">';
+    echo '<div class="empty-icon"><i class="mdi ' . $icon . '"></i></div>';
+    echo '<h5>' . htmlspecialchars($title) . '</h5>';
+    echo '<p class="text-muted mb-0">' . htmlspecialchars($text) . '</p>';
+    if ($ctaHref !== '' && $ctaLabel !== '') {
+        echo '<a href="' . htmlspecialchars($ctaHref) . '" class="btn btn-success btn-sm mt-3"><i class="mdi ' . $ctaIcon . ' mr-1"></i> ' . htmlspecialchars($ctaLabel) . '</a>';
+    }
+    echo '</div>';
+}
+
+/** Empty-state rendered as a full-width table row (keeps DataTables happy). */
+function empty_state_row(int $colspan, string $title, string $text, string $icon = 'mdi-inbox-outline', string $ctaHref = '', string $ctaLabel = '', string $ctaIcon = 'mdi-plus'): void
+{
+    echo '<tr class="empty-state-row"><td colspan="' . $colspan . '" class="p-0">';
+    empty_state($title, $text, $icon, $ctaHref, $ctaLabel, $ctaIcon);
+    echo '</td></tr>';
+}
+
+/**
  * Atomically create a client account + booking from the public sign-up flow.
  *
  * - Hashes the password (PASSWORD_DEFAULT) and stamps access_level '0'

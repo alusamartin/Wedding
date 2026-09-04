@@ -102,6 +102,9 @@
         </tr>
     </thead>
     <tbody>
+    <?php if (empty($guest_list)) : ?>
+        <?php empty_state_row(10, 'No guests on the list yet', 'Add your first guest — family elders, bridal train and friends all belong here.', 'mdi-account-multiple-outline', 'guest_add.php?' . $links, 'Add First Guest', 'mdi-account-plus'); ?>
+    <?php else : ?>
     <?php foreach ($guest_list as $g) : ?>
         <tr>
             <td class="special">
@@ -142,6 +145,7 @@
             </td>
         </tr>
     <?php endforeach; ?>
+    <?php endif; ?>
     </tbody>
 </table>
 

@@ -147,6 +147,9 @@
             <hr>
             <h2 class="h2 text-uppercase text-center mb-4">Our Wedding Packages</h2>
 
+            <?php if (empty($category)) : ?>
+                <?php empty_state('Packages are being prepared', 'Our wedding packages will be listed here shortly — tell us what you have in mind in the meantime.', 'mdi-buffer', 'contact.php', 'Enquire Now', 'mdi-email-outline'); ?>
+            <?php else : ?>
             <?php foreach ($category as $category_row) : ?>
                 <div class="pricing">
                     <ul class="list-group list-unstyled">
@@ -165,6 +168,7 @@
                     </ul>
                 </div>
              <?php endforeach; ?>
+            <?php endif; ?>
         </div><!-- end of col-lg-12 -->
     </div><!-- end of row -->
 </div><!-- end of container-fluid -->
@@ -177,6 +181,9 @@
                 inspire
                 your wedding.</h6>
 
+            <?php if (empty($blogEvent)) : ?>
+                <?php empty_state('Fresh inspiration is on the way', 'We are busy capturing real weddings, traditions and ideas for your big day — check back soon.', 'mdi-lightbulb-on-outline'); ?>
+            <?php else : ?>
             <div class="card-columns">
 
                 <?php foreach($blogEvent as $blog_item) : ?>
@@ -195,6 +202,7 @@
 
                 <a href="real-weddings.php" class="btn btn-lg btn-block btn-explore">EXPLORE MORE INSPIRATION</a>
             </div>
+            <?php endif; ?>
         </div><!-- end of col-lg-12 -->
     </div><!-- end of row -->
 </div><!-- end of container -->

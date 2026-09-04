@@ -67,3 +67,13 @@ div.dataTables_wrapper .dataTables_paginate .paginate_button.current{ background
 
 /* DataTables small */
 table.table.table-striped.table-bordered.table-sm{ font-size:12px !important; }
+
+/* Empty states — shared across list pages */
+.empty-state{ text-align:center; padding:44px 20px; }
+.empty-state .empty-icon{ width:72px; height:72px; border-radius:50%; background:#EEF2F1; display:inline-flex; align-items:center; justify-content:center; margin-bottom:14px; border:1px dashed #C9D4CF; }
+.empty-state .empty-icon i{ font-size:32px; color:#8AA39B; }
+.empty-state h5{ font-size:16px; font-weight:700; color:#334155; margin-bottom:6px; letter-spacing:-.01em; }
+.empty-state p{ font-size:13px; max-width:360px; margin-left:auto; margin-right:auto; }
+.empty-state .btn{ margin-top:16px; }
+tr.empty-state-row > td{ background:#fff; }
+.empty-state-row .empty-state{ padding:40px 20px; }

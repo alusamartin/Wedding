@@ -87,6 +87,9 @@
     
     <tbody>
 
+    <?php if (empty($users)) : ?>
+        <?php empty_state_row(8, 'No team members yet', 'Add the planners and moderators who run Everafter Planner.', 'mdi-account-group-outline', 'users_add.php', 'Add First User', 'mdi-account-plus'); ?>
+    <?php else : ?>
     <?php foreach ($users as $user) : ?>
         
         <?php 
@@ -117,6 +120,7 @@
         </tr>
 
     <?php endforeach; ?>
+    <?php endif; ?>
 
 
 </main>

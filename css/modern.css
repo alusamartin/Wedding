@@ -293,6 +293,14 @@ footer.pt-3{
 }
 footer .text-muted{ color:#A8A29E !important; }
 
+/* ---------- EMPTY STATES (public) ---------- */
+.empty-state{ text-align:center; padding:48px 20px; }
+.empty-state .empty-icon{ width:76px; height:76px; border-radius:50%; background:var(--kenya-cream); display:inline-flex; align-items:center; justify-content:center; margin-bottom:14px; border:1px dashed #FCD34D; }
+.empty-state .empty-icon i{ font-size:34px; color:var(--kenya-green); }
+.empty-state h5{ font-family:'Plus Jakarta Sans',sans-serif; font-size:17px; font-weight:700; color:var(--kenya-black); letter-spacing:-.01em; margin-bottom:6px; }
+.empty-state p{ font-size:14px; color:#78716C; max-width:420px; margin-left:auto; margin-right:auto; }
+.empty-state .btn{ border-radius:999px !important; }
+
 /* ---------- UTILS : focus, reduced-motion ---------- */
 *:focus-visible{ outline:none; box-shadow:var(--ring); }
 @media(prefers-reduced-motion:reduce){ *{ scroll-behavior:auto !important; transition:none !important; } }

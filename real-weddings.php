@@ -69,6 +69,11 @@ include "include/nav.php";
             <h4 class="h2 text-center mb-0">THE LATEST INSPIRATION</h4>
             <p class="text-muted text-center">Discover the best ideas, tips and articles to inspire your wedding.</p>
         </div>
+           <?php if (empty($blogEvent)) : ?>
+               <div class="col-12">
+                   <?php empty_state('Fresh inspiration is on the way', 'We are busy capturing real weddings, traditions and ideas for your big day — check back soon.', 'mdi-lightbulb-on-outline'); ?>
+               </div>
+           <?php else : ?>
            <div class="card-columns">
             <?php foreach($blogEvent as $blog_item) : ?>
                <div class="card">
@@ -85,6 +90,7 @@ include "include/nav.php";
             <?php endforeach; ?>
             <!-- <a href="real-weddings.php" class="btn btn-lg btn-block btn-explore">EXPLORE MORE INSPIRATION</a> -->
         </div>
+        <?php endif; ?>
 
        
     </div>

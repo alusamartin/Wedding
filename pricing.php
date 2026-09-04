@@ -91,6 +91,13 @@ $category = Category::find_all();
         </div>
     </div>
 
+    <?php if (empty($category)) : ?>
+        <div class="row">
+            <div class="col-12">
+                <?php empty_state('Packages are being prepared', 'Our wedding packages will be listed here shortly — tell us what you have in mind in the meantime.', 'mdi-buffer', 'contact.php', 'Enquire Now', 'mdi-email-outline'); ?>
+            </div>
+        </div>
+    <?php else : ?>
     <?php foreach ($category as $category_row) : ?>
      <div class="row">
         <div class="col-md-12 p-0" style="margin-bottom: 20px;"> <!-- border:1px solid rgba(0,0,0,.125) -->
@@ -116,6 +123,7 @@ $category = Category::find_all();
             </div><!-- end of col-md-8 p-0 pl-3 -->
         </div>
         <?php endforeach; ?>
+    <?php endif; ?>
 
 </div><!-- end of container -->
 

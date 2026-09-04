@@ -84,9 +84,8 @@
     <!-- Vendors Grid -->
     <div class="row">
         <?php if (empty($vendors)): ?>
-            <div class="col-12 text-center py-5">
-                <i class="mdi mdi-store" style="font-size: 48px; color: #ccc;"></i>
-                <p class="text-muted mt-3">No vendors found in this category. Check back soon!</p>
+            <div class="col-12">
+                <?php empty_state('No vendors here yet', 'Vendors in this category will appear here once they are approved.', 'mdi-store-outline', 'vendor_register.php', 'Register as a Vendor', 'mdi-store-plus-outline'); ?>
             </div>
         <?php else: ?>
             <?php foreach ($vendors as $vendor): ?>

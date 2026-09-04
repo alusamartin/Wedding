@@ -84,6 +84,9 @@
 
     <tbody>
         
+        <?php if (empty($events)) : ?>
+            <?php empty_state_row(7, 'No events scheduled yet', 'Plan Ruracio, the church ceremony, reception and send-off on the Task Calendar.', 'mdi-calendar-text-outline', 'task_calendar.php?' . $links, 'Open Task Calendar', 'mdi-calendar-plus'); ?>
+        <?php else : ?>
         <?php foreach($events  as $events_name) :  ?>
        <tr>
             <td><?= $events_name->title; ?></td>
@@ -98,6 +101,7 @@
             </td>
        </tr>
    <?php endforeach; ?>
+   <?php endif; ?>
     </tbody>
 </table>
 

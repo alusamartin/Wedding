@@ -85,6 +85,9 @@
     </thead>
   
     <tbody>
+       <?php if (empty($event_wedding)) : ?>
+           <?php empty_state_row(8, 'No articles yet', 'Share real weddings, traditions and planning tips with the community.', 'mdi-newspaper-variant-outline', 'blog_events_add.php', 'Write First Article', 'mdi-pencil-plus-outline'); ?>
+       <?php else : ?>
        <?php foreach ($event_wedding as $events) : ?>
         <tr>
             
@@ -113,6 +116,7 @@
         </tr>
 
     <?php endforeach; ?>
+    <?php endif; ?>
     </tbody>
 </table>
 </main>

@@ -377,12 +377,21 @@
             <span class="badge badge-danger"><?= $total_all; ?> total</span>
         </div>
         <?php if (empty($all_bookings)): ?>
-            <div class="empty-state">
-                <i class="mdi mdi-calendar-blank"></i>
-                <h5>No bookings found</h5>
-                <p>Start by adding a new wedding booking</p>
-                <a href="client_add.php" class="btn btn-danger"><i class="mdi mdi-plus"></i> Add First Booking</a>
-            </div>
+            <?php if ($is_staff_view): ?>
+                <div class="empty-state">
+                    <i class="mdi mdi-calendar-blank"></i>
+                    <h5>No bookings found</h5>
+                    <p>Start by adding a new wedding booking</p>
+                    <a href="client_add.php" class="btn btn-success"><i class="mdi mdi-plus"></i> Add First Booking</a>
+                </div>
+            <?php else: ?>
+                <div class="empty-state">
+                    <i class="mdi mdi-calendar-heart"></i>
+                    <h5>No bookings yet</h5>
+                    <p>Your journey with Everafter Planner starts with a chat — reach out and we will plan your day together.</p>
+                    <a href="../contact.php" class="btn btn-success"><i class="mdi mdi-email-outline mr-1"></i> Enquire Now</a>
+                </div>
+            <?php endif; ?>
         <?php else: ?>
         <table id="all_bookings" class="table table-hover mb-0" style="width:100%">
             <thead>
@@ -490,7 +499,7 @@
                     <?php
                     $upcoming = array_filter($confirmed, function($b) {
                         if (empty($b->wedding_date)) return false;
-                        $days = (strtotime($wedding_date) - strtotime(date('Y-m-d'))) / 86400;
+                        $days = (strtotime($b->wedding_date) - strtotime(date('Y-m-d'))) / 86400;
                         return $days >= 0 && $days <= 30;
                     });
                     if (empty($upcoming)):

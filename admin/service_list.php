@@ -80,6 +80,9 @@
                 </thead>
               
                 <tbody>
+                    <?php if (empty($category)) : ?>
+                        <?php empty_state_row(3, 'No wedding packages yet', 'Create your first package so couples can pick a plan and book.', 'mdi-buffer', 'package_add.php', 'Add First Package', 'mdi-plus-box-outline'); ?>
+                    <?php else : ?>
                     <?php foreach ($category as $category_row) : ?>
                     <tr>
                         
@@ -102,6 +105,7 @@
                     </tr>
 
                 <?php endforeach; ?>
+                    <?php endif; ?>
                 </tbody>
             </table>
         </div><!-- end of col-md-12 -->
@@ -127,6 +131,9 @@
                 </thead>
              
                 <tbody>
+                    <?php if (empty($features)) : ?>
+                        <?php empty_state_row(4, 'No features defined yet', 'Describe what each wedding package includes — decor, catering, MC and more.', 'mdi-clipboard-text-outline', 'feature_add.php', 'Add First Feature', 'mdi-clipboard-plus-outline'); ?>
+                    <?php else : ?>
                     <?php foreach ($features as $features_row) : ?>
                     <tr>
                         
@@ -146,6 +153,7 @@
                         </td>
                     </tr>
                 <?php endforeach; ?>
+                    <?php endif; ?>
                 </tbody>
             </table>
         </div><!-- end of col-md-12 -->

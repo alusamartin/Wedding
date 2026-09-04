@@ -99,6 +99,9 @@
 
 
     <tbody>
+        <?php if (empty($luquidate)) : ?>
+            <?php empty_state_row(6, 'No liquidation entries yet', 'Record payments against each event to reconcile the budget.', 'mdi-cash-multiple', 'budget_add.php?' . $links, 'Add Payment', 'mdi-plus'); ?>
+        <?php else : ?>
         <?php foreach($luquidate as $luquidate_item) : ?>
         <tr>
             <td class="special-budget">
@@ -132,6 +135,7 @@
             <td><b><?= format_ksh($credit, 2); ?></b></td>
         </tr>
     </tfoot>
+    <?php endif; ?>
 </table>
 
 </main>

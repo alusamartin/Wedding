@@ -71,6 +71,9 @@ if ($session->message()) {
 ?>
 <div class="row">
     <div class="col-md-12">
+        <?php if (empty($gallery)) : ?>
+            <?php empty_state('The gallery is empty', 'Showcase real weddings so couples can picture their own big day.', 'mdi-image-multiple-outline', 'photos_add.php', 'Upload First Photo', 'mdi-upload'); ?>
+        <?php else : ?>
         <div class="card-columns">
             <?php foreach($gallery as $galleries) : ?>
                 <div class="card" style="position: relative;">
@@ -92,6 +95,7 @@ if ($session->message()) {
                 </div><!-- end of body -->
             <?php endforeach; ?>
         </div><!-- end of card columns -->
+        <?php endif; ?>
     </div>
 </div><!-- end of col-md-12 -->
 </div><!-- end of row -->

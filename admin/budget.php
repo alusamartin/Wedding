@@ -123,6 +123,9 @@
         </tr>
     </thead>
     <tbody>
+    <?php if (empty($budget_items)) : ?>
+        <?php empty_state_row(6, 'No payments recorded yet', 'Record deposits, M-Pesa and bank payments to track this wedding’s budget.', 'mdi-cash-multiple', 'budget_add.php?' . $links, 'Record First Payment', 'mdi-plus'); ?>
+    <?php else : ?>
     <?php $total = 0; foreach ($budget_items as $i => $item): 
         $total += $item->payment;
         $method_label = '';
@@ -151,6 +154,7 @@
             <td class="text-right"><strong><?= format_ksh($total, 2); ?></strong></td>
         </tr>
     </tfoot>
+    <?php endif; ?>
     </tbody>
 </table>
 

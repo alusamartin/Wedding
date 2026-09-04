@@ -84,6 +84,11 @@
 
     <!-- Plans Row -->
     <div class="row mb-5">
+        <?php if (empty($plans)) : ?>
+            <div class="col-12">
+                <?php empty_state('No subscription plans yet', 'Plans will appear here once the team defines them.', 'mdi-crown-outline'); ?>
+            </div>
+        <?php else : ?>
         <?php foreach ($plans as $plan): ?>
             <?php $is_popular = ($plan->plan_slug == 'professional'); ?>
             <div class="col-md-4">
@@ -115,6 +120,7 @@
                 </div>
             </div>
         <?php endforeach; ?>
+        <?php endif; ?>
     </div>
 
     <!-- Purchase Modal -->
@@ -166,7 +172,7 @@
         </thead>
         <tbody>
         <?php if (empty($sub_history)): ?>
-            <tr><td colspan="6" class="text-center text-muted">No subscription history</td></tr>
+            <?php empty_state_row(6, 'No subscriptions yet', 'Once you activate a plan, your payment history will appear here.', 'mdi-history'); ?>
         <?php else: ?>
             <?php foreach ($sub_history as $sub): ?>
                 <tr>
