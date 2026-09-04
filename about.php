@@ -10,12 +10,15 @@
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
     <link rel="stylesheet" href="css/bootstrap.min.css">
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/modern.css">
     <style>
+        /* Scoped accent palette — must NOT redefine the shared --kenya-* tokens
+           that style.css/modern.css nav + CTA components depend on. */
         :root {
-            --kenya-red: #A34A2F;
-            --kenya-green: #A3B899;
-            --kenya-cream: #FAF6EF;
-            --kenya-gold: #C9A227;
+            --about-red: #A34A2F;
+            --about-green: #065F46;
+            --about-cream: #FFFBEB;
+            --about-gold: #D97706;
         }
         body {
             font-family: 'Montserrat', sans-serif;
@@ -23,7 +26,7 @@
             color: #333;
         }
         .hero-section {
-            background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url('images/bg/about-hero.jpg') center/cover;
+            background: linear-gradient(135deg, #0C3B2E 0%, #065F46 55%, #0E7C66 100%);
             color: #fff;
             padding: 100px 20px;
             text-align: center;
@@ -48,7 +51,7 @@
             font-family: 'Playfair Display', serif;
             text-align: center;
             margin-bottom: 40px;
-            color: var(--kenya-red);
+            color: var(--about-red);
             font-size: 32px;
         }
         .section h2:after {
@@ -56,7 +59,7 @@
             display: block;
             width: 60px;
             height: 3px;
-            background: var(--kenya-gold);
+            background: var(--about-gold);
             margin: 15px auto 0;
         }
         .feature-grid {
@@ -81,7 +84,7 @@
             width: 70px;
             height: 70px;
             border-radius: 50%;
-            background: linear-gradient(135deg, var(--kenya-red), #e74c3c);
+            background: linear-gradient(135deg, var(--about-red), #7C2D1B);
             color: #fff;
             display: flex;
             align-items: center;
@@ -99,7 +102,7 @@
             line-height: 1.6;
         }
         .stats-bar {
-            background: linear-gradient(135deg, var(--kenya-red), #8e44ad);
+            background: linear-gradient(135deg, var(--about-red), #6D2A17);
             color: #fff;
             padding: 50px 20px;
             text-align: center;
@@ -120,14 +123,14 @@
             letter-spacing: 1px;
         }
         .mission-card {
-            background: var(--kenya-cream);
-            border-left: 5px solid var(--kenya-gold);
+            background: var(--about-cream);
+            border-left: 5px solid var(--about-gold);
             padding: 30px;
             border-radius: 0 10px 10px 0;
             margin: 30px 0;
         }
         .mission-card h3 {
-            color: var(--kenya-red);
+            color: var(--about-red);
             margin-bottom: 15px;
         }
         .mission-card p {
@@ -152,7 +155,7 @@
             width: 80px;
             height: 80px;
             border-radius: 50%;
-            background: linear-gradient(135deg, var(--kenya-green), #2ecc71);
+            background: linear-gradient(135deg, var(--about-green), #059669);
             color: #fff;
             display: flex;
             align-items: center;
@@ -183,12 +186,12 @@
             align-items: center;
         }
         .values-list li i {
-            color: var(--kenya-green);
+            color: var(--about-green);
             font-size: 20px;
             margin-right: 15px;
         }
         .cta-section {
-            background: linear-gradient(135deg, var(--kenya-red), #8e44ad);
+            background: linear-gradient(135deg, var(--about-red), #6D2A17);
             color: #fff;
             padding: 60px 20px;
             text-align: center;
@@ -230,8 +233,8 @@
             width: 40px;
             height: 40px;
             border-radius: 50%;
-            background: var(--kenya-cream);
-            color: var(--kenya-red);
+            background: var(--about-cream);
+            color: var(--about-red);
             display: flex;
             align-items: center;
             justify-content: center;
