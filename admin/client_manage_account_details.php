@@ -1,17 +1,22 @@
 <?php include 'include/init.php'; ?>
 
 <?php
+    $booking_id = (int) ($_GET['booking_id'] ?? 0);
+    $user_id = (int) ($_GET['user_id'] ?? 0);
+    $links = 'booking_id=' . $booking_id . '&user_id=' . $user_id;
+
     if (!isset($_SESSION['id'])) {
         redirect_to("../");
     }
-    // Client sessions may only open their OWN account detail (staff see all).
-    if (!is_staff() && (int) ($_GET['user_id'] ?? 0) !== (int) $_SESSION['id']) {
-        redirect_to("client.php");
+    $booking = Booking::find_by_booking_id($booking_id);
+    if (!is_staff()) {
+        // Client sessions may only open their OWN booking. Checking the booking
+        // row itself (not just the user_id param) closes an IDOR where a client
+        // could pass their own user_id with someone else's booking_id.
+        if (!$booking || (int) $booking->user_id !== (int) $_SESSION['id'] || $user_id !== (int) $_SESSION['id']) {
+            redirect_to("client.php");
+        }
     }
-     $booking_id = (int) ($_GET['booking_id'] ?? 0);
-     $user_id = (int) ($_GET['user_id'] ?? 0);
-     $links = 'booking_id=' . $booking_id . '&user_id=' . $user_id;
-     $booking =  Booking::find_by_booking_id($booking_id);
      $guest_count =  Guest::count_guest($booking_id);
      $account_details = Account_Details::find_by_user_id($user_id);
      $category_details = Category::find_by_id($booking->wedding_type ?? 0);
@@ -114,10 +119,12 @@
             <a class="btn btn-sm btn-primary mr-2" style="font-size: 12px;" href="client_manage_account_details.php?<?= $links; ?>"><i class="mdi mdi-buffer mr-2"></i> Overview</a>
             <?php if (is_staff()): ?>
                 <a class="btn btn-sm btn-info mr-2 " style="font-size: 12px;" href="guest_list.php?<?= $links; ?>"><i class="mdi mdi-account-network mr-2"></i> Master List Guest</a>
-                <a class="btn btn-sm btn-success mr-2 " style="font-size: 12px;" href="budget.php?<?= $links; ?>"><i class="mdi mdi-currency-usd mr-2"></i> Budget</a>
+                <a class="btn btn-sm btn-success mr-2 " style="font-size: 12px;" href="budget.php?<?= $links; ?>"><i class="mdi mdi-cash-multiple mr-2"></i> Budget</a>
                 <a class="btn btn-sm btn-warning mr-2 " style="font-size: 12px;" href="task_calendar.php?<?= $links; ?>"><i class="mdi mdi-calendar-text mr-2"></i> Task Calendar</a>
             <?php else: ?>
-                <a class="btn btn-sm btn-outline-success" style="font-size: 12px;" href="../contact.php"><i class="mdi mdi-email-outline mr-2"></i> Contact Planner</a>
+                <a class="btn btn-sm btn-outline-info mr-2 " style="font-size: 12px;" href="client_guests.php?<?= $links; ?>"><i class="mdi mdi-account-network mr-2"></i> My Guests</a>
+                <a class="btn btn-sm btn-outline-success mr-2 " style="font-size: 12px;" href="client_budget.php?<?= $links; ?>"><i class="mdi mdi-cash-multiple mr-2"></i> My Payments</a>
+                <a class="btn btn-sm btn-outline-secondary" style="font-size: 12px;" href="../contact.php"><i class="mdi mdi-email-outline mr-2"></i> Contact Planner</a>
             <?php endif; ?>
         </div>
     </div>

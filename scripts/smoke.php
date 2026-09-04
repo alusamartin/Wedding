@@ -13,14 +13,19 @@ declare(strict_types=1);
  * Environment overrides:
  *   SMOKE_STAFF_EMAIL  / SMOKE_STAFF_PASS     seeded admin (wafula@wpms.co.ke / Admin@2024!)
  *   SMOKE_CLIENT_EMAIL / SMOKE_CLIENT_PASS    seeded client (brian.wafula@gmail.com / Test@1234)
+ *   SMOKE_COUPLE_EMAIL / SMOKE_COUPLE_PASS    seeded client owning a booking (chebet.eldoret@gmail.com)
  *
  * Exit codes: 0 = all green, 1 = failed checks, 2 = server unreachable.
  */
 
 const STAFF_EMAIL  = 'wafula@wpms.co.ke';
 const STAFF_PASS   = 'Admin@2024!';
-const CLIENT_EMAIL = 'brian.wafula@gmail.com';
-const CLIENT_PASS  = 'Test@1234';
+const CLIENT_EMAIL  = 'brian.wafula@gmail.com';
+const CLIENT_PASS   = 'Test@1234';
+// A seeded client who OWNS a booking (chebet.eldoret has booking 203) so the
+// couple-only pages can be walked end-to-end.
+const COUPLE_EMAIL  = 'chebet.eldoret@gmail.com';
+const COUPLE_PASS   = 'Test@1234';
 
 const PUBLIC_PAGES = [
     '/index.php',
@@ -233,6 +238,8 @@ final class Smoke
         $staffPass   = getenv('SMOKE_STAFF_PASS') ?: STAFF_PASS;
         $clientEmail = getenv('SMOKE_CLIENT_EMAIL') ?: CLIENT_EMAIL;
         $clientPass  = getenv('SMOKE_CLIENT_PASS') ?: CLIENT_PASS;
+        $coupleEmail = getenv('SMOKE_COUPLE_EMAIL') ?: COUPLE_EMAIL;
+        $couplePass  = getenv('SMOKE_COUPLE_PASS') ?: COUPLE_PASS;
 
         echo "Smoke against {$this->base}\n\n";
 
@@ -272,6 +279,25 @@ final class Smoke
                 $this->expectPage('client overview (first booking)', $overview, true);
             } else {
                 $this->note('seeded client has no bookings — client overview walk skipped');
+            }
+        }
+
+        // --- 4. couple session (owns a booking: read-only guests + payments) ---
+        echo "\nCouple flow\n";
+        if ($this->login('/login.php', $coupleEmail, $couplePass, 'client')) {
+            $this->expectPage('couple dashboard', '/admin/client.php', true);
+            $dash = $this->http('GET', '/admin/client.php', [], true);
+            if (preg_match('~booking_id=(\d+)&user_id=(\d+)~', $dash['body'], $m)) {
+                $ids = 'booking_id=' . $m[1] . '&user_id=' . $m[2];
+                foreach ([
+                    'couple overview'  => '/admin/client_manage_account_details.php?' . $ids,
+                    'couple guest list' => '/admin/client_guests.php?' . $ids,
+                    'couple payments'   => '/admin/client_budget.php?' . $ids,
+                ] as $label => $path) {
+                    $this->expectPage($label, $path, true);
+                }
+            } else {
+                $this->note('couple account has no booking link on the dashboard — couple pages walk skipped');
             }
         }
 
