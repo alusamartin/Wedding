@@ -52,7 +52,19 @@ class Gallery extends DB_Object
             $this->errors[] = $this->upload_errors_array[$file['error']];
             return false;
         } else {
-            $this->filename = basename($file['name']);
+            // Server-side validation: extension allowlist + real-image sniff
+            // (getimagesize) + size cap. Store under a randomized name so a
+            // user-controlled filename can never execute in upload/gallery.
+            $allowed = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png',
+                        'gif' => 'image/gif', 'webp' => 'image/webp'];
+            $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            $maxBytes = 5 * 1024 * 1024;
+            if (!isset($allowed[$ext]) || empty($file['size']) || $file['size'] > $maxBytes
+                || @getimagesize($file['tmp_name']) === false) {
+                $this->errors[] = 'Only JPG/PNG/GIF/WebP images up to 5 MB are allowed.';
+                return false;
+            }
+            $this->filename = bin2hex(random_bytes(8)) . '.' . $ext;
             $this->tmp_path = $file['tmp_name'];
             $this->type = $file['type'];
             $this->size = $file['size'];
@@ -140,8 +152,14 @@ class Gallery extends DB_Object
     public function delete_photo()
     {
         if ($this->delete()) {
+            if (empty($this->filename)) {
+                return true; // nothing on disk to remove
+            }
             $target_path = SITE_ROOT . '/' . $this->picture_path();
-            return unlink($target_path) ? true : false;
+            if (file_exists($target_path)) {
+                return @unlink($target_path) ? true : false;
+            }
+            return true; // DB row removed; file already absent
         } else {
             return false;
         }

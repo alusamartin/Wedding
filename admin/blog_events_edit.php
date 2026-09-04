@@ -7,6 +7,13 @@
 $category = Category::find_all();
     if (isset($_POST['submit'])) {
         if ($event_wedding) {
+            // CSRF validation
+            if (!$session->verify_csrf()) {
+                $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Invalid security token. Please try again.</div>');
+                redirect_to("blog_events_edit.php?id=" . (int) ($_GET['id'] ?? 0));
+                die();
+            }
+
             $title        = clean($_POST['title']);
             $description  = clean($_POST['description']);
             $wedding_date = clean($_POST['wedding_date']);
@@ -27,7 +34,7 @@ $category = Category::find_all();
             }
 
             if ($status == 1) {
-                $event_wedding->date_published = date("F j, Y, g:i a");
+                $event_wedding->date_published = date("Y-m-d H:i:s");
             } else {
                 $event_wedding->date_published = '';
             }
@@ -39,9 +46,29 @@ $category = Category::find_all();
             $event_wedding->location = $location;
             $event_wedding->status  = $status;
 
-            if(empty($_FILES['preview_image'])){
+            $old_image = $event_wedding->preview_image;
+
+            // No new file chosen => metadata-only update (keeps existing image)
+            if (empty($_FILES['preview_image']['name'])) {
                 $event_wedding->save();
                 redirect_to("blog_events.php");
+                $session->message("
+                <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
+                  <strong><i class='mdi mdi-account-alert mr-2'></i></strong> The {$event_wedding->title} has been updated.
+                  <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
+                    <span aria-hidden=\"true\">&times;</span>
+                  </button>
+                </div>");
+                die();
+            }
+
+            $event_wedding->set_file($_FILES['preview_image']);
+            if (empty($event_wedding->errors) && $event_wedding->save_image() && $event_wedding->save()) {
+                // Remove the replaced preview so images don't orphan on disk
+                if ($old_image && $old_image !== $event_wedding->preview_image) {
+                    $old_path = SITE_ROOT . DS . $event_wedding->upload_directory . DS . $old_image;
+                    if (file_exists($old_path)) { @unlink($old_path); }
+                }
                 $session->message("
                 <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
                   <strong><i class='mdi mdi-account-alert mr-2'></i></strong> The {$event_wedding->title} has been updated.
@@ -50,18 +77,9 @@ $category = Category::find_all();
                   </button>
                 </div>");
             } else {
-                $event_wedding->set_file($_FILES['preview_image']);
-                $event_wedding->save_image();
-                $event_wedding->save();
-                $session->message("
-                <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
-                  <strong><i class='mdi mdi-account-alert mr-2'></i></strong> The {$event_wedding->title} has been updated.
-                  <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
-                    <span aria-hidden=\"true\">&times;</span>
-                  </button>
-                </div>");
-                redirect_to("blog_events.php");
+                $session->message('<div class="alert alert-danger" role="alert">' . htmlspecialchars(join('<br>', $event_wedding->errors)) . '</div>');
             }
+            redirect_to("blog_events.php");
         }
     }
 ?>
@@ -106,6 +124,7 @@ $category = Category::find_all();
             <div class="col-lg-8 pl-3 pb-3 box-shadow mt-4">
                
                 <form action="" method="post" enctype="multipart/form-data">
+                    <?= $session->csrf_field(); ?>
 
                     <h4 class="h4 mt-4 pb-2" style="border-bottom: 1px solid #dee2e6!important;">Edit Article 
 

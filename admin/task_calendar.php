@@ -71,6 +71,7 @@
     <span class="legend-item"><span class="legend-color" style="background:#27ae60;"></span>Reception</span>
     <span class="legend-item"><span class="legend-color" style="background:#f39c12;"></span>After-Party</span>
     <span class="legend-item"><span class="legend-color" style="background:#3498db;"></span>VC Meeting</span>
+    <span class="legend-item"><span class="legend-color" style="background:#00897b;"></span>Send-off / Disco Matanga</span>
 </div>
 
 <div id='calendar'></div>
@@ -98,6 +99,7 @@
                             <option value="Civil Registration">Civil Registration</option>
                             <option value="Bridal Shower">Bridal Shower</option>
                             <option value="Engagement Party">Engagement Party</option>
+                            <option value="Send-off / Disco Matanga">Send-off / Disco Matanga</option>
                             <option value="Other">Other</option>
                         </select>
                     </div>
@@ -150,6 +152,7 @@
             'Civil Registration': '#2c3e50',
             'Bridal Shower': '#e91e63',
             'Engagement Party': '#ff9800',
+            'Send-off / Disco Matanga': '#00897b',
             'Other': '#607d8b'
         };
         document.getElementById('event_color').value = colors[this.value] || '#607d8b';

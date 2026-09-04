@@ -8,28 +8,42 @@
       
     if (isset($_POST['submit']) || isset($_FILES['file'])) {
 
+        // CSRF validation
+        if (!$session->verify_csrf()) {
+            $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Invalid security token. Please try again.</div>');
+            redirect_to("photos_view.php");
+            die();
+        }
+
         $gallery->title = clean($_POST['title']);
         $gallery->description = clean($_POST['description']);
         $gallery->alternate_text = clean($_POST['alternate_text']);
         $gallery->caption = clean($_POST['caption']);
-        $gallery->booking_id = clean($_POST['booking_id']);
+        $gallery->booking_id = (int)($_POST['booking_id'] ?? 0);
 
-        if(empty($_FILES['file'])) {
+        if (empty($_FILES['file']['name'])) {
+          // Metadata-only edit (no new file chosen)
           $gallery->save();
+          $session->message("<div class=\"alert alert-success\" role=\"alert\">The photo has been updated.</div>");
           redirect_to("photos_view.php");
-          $session->message("The photo has been updated");
         } else {
+          $old_file = $gallery->filename;
           $gallery->set_file($_FILES['file']);
-          $gallery->save_image();
-          $gallery->save();
-          // redirect_to("edit_user.php?id={$room->id}");
-          $session->message("
-            <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
-              <strong><i class='mdi mdi-check'></i></strong>The {$gallery->title} is successfully updated.
-              <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
-                <span aria-hidden=\"true\">&times;</span>
-              </button>
-            </div>");
+          if (empty($gallery->errors) && $gallery->save_image() && $gallery->save()) {
+              // Remove the previous file so replacements don't orphan it
+              if ($old_file && $old_file !== $gallery->filename) {
+                  @unlink(SITE_ROOT . '/' . $gallery->upload_directory . '/' . $old_file);
+              }
+              $session->message("
+                <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
+                  <strong><i class='mdi mdi-check'></i></strong>The {$gallery->title} is successfully updated.
+                  <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
+                    <span aria-hidden=\"true\">&times;</span>
+                  </button>
+                </div>");
+          } else {
+              $session->message('<div class="alert alert-danger" role="alert">' . htmlspecialchars(join('<br>', $gallery->errors)) . '</div>');
+          }
           redirect_to("photos_view.php");
         }
     }
@@ -85,6 +99,7 @@
                 <h5>Edit Image</h5>
                 <?= (isset($msg) ? $msg : ''); ?>
                 <form method="post" action="" enctype="multipart/form-data">
+                  <?= $session->csrf_field(); ?>
                   <div class="form-group">
                     <label for="booking_id">Picture Of The Couple</label>
                     <select class="custom-select form-control" id="booking_id" name="booking_id">

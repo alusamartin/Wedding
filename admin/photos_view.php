@@ -82,7 +82,10 @@ if ($session->message()) {
                             <?= empty($galleries->title) ? 'No Title' : $galleries->title; ?>
                             <span class="float-right pb-2">
                               <a href="photos_edit.php?id=<?= $galleries->id; ?>" class="btn btn-info btn-sm" data-toggle="tooltip" title="Edit This Picture"><i class="mdi mdi-pencil"></i></a>
-                              <a href="photo_delete.php?id=<?= $galleries->id; ?>" class="btn btn-danger btn-sm" data-toggle="tooltip" title="Delete This Picture"><i class="mdi mdi-delete"></i></a>
+                              <form method="post" action="photo_delete.php?id=<?= $galleries->id; ?>" class="d-inline" onsubmit="return confirm('Delete this photo and its file?');">
+                                  <?= $session->csrf_field(); ?>
+                                  <button type="submit" class="btn btn-danger btn-sm" data-toggle="tooltip" title="Delete This Picture"><i class="mdi mdi-delete"></i></button>
+                              </form>
                           </span>
                         </p>
                     </div>

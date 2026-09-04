@@ -7,12 +7,19 @@
     $booking = Booking::find_booking_all();
     if (isset($_POST['submit']) || isset($_FILES['file'])) {
 
+        // CSRF validation
+        if (!$session->verify_csrf()) {
+            $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Invalid security token. Please try again.</div>');
+            redirect_to("photos_add.php");
+            die();
+        }
+
         $gallery->title = clean($_POST['title']);
         $gallery->caption = clean($_POST['caption']);
         $gallery->alternate_text = clean($_POST['alternate_text']);
         $gallery->description = clean($_POST['description']);
-        $gallery->booking_id = clean($_POST['booking_id']);
-        $gallery->set_file($_FILES['file']);
+        $gallery->booking_id = (int)($_POST['booking_id'] ?? 0);
+        $gallery->set_file($_FILES['file'] ?? null);
        
          if ($gallery->save()) {
            redirect_to("photos_view.php");
@@ -73,6 +80,7 @@
                 <h5>Upload New Image</h5>
                 <?= (isset($msg) ? $msg : ''); ?>
                 <form method="post" action="" enctype="multipart/form-data">
+                    <?= $session->csrf_field(); ?>
 
                     <div class="form-group">
                         <label for="booking_id">Related:</label>
@@ -107,11 +115,6 @@
                    <button type="submit" name="submit" value="" class="btn btn-success btn-sm">Save image</button>
                    <a href="photos_view.php" class="btn btn-danger btn-sm">Go Back</a>
                 </form><!-- end of input form -->
-<br>
-                <h5 class="h5">OR Drag Your Images</h5>
-                <div id="dropzone-area">
-                    <form action="photos_add.php" class="dropzone"></form>  
-                </div>
             </div>
         </div>
     </div>

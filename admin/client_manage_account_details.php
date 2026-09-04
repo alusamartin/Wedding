@@ -19,10 +19,11 @@
 
      $cash = Liquidation::getTotalAmountCash($booking_id);
 
-     $bdd = new PDO('mysql:host=localhost;dbname=dbwedding', 'root', '');
-    $sql = "SELECT id, title, location, start, end, color FROM events WHERE booking_id = {$_GET['booking_id']}";
+     global $db;
+    $bdd = $db->pdo();
+    $sql = "SELECT id, title, location, start, end, color FROM events WHERE booking_id = :bid";
     $req = $bdd->prepare($sql);
-    $req->execute();
+    $req->execute([':bid' => (int) $booking_id]);
 
     $events = $req->fetchAll();
 ?>

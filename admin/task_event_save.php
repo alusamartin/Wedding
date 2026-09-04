@@ -28,7 +28,9 @@ if (isset($_POST['title']) && isset($_POST['start']) && isset($_POST['end'])) {
         'VC Meeting' => '#3498db',
         'Civil' => '#2c3e50',
         'Bridal' => '#e91e63',
-        'Engagement' => '#ff9800'
+        'Engagement' => '#ff9800',
+        'Send-off' => '#00897b',
+        'Disco' => '#00897b'
     ];
 
     foreach ($color_map as $keyword => $auto_color) {

@@ -4,11 +4,13 @@
 
     $booking = Booking::find_booking_all();
     if (!is_staff()) { redirect_to("../");}
-    $bdd = new PDO('mysql:host=localhost;dbname=dbwedding', 'root', '');
+    global $db;
+    $bdd = $db->pdo();
     $sql = "SELECT id, title, location, start, end, color FROM events";
     $req = $bdd->prepare($sql);
     $req->execute();
-    $events = $req->fetchAll();
+    $events = $req->fetchAll(PDO::FETCH_ASSOC);
+    $events_json = json_encode($events, JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES);
 ?>
 
 <?php $users_profile = Users::find_by_id($_SESSION['id']); ?>
@@ -80,6 +82,7 @@
 
 <div class="row">
     <div class="col-md-12">
+        <input type="hidden" id="page_csrf" value="<?= $session->csrf_token(); ?>">
         <div id="calendar"></div>
     </div>
 </div>
@@ -107,13 +110,7 @@
                       <label for="booking_id">Couple:</label>
                       <select class="custom-select form-control" id="booking_id" name="booking_id">
                           <?php foreach($booking as $booking_user) : ?>
-                              <?php if ($booking_user->booking_id == $gallery->booking_id) : ?>
-                                  <option value="<?= $booking_user->booking_id; ?>" selected><?= $booking_user->bride . ' + ' . $booking_user->groom; ?></option>
-                              <?php else : ?>
-                                  <option value="<?= $booking_user->booking_id; ?>"><?= $booking_user->bride . ' + ' . $booking_user->groom; ?></option>
-
-                              <?php endif ?>
-
+                              <option value="<?= (int) $booking_user->booking_id; ?>"><?= htmlspecialchars($booking_user->bride . ' + ' . $booking_user->groom); ?></option>
                           <?php endforeach; ?>
                       </select>
                   </div>
@@ -256,32 +253,7 @@
             eventResize: function(event,dayDelta,minuteDelta,revertFunc) { // si changement de longueur
                 edit(event);
             },
-            events: [
-            <?php foreach($events as $event): 
-            
-                $start = explode(" ", $event['start']);
-                $end = explode(" ", $event['end']);
-                if($start[1] == '00:00:00'){
-                    $start = $start[0];
-                }else{
-                    $start = $event['start'];
-                }
-                if($end[1] == '00:00:00'){
-                    $end = $end[0];
-                }else{
-                    $end = $event['end'];
-                }
-            ?>
-                {
-                    id: '<?php echo $event['id']; ?>',
-                    title: '<?php echo $event['title']; ?>',
-                    location: '<?php echo $event['location']; ?>',
-                    start: '<?php echo $start; ?>',
-                    end: '<?php echo $end; ?>',
-                    color: '<?php echo $event['color']; ?>',
-                },
-            <?php endforeach; ?>
-            ]
+            events: <?= $events_json; ?>
         });
         
         function edit(event){
@@ -302,7 +274,7 @@
             $.ajax({
              url: 'task_editEventDate.php',
              type: "POST",
-             data: {Event:Event},
+             data: {Event:Event, _token: $('#page_csrf').val()},
              success: function(rep) {
                     if(rep === 'OK'){
                         alert('Saved');

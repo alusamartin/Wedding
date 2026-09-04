@@ -103,7 +103,10 @@
             
             <td>
                 <a href="blog_events_edit.php?id=<?= $events->id; ?>" class="btn btn-info btn-sm active"><i class="mdi mdi-account-edit"></i></a>
-                <a href="blog_events_delete.php?id=<?= $events->id; ?>" class="btn btn-danger btn-sm active"><i class="mdi mdi-delete"></i></a>
+                <form method="post" action="blog_events_delete.php?id=<?= $events->id; ?>" class="d-inline" onsubmit="return confirm('Delete this article and its preview image?');">
+                    <?= $session->csrf_field(); ?>
+                    <button type="submit" class="btn btn-danger btn-sm active"><i class="mdi mdi-delete"></i></button>
+                </form>
                 <a href="../wedding_details.php?id=<?= $events->id; ?>" target="_blank" class="btn btn-warning btn-sm active"><i class="mdi mdi-eye"></i></a>
             </td>
 

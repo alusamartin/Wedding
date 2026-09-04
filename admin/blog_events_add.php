@@ -13,6 +13,13 @@
 
     if (isset($_POST['submit']) || isset($_FILES['preview_image'])) {
 
+        // CSRF validation
+        if (!$session->verify_csrf()) {
+            $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Invalid security token. Please try again.</div>');
+            redirect_to("blog_events_add.php");
+            die();
+        }
+
         $title = clean($_POST['title']);
         $description = clean($_POST['description']);
         $wedding_date = clean($_POST['wedding_date']);
@@ -42,11 +49,17 @@
         $event_wedding->wedding_date = $wedding_date;
         $event_wedding->location = $location;
         $event_wedding->status  = $status;
-        $event_wedding->date_created  = date("F j, Y, g:i a");
-        $event_wedding->set_file($_FILES['preview_image']);
-        $event_wedding->save_image();
+        $event_wedding->date_created  = date("Y-m-d H:i:s");
 
-         if ($event_wedding->save()) {
+        // Preview image is optional, but an uploaded file must pass validation
+        if (!empty($_FILES['preview_image']['name'])) {
+            $event_wedding->set_file($_FILES['preview_image']);
+            if (empty($event_wedding->errors)) {
+                $event_wedding->save_image();
+            }
+        }
+
+         if (empty($event_wedding->errors) && $event_wedding->save()) {
             redirect_to("blog_events.php");
             $session->message("
             <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
@@ -56,9 +69,8 @@
               </button>
             </div>");
             die();
-        } else {
-            $msg = join("<br>", $event_wedding->errors);
         }
+        $msg = join("<br>", $event_wedding->errors);
     }
 ?>
 <?php $users_profile = Users::find_by_id($_SESSION['id']); ?>
@@ -102,6 +114,7 @@
             <div class="col-lg-8 pl-3 pb-3 box-shadow mt-4">
                
                 <form action="" method="post" enctype="multipart/form-data">
+                    <?= $session->csrf_field(); ?>
                     <?= isset($msg) ? $msg : ''; ?>
                     <h4 class="h4 mt-4 pb-2" style="border-bottom: 1px solid #dee2e6!important;">New Article 
 
