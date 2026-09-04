@@ -21,12 +21,23 @@
         $event_id = (int)$_POST['event_id'];
         $payment = floatval($_POST['payment']);
         $payment_method = clean($_POST['payment_method']);
-        $mpesa_code = clean($_POST['mpesa_code'] ?? '');
+        $mpesa_code = strtoupper(trim((string)($_POST['mpesa_code'] ?? '')));
         $cash = 0;
         $credit = 0;
 
         if ($event_id <= 0 || $payment <= 0) {
             $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Please fill in all required fields.</div>');
+            redirect_to("budget_add.php?$links");
+            die();
+        }
+
+        // The selected event must belong to this booking
+        $ownsEvent = Events::find_by_query(
+            'SELECT id FROM events WHERE id = :id AND booking_id = :bid LIMIT 1',
+            [':id' => $event_id, ':bid' => $booking_id]
+        );
+        if (!$ownsEvent) {
+            $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Selected event does not belong to this booking.</div>');
             redirect_to("budget_add.php?$links");
             die();
         }
@@ -37,10 +48,11 @@
                 $credit = 0;
                 break;
             case 'mpesa':
-                $cash = $payment;
+                // M-Pesa rows carry cash = 0; the payment method is derived from mpesa_code
+                $cash = 0;
                 $credit = 0;
-                if (empty($mpesa_code)) {
-                    $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> M-Pesa transaction code is required for M-Pesa payments.</div>');
+                if (!preg_match('/^[A-Z0-9]{10}$/', $mpesa_code)) {
+                    $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> M-Pesa transaction code is required and must be 10 characters (e.g. QKJ7GH9P2W).</div>');
                     redirect_to("budget_add.php?$links");
                     die();
                 }
@@ -49,17 +61,35 @@
                 $cash = 0;
                 $credit = $payment;
                 break;
+            default:
+                $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Please select a valid payment method.</div>');
+                redirect_to("budget_add.php?$links");
+                die();
         }
 
         $liquidate->event_id = $event_id;
         $liquidate->payment = $payment;
         $liquidate->cash = $cash;
         $liquidate->credit = $credit;
-        $liquidate->mpesa_code = $mpesa_code;
         $liquidate->booking_id = $booking_id;
         $liquidate->user_id = $user_id;
-        $liquidate->date_issue = date("F j, Y, g:i a");
-        $liquidate->save();
+        $liquidate->mpesa_code = $mpesa_code !== '' ? $mpesa_code : null;
+        $now = date('Y-m-d H:i:s');
+        $liquidate->date_issue = $now;
+        $liquidate->date_modified = $now;
+        try {
+            $liquidate->save();
+        } catch (PDOException $e) {
+            if (stripos($e->getMessage(), 'Duplicate entry') !== false) {
+                $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> That M-Pesa transaction code has already been recorded.</div>');
+                redirect_to("budget_add.php?$links");
+                die();
+            }
+            error_log('[WPMS][budget_add] ' . $e->getMessage());
+            $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Payment could not be saved. Please try again.</div>');
+            redirect_to("budget_add.php?$links");
+            die();
+        }
 
         $session->message('<div class="alert alert-success"><strong><i class="mdi mdi-check"></i></strong> Payment of <strong>' . format_ksh($payment, 2) . '</strong> recorded successfully.</div>');
         redirect_to("budget_add.php?$links");
@@ -123,7 +153,7 @@
 
                 <div class="form-group mpesa-field" id="mpesa_field">
                     <label>M-Pesa Transaction Code</label>
-                    <input type="text" name="mpesa_code" class="form-control" placeholder="e.g. QKJ7GH9P2W" maxlength="20">
+                    <input type="text" name="mpesa_code" class="form-control" placeholder="e.g. QKJ7GH9P2W" maxlength="10" style="text-transform: uppercase;">
                     <small class="text-muted">Enter the M-Pesa confirmation code (10 characters)</small>
                 </div>
 

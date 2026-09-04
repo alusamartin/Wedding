@@ -123,6 +123,9 @@
                             'colleague' => 'Colleague / Workmate',
                             'pastor_clergy' => 'Pastor / Clergy',
                             'vc_member' => 'VC / Committee Member',
+                            'harambee_sponsor' => 'Harambee Sponsor',
+                            'close_family' => 'Close Family',
+                            'regular' => 'Regular Guest',
                             'other' => 'Other'
                         ];
                         foreach ($relationships as $val => $label):

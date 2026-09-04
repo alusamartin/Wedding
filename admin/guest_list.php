@@ -111,16 +111,19 @@
             <td class="special">
                 <?php
                 $labels = [
-                    'family_elder' => 'Family Elder',
+                    'family_elder' => 'Family Elder (Mzee)',
                     'bridal_train' => 'Bridal Train',
-                    'upcountry_guest' => 'Upcountry',
+                    'upcountry_guest' => 'Upcountry Guest',
                     'family_friend' => 'Family Friend',
                     'colleague' => 'Colleague',
                     'pastor_clergy' => 'Pastor/Clergy',
                     'vc_member' => 'VC Member',
+                    'harambee_sponsor' => 'Harambee Sponsor',
+                    'close_family' => 'Close Family',
+                    'regular' => 'Regular Guest',
                     'other' => 'Other'
                 ];
-                echo $labels[$g->relationship] ?? 'Guest';
+                echo $labels[$g->relationship] ?? ucfirst(str_replace('_', ' ', (string) $g->relationship));
                 ?>
             </td>
             <td class="special"><?= htmlspecialchars($g->city); ?></td>
@@ -132,7 +135,10 @@
             <td class="special"><?= htmlspecialchars($g->dietary_requirements); ?></td>
             <td class="special">
                 <a href="guest_edit.php?id=<?= $g->id; ?>&<?= $links; ?>" class="btn btn-secondary btn-sm" title="Edit"><i class="mdi mdi-pencil"></i></a>
-                <a href="guest_delete.php?id=<?= $g->id; ?>&<?= $links; ?>" class="btn btn-danger btn-sm" title="Delete" onclick="return confirm('Delete this guest?');"><i class="mdi mdi-delete"></i></a>
+                <form method="post" action="guest_delete.php?id=<?= $g->id; ?>&<?= $links; ?>" class="d-inline" onsubmit="return confirm('Delete this guest?');">
+                    <?= $session->csrf_field(); ?>
+                    <button type="submit" class="btn btn-danger btn-sm" title="Delete"><i class="mdi mdi-delete"></i></button>
+                </form>
             </td>
         </tr>
     <?php endforeach; ?>

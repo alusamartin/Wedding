@@ -3,8 +3,8 @@
 <?php
     if (!is_staff()) { redirect_to("../");}
 
-    $booking_id = $_GET['booking_id'];
-    $user_id = $_GET['user_id'];
+    $booking_id = (int)($_GET['booking_id'] ?? 0);
+    $user_id = (int)($_GET['user_id'] ?? 0);
     $links='booking_id='.$booking_id.'&user_id='.$user_id;
     // $account_details = Account_Details::find_by_user_id($user_id);
     // $booking_details = Booking::find_by_booking_id($booking_id);
@@ -63,7 +63,7 @@
 
             <a class="btn btn-sm btn-info mr-2 active" style="font-size: 12px;" href="guest_list.php?<?= $links; ?>"><i class="mdi mdi-account-plus mr-2"></i> Master List Guest</a>
 
-            <a class="btn btn-sm btn-success mr-2 active" style="font-size: 12px;" href="budget.php?<?= $links; ?>"><i class="mdi mdi-currency-usd mr-2"></i> Budget</a>
+            <a class="btn btn-sm btn-success mr-2 active" style="font-size: 12px;" href="budget.php?<?= $links; ?>"><i class="mdi mdi-cash mr-2"></i> Budget</a>
 
 
             <a class="btn btn-sm btn-warning mr-2 active" style="font-size: 12px;" href="task_calendar.php?<?= $links; ?>"><i class="mdi mdi-calendar-text mr-2"></i> Task Calendar</a>
@@ -117,20 +117,21 @@
                 <?= $luquidate_item->date_issue; ?>
             </td>
             <td>
-                <a href="budget_edit.php?<?= $links; ?>&budget_id=<?= $luquidate_item->booking_id;?>" class="btn btn-warning btn-sm" style="font-size: 12px;">Change</a>
+                <a href="budget_edit.php?<?= $links; ?>&budget_id=<?= (int) $luquidate_item->id; ?>" class="btn btn-warning btn-sm" style="font-size: 12px;">Change</a>
             </td>
         </tr>
     <?php endforeach; ?>
 
     </tbody>
-    <tfooter>
+    </tbody>
+    <tfoot>
         <tr>
             <td align="right"><b>Total</b></td>
             <td><b><?= format_ksh($amount, 2); ?></b></td>
             <td><b><?= format_ksh($cash, 2); ?></b></td>
             <td><b><?= format_ksh($credit, 2); ?></b></td>
         </tr>
-    </tfooter>
+    </tfoot>
 </table>
 
 </main>

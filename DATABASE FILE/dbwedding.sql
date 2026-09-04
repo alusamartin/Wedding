@@ -236,13 +236,18 @@ CREATE TABLE `tblguest` (
   `fullname` varchar(100) NOT NULL,
   `guestname` varchar(100) NOT NULL,
   `address` text NOT NULL,
-  `state` char(4) NOT NULL,
+  `state` varchar(100) NOT NULL DEFAULT '',
   `zipcode` char(10) NOT NULL,
   `priority` enum('A','B','C','D','E') NOT NULL,
   `out_of_town` enum('y','n') NOT NULL,
   `relationship` varchar(32) NOT NULL,
   `tracks_and_gifts` text NOT NULL,
-  `city` varchar(100) NOT NULL
+  `city` varchar(100) NOT NULL,
+  `upcountry_accommodation` tinyint(1) DEFAULT 0,
+  `harambee_contribution` decimal(12,2) DEFAULT 0.00,
+  `dietary_requirements` varchar(100) DEFAULT NULL,
+  `transport_needed` tinyint(1) DEFAULT 0,
+  `phone` varchar(20) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 --
@@ -482,6 +487,7 @@ CREATE TABLE `tbl_liquidation` (
   `payment` decimal(10,2) NOT NULL,
   `cash` decimal(10,2) NOT NULL,
   `credit` decimal(10,2) NOT NULL,
+  `mpesa_code` varchar(20) DEFAULT NULL,
   `date_issue` varchar(100) NOT NULL,
   `date_modified` varchar(100) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
@@ -586,7 +592,8 @@ ALTER TABLE `tbl_features`
 -- Indexes for table `tbl_liquidation`
 --
 ALTER TABLE `tbl_liquidation`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uq_mpesa_code` (`mpesa_code`);
 
 --
 -- AUTO_INCREMENT for dumped tables

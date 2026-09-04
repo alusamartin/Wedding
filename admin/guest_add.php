@@ -122,6 +122,9 @@
                         <option value="colleague">Colleague / Workmate</option>
                         <option value="pastor_clergy">Pastor / Clergy</option>
                         <option value="vc_member">VC / Committee Member</option>
+                        <option value="harambee_sponsor">Harambee Sponsor</option>
+                        <option value="close_family">Close Family</option>
+                        <option value="regular">Regular Guest</option>
                         <option value="other">Other</option>
                     </select>
                 </div>

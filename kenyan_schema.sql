@@ -1,13 +1,24 @@
+-- ======================================================================
+-- WPMS Kenya — Kenyan-market schema additions
+-- Run after `DATABASE FILE/dbwedding.sql` (README step b). Statements are
+-- guarded (ADD COLUMN IF NOT EXISTS) so they no-op on a db that already
+-- carries the Kenyan columns — safe on fresh v2.1 installs and when
+-- re-run against an upgraded v2.0 database.
+-- ======================================================================
+
 -- 1. tblguest - Kenyan Guest Management
-ALTER TABLE `tblguest` 
-ADD COLUMN `upcountry_accommodation` TINYINT(1) DEFAULT 0 AFTER `city`,
-ADD COLUMN `harambee_contribution` DECIMAL(12,2) DEFAULT 0.00 AFTER `upcountry_accommodation`,
-ADD COLUMN `dietary_requirements` VARCHAR(100) DEFAULT NULL AFTER `harambee_contribution`,
-ADD COLUMN `transport_needed` TINYINT(1) DEFAULT 0 AFTER `dietary_requirements`;
+--    (full county names need more room than the legacy US char(4) `state`)
+ALTER TABLE `tblguest`
+ADD COLUMN IF NOT EXISTS `upcountry_accommodation` TINYINT(1) DEFAULT 0 AFTER `city`,
+ADD COLUMN IF NOT EXISTS `harambee_contribution` DECIMAL(12,2) DEFAULT 0.00 AFTER `upcountry_accommodation`,
+ADD COLUMN IF NOT EXISTS `dietary_requirements` VARCHAR(100) DEFAULT NULL AFTER `harambee_contribution`,
+ADD COLUMN IF NOT EXISTS `transport_needed` TINYINT(1) DEFAULT 0 AFTER `dietary_requirements`,
+ADD COLUMN IF NOT EXISTS `phone` VARCHAR(20) DEFAULT NULL AFTER `transport_needed`,
+MODIFY `state` VARCHAR(100) NOT NULL DEFAULT '';
 
 -- 2. tbl_liquidation - M-Pesa Payment Tracking
-ALTER TABLE `tbl_liquidation` 
-ADD COLUMN `mpesa_code` VARCHAR(20) DEFAULT NULL AFTER `credit`;
+ALTER TABLE `tbl_liquidation`
+ADD COLUMN IF NOT EXISTS `mpesa_code` VARCHAR(20) DEFAULT NULL AFTER `credit`;
 
 -- 3. tblweddingcategories - Kenyan Wedding Packages
 INSERT INTO `tblweddingcategories` (`wedding_type`, `price`, `preview_image`) VALUES
@@ -37,3 +48,17 @@ INSERT INTO `tbl_features` (`category_id`, `title`, `description`) VALUES
 (5, 'DJ & Sound System', 'Professional DJ with full sound system'),
 (5, 'Drinks & Beverages', 'Full bar and soft drinks service'),
 (5, 'Late Night Snacks', 'Chips, smokies, and refreshments');
+
+-- 5. tbl_liquidation - unique M-Pesa confirmation codes
+--    (idempotent guard; the code in budget_add.php stores NULL for non-M-Pesa
+--     rows, so a UNIQUE key never collides on empty codes)
+DELIMITER //
+CREATE PROCEDURE wpms21_ensure_mpesa_unique()
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN END;
+    UPDATE `tbl_liquidation` SET `mpesa_code` = NULL WHERE `mpesa_code` = '';
+    ALTER TABLE `tbl_liquidation` ADD UNIQUE KEY `uq_mpesa_code` (`mpesa_code`);
+END //
+DELIMITER ;
+CALL wpms21_ensure_mpesa_unique();
+DROP PROCEDURE IF EXISTS wpms21_ensure_mpesa_unique;

@@ -4,60 +4,78 @@
 
     if (!is_staff()) { redirect_to("../"); }
     
-    $booking_id = $_GET['booking_id'];
-    $user_id = $_GET['user_id'];
-    $budget_id = $_GET['budget_id'];
+    $booking_id = (int)($_GET['booking_id'] ?? 0);
+    $user_id = (int)($_GET['user_id'] ?? 0);
+    $budget_id = (int)($_GET['budget_id'] ?? 0);
     $links='booking_id='.$booking_id.'&user_id='.$user_id;
 
     $luquidate =  Liquidation::find_by_id($budget_id);
-    $events =  Events::find_all($booking_id);
+    if (!$luquidate) {
+        $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> That payment record no longer exists.</div>');
+        redirect_to("budget_liquidate.php?$links");
+        die();
+    }
+    $events =  Events::find_by_event_all_budget($booking_id);
 
     if (isset($_POST['submit'])) {
 
-        $event_id = clean($_POST['event_id']);
-        $payment = clean($_POST['payment']);
-        $cash = clean($_POST['cash']);
-
-        if( $payment < $cash) {
+        // CSRF validation
+        if (!$session->verify_csrf()) {
+            $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Invalid security token. Please try again.</div>');
             redirect_to("budget_edit.php?$links&budget_id=$budget_id");
-            $session->message("
-            <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
-              <strong><i class='mdi mdi-account-alert'></i></strong> Please check your cash detailed.
-              <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
-                <span aria-hidden=\"true\">&times;</span>
-              </button>
-            </div>");
             die();
         }
 
-         if (empty($event_id) || empty($payment)) {
+        $event_id = (int) clean($_POST['event_id']);
+        $payment = (float) clean($_POST['payment']);
+        $cash = (float) clean($_POST['cash']);
+
+        if ($event_id <= 0 || $payment <= 0 || $payment < $cash) {
+            $session->message('
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+              <strong><i class="mdi mdi-account-alert"></i></strong> Please check the payment details — cash cannot exceed payment and all fields are required.
+              <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+              </button>
+            </div>');
             redirect_to("budget_edit.php?$links&budget_id=$budget_id");
-            $session->message("
-            <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
-              <strong><i class='mdi mdi-account-alert'></i></strong> Please Fill up all the information.
-              <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
-                <span aria-hidden=\"true\">&times;</span>
-              </button>
-            </div>");
             die();
+        }
+
+        // The selected event must belong to this booking
+        $ownsEvent = Events::find_by_query(
+            'SELECT id FROM events WHERE id = :id AND booking_id = :bid LIMIT 1',
+            [':id' => $event_id, ':bid' => $booking_id]
+        );
+        if (!$ownsEvent) {
+            $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Selected event does not belong to this booking.</div>');
+            redirect_to("budget_edit.php?$links&budget_id=$budget_id");
+            die();
+        }
+
+        $luquidate->event_id = $event_id;
+        $luquidate->payment = $payment;
+        if (!empty($luquidate->mpesa_code)) {
+            // M-Pesa rows: method derives from the code; keep cash/credit at 0
+            $luquidate->cash = 0;
+            $luquidate->credit = 0;
         } else {
-             $luquidate->event_id = $event_id;
-             $luquidate->payment = $payment;
-             $luquidate->cash = $cash;
-             $luquidate->credit = $payment - $cash;
-             $luquidate->booking_id = $booking_id;
-             $luquidate->user_id = $user_id;
-             $luquidate->date_modified = date("F j, Y, g:i a");
-             $luquidate->save();
-             redirect_to("budget_edit.php?$links&budget_id=$budget_id");
-             $session->message("
-            <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
-              <strong><i class='mdi mdi-check'></i></strong> Successfully added.
-              <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
-                <span aria-hidden=\"true\">&times;</span>
+            $luquidate->cash = $cash;
+            $luquidate->credit = $payment - $cash;
+        }
+        $luquidate->booking_id = $booking_id;
+        $luquidate->user_id = $user_id;
+        $luquidate->date_modified = date('Y-m-d H:i:s');
+        $luquidate->save();
+        $session->message('
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+              <strong><i class="mdi mdi-check"></i></strong> Payment updated successfully.
+              <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
               </button>
-            </div>");
-         }
+            </div>');
+        redirect_to("budget_edit.php?$links&budget_id=$budget_id");
+        die();
     }
 ?>
 
@@ -99,8 +117,9 @@
             <div class="col-lg-8 offset-2 pl-3 pb-3 box-shadow mt-4">
             
                 <form method="post" action="">
+                    <?= $session->csrf_field(); ?>
 
-                    <h4 class="h4 mt-4 pb-2" style="border-bottom: 1px solid #dee2e6!important;">Luquidation for
+                    <h4 class="h4 mt-4 pb-2" style="border-bottom: 1px solid #dee2e6!important;">Liquidation for
                         <span class="text-right"><a href="budget.php?<?=$links; ?>" class="btn btn-sm btn-light active float-right" style="font-size: 12px;">Back</a></span>
                     </h4>
 

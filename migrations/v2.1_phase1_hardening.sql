@@ -68,7 +68,25 @@ CREATE TABLE IF NOT EXISTS `tblsession_audits` (
 -- SET GLOBAL sql_mode = 'STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION';
 
 -- ----------------------------------------------------------------------
--- 4. Verify migration
+-- 4. Guest relationship vocabulary (Stage 2 audit)
+--    The guest forms store code keys (family_elder, vc_member, ...) but the
+--    seed inserts human labels ('Family Elder (Mzee)', 'Officiant', ...),
+--    so seeded guests rendered the 'Guest' fallback in the list. Normalise
+--    labels to the code vocabulary (runs after the Kenya seed — idempotent).
+-- ----------------------------------------------------------------------
+UPDATE `tblguest` SET `relationship` = 'family_elder'     WHERE `relationship` IN ('Family Elder (Mzee)', 'Family Elder');
+UPDATE `tblguest` SET `relationship` = 'bridal_train'     WHERE `relationship` = 'Bridal Train';
+UPDATE `tblguest` SET `relationship` = 'upcountry_guest'  WHERE `relationship` = 'Upcountry Guest';
+UPDATE `tblguest` SET `relationship` = 'family_friend'    WHERE `relationship` IN ('Family Friend', 'Friend');
+UPDATE `tblguest` SET `relationship` = 'colleague'        WHERE `relationship` IN ('Colleague', 'Colleague / Workmate');
+UPDATE `tblguest` SET `relationship` = 'pastor_clergy'    WHERE `relationship` IN ('Pastor / Clergy', 'Officiant');
+UPDATE `tblguest` SET `relationship` = 'vc_member'        WHERE `relationship` IN ('VC / Committee Member', 'VC Member');
+UPDATE `tblguest` SET `relationship` = 'harambee_sponsor' WHERE `relationship` = 'Harambee Sponsor';
+UPDATE `tblguest` SET `relationship` = 'close_family'     WHERE `relationship` = 'Close Family';
+UPDATE `tblguest` SET `relationship` = 'regular'          WHERE `relationship` = 'Regular';
+
+-- ----------------------------------------------------------------------
+-- 5. Verify migration
 -- ----------------------------------------------------------------------
 -- SELECT 'v2.1_phase1_hardening applied' AS status, NOW() AS at;
 -- SHOW CREATE TABLE tblsession_audits;

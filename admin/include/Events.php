@@ -44,7 +44,9 @@ class Events extends DB_Object
     public static function getLiquidation_by_id(mixed $id): array
     {
         global $db;
-        $sql  = "SELECT * FROM tbl_liquidation INNER JOIN events ON events.id = tbl_liquidation.event_id WHERE tbl_liquidation.booking_id = :id";
+        // Select l.* first so `id` resolves to the liquidation PK (a plain
+        // SELECT * over the join lets events.id shadow it, breaking edit links).
+        $sql  = "SELECT l.*, e.title FROM tbl_liquidation l INNER JOIN events e ON e.id = l.event_id WHERE l.booking_id = :id";
         $stmt = $db->prepare($sql);
         $stmt->execute([':id' => (int) $id]);
         $arr = [];
