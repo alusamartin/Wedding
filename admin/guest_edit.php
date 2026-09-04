@@ -70,8 +70,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Edit Guest - Everafter Planner</title>
     <link href="css/bootstrap.min.css" rel="stylesheet">
-    <link href="css/dashboard.css"
-    <link href="css/modern-admin.css" rel="stylesheet"> rel="stylesheet">
+    <link href="css/dashboard.css" rel="stylesheet">
+    <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
     <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet">
     <style>
@@ -79,8 +79,8 @@
         .box-shadow { box-shadow: 0 0 2px 1px rgba(0,0,0,0.1); }
         .form-control, .btn { font-size: 13px; }
         .form-section { border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px; }
-        .form-section h6 { color: #c0392b; font-weight: 600; text-transform: uppercase; font-size: 12px; letter-spacing: 0.5px; }
-        .required::after { content: ' *'; color: #e74c3c; }
+        .form-section h6 { color: #065F46; font-weight: 600; text-transform: uppercase; font-size: 12px; letter-spacing: 0.5px; }
+        .required::after { content: ' *'; color: #DC2626; }
     </style>
 </head>
 <body>

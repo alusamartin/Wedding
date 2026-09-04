@@ -44,25 +44,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Subscription - Everafter Planner</title>
     <link href="css/bootstrap.min.css" rel="stylesheet">
-    <link href="css/dashboard.css"
-    <link href="css/modern-admin.css" rel="stylesheet"> rel="stylesheet">
+    <link href="css/dashboard.css" rel="stylesheet">
+    <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
     <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet">
     <style>
         body { margin-bottom: 2%; }
         .plan-card { border-radius: 8px; padding: 25px; margin-bottom: 20px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; border: 2px solid transparent; }
-        .plan-card:hover { border-color: #c0392b; transform: translateY(-2px); }
-        .plan-card.popular { border-color: #27ae60; }
+        .plan-card:hover { border-color: #065F46; transform: translateY(-2px); }
+        .plan-card.popular { border-color: #10B981; }
         .plan-card h4 { color: #333; margin-bottom: 5px; }
-        .plan-card .price { font-size: 36px; font-weight: 700; color: #c0392b; }
+        .plan-card .price { font-size: 36px; font-weight: 700; color: #065F46; }
         .plan-card .period { color: #888; font-size: 14px; }
         .plan-card ul { list-style: none; padding: 0; margin: 15px 0; }
         .plan-card ul li { padding: 5px 0; font-size: 13px; color: #555; }
-        .plan-card ul li i { color: #27ae60; margin-right: 8px; }
-        .current-plan { background: #e8f8f5; border-color: #27ae60; }
+        .plan-card ul li i { color: #10B981; margin-right: 8px; }
+        .current-plan { background: #E7F4EE; border-color: #10B981; }
         .status-badge { font-size: 11px; padding: 4px 10px; border-radius: 20px; }
-        .status-active { background: #d4edda; color: #155724; }
-        .status-expired { background: #f8d7da; color: #721c24; }
+        .status-active { background: #E7F4EE; color: #065F46; }
+        .status-expired { background: #FEF2F2; color: #B91C1C; }
     </style>
 </head>
 <body>

@@ -43,8 +43,8 @@
     <script src='calendar/moment.min.js'></script>
     <script src='calendar/jquery.min.js'></script>
     <link href="css/bootstrap.min.css" rel="stylesheet">
-    <link href="css/dashboard.css"
-    <link href="css/modern-admin.css" rel="stylesheet"> rel="stylesheet">
+    <link href="css/dashboard.css" rel="stylesheet">
+    <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css"
           href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
     <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet">
@@ -172,7 +172,7 @@
 <div class="row">
     <div class="col-md-12 mb-3">
         <ul class="list-group">
-            <li class="list-group-item active bg-danger"><?= htmlspecialchars($category_details->wedding_type ?? 'Your'); ?> Package Includes:</li>
+            <li class="list-group-item active" style="background:#065F46;border-color:#065F46;"><?= htmlspecialchars($category_details->wedding_type ?? 'Your'); ?> Package Includes:</li>
             <?php if (empty($features_details)) : ?>
                 <li class="list-group-item text-muted">Package features are being finalised — our team will share the full list with you.</li>
             <?php else : ?>

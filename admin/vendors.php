@@ -40,8 +40,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Vendor Marketplace - Everafter Planner</title>
     <link href="css/bootstrap.min.css" rel="stylesheet">
-    <link href="css/dashboard.css"
-    <link href="css/modern-admin.css" rel="stylesheet"> rel="stylesheet">
+    <link href="css/dashboard.css" rel="stylesheet">
+    <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
     <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet">
     <style>
@@ -49,15 +49,15 @@
         .vendor-card { border-radius: 8px; overflow: hidden; margin-bottom: 20px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
         .vendor-card:hover { transform: translateY(-3px); box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
         .vendor-card .card-body { padding: 20px; }
-        .vendor-card .vendor-logo { width: 60px; height: 60px; border-radius: 50%; background: #f8f9fa; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #c0392b; margin-bottom: 10px; }
+        .vendor-card .vendor-logo { width: 60px; height: 60px; border-radius: 50%; background: #f8f9fa; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #065F46; margin-bottom: 10px; }
         .vendor-card .vendor-name { font-size: 16px; font-weight: 600; color: #333; margin-bottom: 5px; }
         .vendor-card .vendor-category { font-size: 11px; text-transform: uppercase; color: #888; letter-spacing: 0.5px; }
         .vendor-card .vendor-location { font-size: 12px; color: #666; margin: 8px 0; }
-        .vendor-card .vendor-rating { color: #f39c12; font-size: 12px; }
-        .premium-badge { background: linear-gradient(135deg, #f39c12, #e67e22); color: #fff; font-size: 10px; padding: 3px 8px; border-radius: 10px; }
+        .vendor-card .vendor-rating { color: #D97706; font-size: 12px; }
+        .premium-badge { background: linear-gradient(135deg, #D97706, #B45309); color: #fff; font-size: 10px; padding: 3px 8px; border-radius: 10px; }
         .category-filter { margin-bottom: 20px; }
         .category-filter .btn { margin-right: 5px; margin-bottom: 5px; font-size: 12px; }
-        .category-filter .btn.active { background: #c0392b; border-color: #c0392b; }
+        .category-filter .btn.active { background: #065F46; border-color: #065F46; }
     </style>
 </head>
 <body>

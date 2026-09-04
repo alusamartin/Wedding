@@ -17,22 +17,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Guest List - Everafter Planner</title>
     <link href="css/bootstrap.min.css" rel="stylesheet">
-    <link href="css/dashboard.css"
-    <link href="css/modern-admin.css" rel="stylesheet"> rel="stylesheet">
+    <link href="css/dashboard.css" rel="stylesheet">
+    <link href="css/modern-admin.css" rel="stylesheet">
     <link href="css/dataTables.bootstrap4.min.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
     <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet">
     <style>
         table.table.table-striped.table-bordered.table-sm { font-size:12px; }
         td.special { padding: 0; padding-top: 8px; padding-left:6px; padding-bottom:6px; margin-top:5px; text-transform: capitalize; }
-        .stat-card { background: #fff; border-left: 4px solid #c0392b; padding: 10px 15px; margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .stat-card { background: #fff; border-left: 4px solid #065F46; padding: 10px 15px; margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .stat-card h6 { font-size: 11px; text-transform: uppercase; color: #888; margin: 0; }
         .stat-card .value { font-size: 20px; font-weight: 700; color: #333; }
-        .badge-priority-A { background: #c0392b; color: #fff; }
-        .badge-priority-B { background: #e67e22; color: #fff; }
-        .badge-priority-C { background: #f1c40f; color: #333; }
-        .badge-priority-D { background: #3498db; color: #fff; }
-        .badge-priority-E { background: #95a5a6; color: #fff; }
+        .badge-priority-A { background: #DC2626; color: #fff; }
+        .badge-priority-B { background: #D97706; color: #fff; }
+        .badge-priority-C { background: #EAB308; color: #333; }
+        .badge-priority-D { background: #0EA5A0; color: #fff; }
+        .badge-priority-E { background: #64748B; color: #fff; }
     </style>
 </head>
 <body>
@@ -63,19 +63,19 @@
         </div>
     </div>
     <div class="col-md-3">
-        <div class="stat-card" style="border-left-color: #27ae60;">
+        <div class="stat-card" style="border-left-color: #059669;">
             <h6>Upcountry Guests</h6>
             <div class="value"><?= count($upcountry_guests); ?></div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="stat-card" style="border-left-color: #f39c12;">
+        <div class="stat-card" style="border-left-color: #D97706;">
             <h6>Total Harambee</h6>
             <div class="value"><?= format_ksh($total_harambee, 2); ?></div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="stat-card" style="border-left-color: #3498db;">
+        <div class="stat-card" style="border-left-color: #0EA5A0;">
             <h6>Transport Needed</h6>
             <div class="value"><?= count(array_filter($guest_list, fn($g) => $g->transport_needed)); ?></div>
         </div>

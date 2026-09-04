@@ -73,21 +73,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>SMS Center - Everafter Planner</title>
     <link href="css/bootstrap.min.css" rel="stylesheet">
-    <link href="css/dashboard.css"
-    <link href="css/modern-admin.css" rel="stylesheet"> rel="stylesheet">
+    <link href="css/dashboard.css" rel="stylesheet">
+    <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
     <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet">
     <style>
         body { margin-bottom: 2%; }
         .sms-card { border-radius: 8px; padding: 20px; margin-bottom: 20px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        .credit-badge { background: linear-gradient(135deg, #27ae60, #2ecc71); color: #fff; padding: 15px 25px; border-radius: 8px; text-align: center; }
+        .credit-badge { background: linear-gradient(135deg, #065F46, #059669); color: #fff; padding: 15px 25px; border-radius: 8px; text-align: center; }
         .credit-badge .number { font-size: 36px; font-weight: 700; }
         .credit-badge .label { font-size: 12px; text-transform: uppercase; opacity: 0.9; }
         .sms-log { font-size: 12px; padding: 8px; border-bottom: 1px solid #eee; }
         .sms-log:last-child { border-bottom: none; }
-        .status-sent { color: #27ae60; }
-        .status-failed { color: #e74c3c; }
-        .status-pending { color: #f39c12; }
+        .status-sent { color: #059669; }
+        .status-failed { color: #DC2626; }
+        .status-pending { color: #D97706; }
     </style>
 </head>
 <body>

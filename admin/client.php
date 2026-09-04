@@ -49,7 +49,7 @@
         $html = '<tr>';
         $html .= '<td>
             <div class="d-flex align-items-center">
-                <div class="avatar-sm bg-danger text-white rounded-circle mr-2">' . strtoupper(substr($bookWedding->firstname, 0, 1)) . strtoupper(substr($bookWedding->lastname, 0, 1)) . '</div>
+                <div class="avatar-sm text-white rounded-circle mr-2" style="background:#065F46">' . strtoupper(substr($bookWedding->firstname, 0, 1)) . strtoupper(substr($bookWedding->lastname, 0, 1)) . '</div>
                 <div>
                     <strong>' . htmlspecialchars($bookWedding->firstname . ' ' . $bookWedding->lastname) . '</strong>
                     <br><small class="text-muted">' . htmlspecialchars($bookWedding->user_email) . '</small>
@@ -57,9 +57,9 @@
             </div>
         </td>';
         $html .= '<td>
-            <strong class="text-danger">' . htmlspecialchars($bookWedding->bride ?: 'TBD') . '</strong>
+            <strong>' . htmlspecialchars($bookWedding->bride ?: 'TBD') . '</strong>
             <br><span class="text-muted">&</span>
-            <br><strong class="text-danger">' . htmlspecialchars($bookWedding->groom ?: 'TBD') . '</strong>
+            <br><strong>' . htmlspecialchars($bookWedding->groom ?: 'TBD') . '</strong>
         </td>';
         $html .= '<td>
             <span class="badge badge-info">' . htmlspecialchars($package_name) . '</span>
@@ -67,7 +67,7 @@
         </td>';
         $html .= '<td>
             <i class="mdi mdi-phone text-success"></i> ' . htmlspecialchars($bookWedding->phone) . '
-            <br><i class="mdi mdi-map-marker text-danger"></i> ' . htmlspecialchars($bookWedding->city ?: 'TBD') . '
+            <br><i class="mdi mdi-map-marker text-muted"></i> ' . htmlspecialchars($bookWedding->city ?: 'TBD') . '
         </td>';
         $html .= '<td>
             <strong>' . htmlspecialchars($bookWedding->wedding_date ?: 'TBD') . '</strong>
@@ -112,6 +112,7 @@
     <title>Bookings - Everafter Planner</title>
     <link href="css/bootstrap.min.css" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
+    <link href="css/modern-admin.css" rel="stylesheet">
     <link href="css/dataTables.bootstrap4.min.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
     <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet">
@@ -123,13 +124,13 @@
             padding: 20px;
             margin-bottom: 20px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            border-left: 4px solid #c0392b;
+            border-left: 4px solid #065F46;
             transition: transform 0.2s;
         }
         .stat-card:hover { transform: translateY(-2px); }
-        .stat-card.success { border-left-color: #27ae60; }
-        .stat-card.info { border-left-color: #3498db; }
-        .stat-card.warning { border-left-color: #f39c12; }
+        .stat-card.success { border-left-color: #059669; }
+        .stat-card.info { border-left-color: #0EA5A0; }
+        .stat-card.warning { border-left-color: #D97706; }
         .stat-card h6 {
             font-size: 11px;
             text-transform: uppercase;
@@ -144,7 +145,7 @@
         }
         .stat-card .trend {
             font-size: 11px;
-            color: #27ae60;
+            color: #059669;
             margin-top: 5px;
         }
         .filter-bar {
@@ -159,8 +160,8 @@
             font-size: 12px;
         }
         .filter-bar .btn.active {
-            background: #c0392b;
-            border-color: #c0392b;
+            background: #065F46;
+            border-color: #065F46;
             color: #fff;
         }
         .search-box {
@@ -270,7 +271,7 @@
             font-size: 12px;
         }
         .quick-stat strong {
-            color: #c0392b;
+            color: #065F46;
         }
         .table-actions {
             display: flex;
@@ -297,9 +298,9 @@
     <?php endif; ?>
 
     <!-- Page Header -->
-    <div class="d-flex justify-content-between align-items-center mb-4" style="border-bottom: 2px solid #c0392b; padding-bottom: 15px;">
+    <div class="d-flex justify-content-between align-items-center mb-4" style="border-bottom: 2px solid #E2E8F0; padding-bottom: 15px;">
         <div>
-            <h4 class="mb-1"><i class="mdi mdi-calendar-multiple-check text-danger"></i> Wedding Bookings</h4>
+            <h4 class="mb-1"><i class="mdi mdi-calendar-multiple-check" style="color:#065F46"></i> Wedding Bookings</h4>
             <p class="text-muted mb-0" style="font-size: 13px;"><?= $is_staff_view ? 'Manage all wedding bookings, track progress, and access planning tools' : 'Track your wedding booking and planning progress'; ?></p>
         </div>
         <div class="table-actions">
@@ -348,7 +349,7 @@
         <div class="row align-items-center">
             <div class="col-md-6">
                 <div class="btn-group">
-                    <a href="client.php?status=all" class="btn btn-outline-danger <?= $status_filter == 'all' ? 'active' : ''; ?>">
+                    <a href="client.php?status=all" class="btn btn-outline-primary <?= $status_filter == 'all' ? 'active' : ''; ?>">
                         <i class="mdi mdi-view-list"></i> All <span class="badge badge-light"><?= $total_all; ?></span>
                     </a>
                     <a href="client.php?status=pending" class="btn btn-outline-warning <?= $status_filter == 'pending' ? 'active' : ''; ?>">
@@ -381,7 +382,7 @@
     <div class="booking-table mb-4">
         <div class="section-header d-flex justify-content-between align-items-center">
             <h5><i class="mdi mdi-view-list"></i> All Bookings</h5>
-            <span class="badge badge-danger"><?= $total_all; ?> total</span>
+            <span class="badge badge-dark"><?= $total_all; ?> total</span>
         </div>
         <?php if (empty($all_bookings)): ?>
             <?php if ($is_staff_view): ?>

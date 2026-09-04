@@ -25,6 +25,7 @@ class Booking extends DB_Object
     public $user_email;
     public $wedding_type;
     public $phone;
+    public $city; // joined from tblaccounts_detail
     public $organizer_id;
 
     public function check_wedding_date(string $date): bool

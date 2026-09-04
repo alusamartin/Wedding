@@ -4,7 +4,7 @@
     // dashboard on client.php) have no tblusers row, so fall back to a client chip.
     $sidebar_user = ($users_profile instanceof Users) ? $users_profile : null;
 ?>
-<nav class="navbar sticky-top p-0" style="width: 16.7%;background-color: #f44336;">
+<nav class="navbar sticky-top p-0" style="width: 16.7%;">
     <a class="navbar-brand col-sm-3 col-md-2 mr-0" style="color:white;" href="<?= $sidebar_user ? 'dashboard.php' : 'client.php'; ?>">
         <!-- <img src="images/admin.png" alt="" style="width: 200px;"> -->
         Everafter Planner
@@ -41,7 +41,7 @@
                     <li class="nav-item"><div class="dropdown-divider"></div></li>
                     <li class="nav-item">
                         <a class="nav-link" href="client.php">
-                            <i class="mdi mdi-calendar-multiple-check mr-3" style="color: #2196f3"></i>
+                            <i class="mdi mdi-calendar-multiple-check mr-3"></i>
                             My Bookings
                         </a>
                     </li>
@@ -51,21 +51,21 @@
 
                     <li class="nav-item">
                         <a class="nav-link" href="dashboard.php">
-                            <i class="mdi mdi-home mr-3" style="color:#242424;"></i>
+                            <i class="mdi mdi-home mr-3"></i>
                             Dashboard <span class="sr-only">(current)</span>
                         </a>
                     </li>
                     <li class="nav-item"><div class="dropdown-divider"></div></li>
                     <li class="nav-item">
                         <a class="nav-link" href="blog_events.php">
-                            <i class="mdi mdi-comment-text mr-3" style="color:#795548;"></i>
+                            <i class="mdi mdi-comment-text mr-3"></i>
                             Blogs &amp; Events
                         </a>
                     </li>
                     <li class="nav-item"><div class="dropdown-divider"></div></li>
                     <li class="nav-item">
                         <a class="nav-link" href="client.php" >
-                            <i class="mdi mdi-account-multiple mr-3" style="color: #2196f3"></i>
+                            <i class="mdi mdi-account-multiple mr-3"></i>
                             Clients
                         </a>
                     </li>
@@ -73,7 +73,7 @@
 
                     <li class="nav-item">
                         <a class="nav-link" href="service_list.php">
-                            <i class="mdi mdi-verified mr-3" style="color: #4caf50;"></i>
+                            <i class="mdi mdi-verified mr-3"></i>
                             Services
                         </a>
                     </li>
@@ -81,7 +81,7 @@
 
                     <li class="nav-item">
                         <a class="nav-link" href="photos_view.php">
-                            <i class="mdi mdi-image-multiple mr-3" style="color:#673ab7!important"></i>
+                            <i class="mdi mdi-image-multiple mr-3"></i>
                             Gallery
                         </a>
                     </li>
@@ -89,38 +89,38 @@
                     <li class="nav-item"><div class="dropdown-divider"></div></li>
                     <li class="nav-item">
                         <a class="nav-link" href="photos_add.php">
-                            <i class="mdi mdi-upload-multiple mr-3" style="color: #e91e63!important"></i>
+                            <i class="mdi mdi-upload-multiple mr-3"></i>
                             Upload Photos
                         </a>
                     </li>
                     <li class="nav-item"><div class="dropdown-divider"></div></li>
                     <li class="nav-item">
                         <a class="nav-link" href="users.php">
-                            <i class="mdi mdi-account-card-details mr-3" style=" color: #03a9f4!important;"></i>
+                            <i class="mdi mdi-account-card-details mr-3"></i>
                             User Management
                         </a>
                     </li>
                     <li class="nav-item"><div class="dropdown-divider"></div></li>
 
                     <!-- Monetization Section -->
-                    <li class="nav-item mt-3 mb-1 ml-3" style="font-size: 11px; text-transform: uppercase; color: #c0392b; font-weight: 600;">
+                    <li class="nav-item mt-3 mb-1 ml-3" style="font-size: 11px; text-transform: uppercase; color: #94A3B8; font-weight: 600; letter-spacing: .04em;">
                         <i class="mdi mdi-cash-multiple mr-1"></i> Monetization
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="subscription.php">
-                            <i class="mdi mdi-crown mr-3" style="color: #f39c12!important;"></i>
+                            <i class="mdi mdi-crown mr-3"></i>
                             Subscription Plans
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="vendors.php">
-                            <i class="mdi mdi-store mr-3" style="color: #27ae60!important;"></i>
+                            <i class="mdi mdi-store mr-3"></i>
                             Vendor Marketplace
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="sms_center.php">
-                            <i class="mdi mdi-message-text mr-3" style="color: #3498db!important;"></i>
+                            <i class="mdi mdi-message-text mr-3"></i>
                             SMS Center
                         </a>
                     </li>
@@ -128,7 +128,7 @@
 
                     <li class="nav-item">
                         <a class="nav-link" href="task_all_calendar.php">
-                            <i class="mdi mdi-calendar-text mr-3" style="color: #f44336!important;"></i>
+                            <i class="mdi mdi-calendar-text mr-3"></i>
                             Task Calendar
                         </a>
                     </li>
@@ -149,6 +149,6 @@
 
                 <div class="form-inline my-2 my-lg-0">
                     <a class="nav-link" href="<?= $sidebar_user ? 'users_profile.php' : 'client.php'; ?>"><b><?= $sidebar_user ? ucfirst($sidebar_user->firstname) . ' ' . ucfirst($sidebar_user->lastname) : htmlspecialchars((string) ($_SESSION['user_email'] ?? 'Client')); ?></b></a>
-                    <a class="nav-link" href="logout.php"><b><i class="mdi mdi-logout" style="color: #f44336!important;"></i> Logout</b></a>
+                    <a class="nav-link" href="logout.php"><b><i class="mdi mdi-logout"></i> Logout</b></a>
                 </div>
             </nav>

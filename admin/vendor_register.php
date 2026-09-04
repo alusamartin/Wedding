@@ -67,15 +67,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Register Vendor - Everafter Planner</title>
     <link href="css/bootstrap.min.css" rel="stylesheet">
-    <link href="css/dashboard.css"
-    <link href="css/modern-admin.css" rel="stylesheet"> rel="stylesheet">
+    <link href="css/dashboard.css" rel="stylesheet">
+    <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
     <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet">
     <style>
         body { margin-bottom: 2%; }
         .box-shadow { box-shadow: 0 0 2px 1px rgba(0,0,0,0.1); padding: 20px; background: white; border-radius: 8px; }
         .form-control { font-size: 13px; }
-        .required::after { content: ' *'; color: #e74c3c; }
+        .required::after { content: ' *'; color: #DC2626; }
         .package-row { background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 10px; }
     </style>
 </head>

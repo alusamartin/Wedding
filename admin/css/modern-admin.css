@@ -31,6 +31,7 @@ nav.navbar.sticky-top .navbar-brand{ color:#fff !important; font-weight:700; let
 .sidebar .user-profile{ color:#fff; font-weight:600; font-size:13px; margin-top:8px; }
 .sidebar .nav-link{ color:var(--sidebar-muted) !important; font-size:13px; font-weight:500; padding:.52rem .7rem !important; border-radius:10px; margin:1px 4px; display:flex; align-items:center; }
 .sidebar .nav-link:hover{ background:var(--sidebar-active); color:#fff !important; }
+.sidebar .nav-link:hover .mdi{ color:#fff !important; }
 .sidebar .nav-link .mdi{ color:var(--sidebar-muted) !important; }
 .sidebar .dropdown-divider{ border-color:rgba(255,255,255,.07) !important; margin:.35rem 0; }
 .sidebar .text-uppercase{ color:#38BDF8 !important; opacity:.9; }
@@ -61,6 +62,30 @@ div.dataTables_wrapper .dataTables_paginate .paginate_button.current{ background
 .btn-primary:hover{ background:#0a7a5c !important; }
 .form-control{ border-radius:10px !important; border-color:var(--admin-line) !important; font-size:13px !important; }
 .form-control:focus{ border-color:var(--admin-accent) !important; box-shadow:0 0 0 4px rgba(6,95,70,.12) !important; }
+
+/* Danger family — destructive actions use the theme token, not legacy flat red */
+.btn-danger{ background:#DC2626 !important; border-color:#DC2626 !important; }
+.btn-danger:hover{ background:#B91C1C !important; border-color:#B91C1C !important; }
+.btn-outline-danger{ color:#DC2626 !important; border-color:#DC2626 !important; }
+.btn-outline-danger:hover{ background:#DC2626 !important; border-color:#DC2626 !important; color:#fff !important; }
+.text-danger{ color:#DC2626 !important; }
+.badge-danger{ background:#DC2626 !important; color:#fff !important; }
+.bg-danger{ background:#DC2626 !important; }
+.alert-danger{ background:#FEF2F2 !important; color:#991B1B !important; border:1px solid #FECACA !important; }
+
+/* Outline button family — harmonized to theme tokens (replaces Bootstrap blues/reds) */
+.btn-outline-primary{ color:#065F46 !important; border-color:#065F46 !important; }
+.btn-outline-primary:hover, .btn-outline-primary.active{ background:#065F46 !important; border-color:#065F46 !important; color:#fff !important; }
+.btn-outline-info{ color:#0E7490 !important; border-color:#0EA5A0 !important; }
+.btn-outline-info:hover, .btn-outline-info.active{ background:#0EA5A0 !important; border-color:#0EA5A0 !important; color:#fff !important; }
+.btn-outline-success{ color:#047857 !important; border-color:#059669 !important; }
+.btn-outline-success:hover, .btn-outline-success.active{ background:#059669 !important; border-color:#059669 !important; color:#fff !important; }
+.btn-outline-warning{ color:#B45309 !important; border-color:#D97706 !important; }
+.btn-outline-warning:hover, .btn-outline-warning.active{ background:#D97706 !important; border-color:#D97706 !important; color:#fff !important; }
+.btn-outline-dark{ color:#334155 !important; border-color:#64748B !important; }
+.btn-outline-dark:hover, .btn-outline-dark.active{ background:#334155 !important; border-color:#334155 !important; color:#fff !important; }
+.btn-outline-secondary{ color:#475569 !important; border-color:#94A3B8 !important; }
+.btn-outline-secondary:hover, .btn-outline-secondary.active{ background:#475569 !important; border-color:#475569 !important; color:#fff !important; }
 
 /* Alerts */
 .alert{ border-radius:12px !important; border:none !important; font-size:13px; }

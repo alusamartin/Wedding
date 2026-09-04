@@ -20,19 +20,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Budget - Everafter Planner</title>
     <link href="css/bootstrap.min.css" rel="stylesheet">
-    <link href="css/dashboard.css"
-    <link href="css/modern-admin.css" rel="stylesheet"> rel="stylesheet">
+    <link href="css/dashboard.css" rel="stylesheet">
+    <link href="css/modern-admin.css" rel="stylesheet">
     <link href="css/dataTables.bootstrap4.min.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
     <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet">
     <style>
         table.table.table-striped.table-bordered.table-sm { font-size:12px; }
-        .stat-card { background: #fff; border-left: 4px solid #c0392b; padding: 12px 15px; margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .stat-card { background: #fff; border-left: 4px solid #065F46; padding: 12px 15px; margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .stat-card h6 { font-size: 11px; text-transform: uppercase; color: #888; margin: 0; }
         .stat-card .value { font-size: 22px; font-weight: 700; color: #333; }
-        .mpesa-green { color: #27ae60; }
-        .cash-blue { color: #3498db; }
-        .credit-orange { color: #e67e22; }
+        .mpesa-green { color: #059669; }
+        .cash-blue { color: #0EA5A0; }
+        .credit-orange { color: #D97706; }
     </style>
 </head>
 <body>
@@ -63,19 +63,19 @@
         </div>
     </div>
     <div class="col-md-3">
-        <div class="stat-card" style="border-left-color: #27ae60;">
+        <div class="stat-card" style="border-left-color: #059669;">
             <h6>Total Paid</h6>
             <div class="value"><?= format_ksh($totals['grand_total'] ?? 0); ?></div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="stat-card" style="border-left-color: #e67e22;">
+        <div class="stat-card" style="border-left-color: #D97706;">
             <h6>Balance Due</h6>
             <div class="value"><?= format_ksh(($category_details->price ?? 0) - ($totals['grand_total'] ?? 0)); ?></div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="stat-card" style="border-left-color: #3498db;">
+        <div class="stat-card" style="border-left-color: #0EA5A0;">
             <h6>Budget Items</h6>
             <div class="value"><?= count($budget_items); ?></div>
         </div>

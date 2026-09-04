@@ -20,8 +20,8 @@
    <meta charset='utf-8' />
 
     <link href="css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" type="text/css" href="css/dashboard.css"
-    <link href="css/modern-admin.css" rel="stylesheet">>
+    <link rel="stylesheet" type="text/css" href="css/dashboard.css">
+    <link href="css/modern-admin.css" rel="stylesheet">
     <link href='calendar/all.css' rel='stylesheet'>
 
     <link href='calendar/fullcalendar.min.css' rel='stylesheet' />
