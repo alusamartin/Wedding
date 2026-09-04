@@ -209,6 +209,11 @@ final class SignupFormValidationTest extends TestCase
         }
         // All six inputs must be required regardless of attribute ordering.
         self::assertGreaterThanOrEqual(6, substr_count($form, ' required'), $page . ' sign-up form must mark every field required');
+        // The form must embed its own CSRF token — the handler rejects any
+        // submission without it, and a missing field used to make the whole
+        // form bounce silently (the login modal in the nav also carries a
+        // token, so check the form region itself).
+        self::assertStringContainsString('<input type="hidden" name="_token" value="', $form, $page . ' sign-up form must embed a CSRF token');
         // The date guard script must run on this page.
         self::assertStringContainsString('Please pick your wedding date from the calendar (MM/DD/YYYY).', $res['body'], $page . ' must load the wedding-date guard message');
         self::assertStringContainsString('dateIsValid(val)', $res['body'], $page . ' must load the wedding-date guard logic');
@@ -255,5 +260,84 @@ final class SignupFormValidationTest extends TestCase
             return;
         }
         self::assertSame(0, $count, 'a rejected sign-up POST must never create an account');
+    }
+
+    #[Group('integration')]
+    public function testCsrfTokenedSignupPostCreatesTheAccount(): void
+    {
+        $this->requireServer();
+        if (self::$db === null) {
+            self::markTestSkipped('DB unavailable — skipping tokened sign-up round-trip');
+            return;
+        }
+
+        // Pick a future Saturday that no seeded booking already owns.
+        $wedding = null;
+        $probe   = strtotime('+180 days');
+        for ($i = 0; $i < 60 && $wedding === null; $i++) {
+            $probe += 7 * 86400;
+            $d = date('Y-m-d', $probe);
+            try {
+                $taken = (int) self::$db->fetchValue(
+                    'SELECT COUNT(*) FROM tblweddingbook WHERE wedding_date = :d',
+                    [':d' => $d]
+                );
+            } catch (Throwable $e) {
+                self::markTestSkipped('DB query failed — skipping tokened sign-up round-trip');
+                return;
+            }
+            if ($taken === 0) {
+                $wedding = $d;
+            }
+        }
+        if ($wedding === null) {
+            self::markTestSkipped('no free wedding date found — skipping tokened sign-up round-trip');
+            return;
+        }
+
+        $email = 'csrfok' . substr((string) time(), -6) . '@example.com';
+
+        // Read the token from the sign-up form itself.
+        $page = self::http('GET', '/index.php');
+        $formStart = strpos($page['body'], 'form class="bgact"');
+        $form = substr($page['body'], $formStart);
+        self::assertSame(1, preg_match('/name="_token" value="([^"]+)"/', $form, $m), 'index.php sign-up form must embed a CSRF token');
+        $token = html_entity_decode($m[1], ENT_QUOTES);
+
+        $post = self::http('POST', '/index.php', [
+            'register'       => 'Sign Up',
+            '_token'         => $token,
+            'user_firstname' => 'Csrf',
+            'user_lastname'  => 'Ok',
+            'user_email'     => $email,
+            'user_phone'     => '0712000888',
+            'user_password'  => 'CsrfOk123!',
+            'wedding_date'   => date('m/d/Y', strtotime($wedding)),
+        ]);
+        self::assertSame(302, $post['status'], 'a CSRF-valid sign-up POST must be accepted');
+        self::assertStringContainsString('thank_you.php', $post['location'] ?? '', 'a CSRF-valid sign-up must land on thank_you.php');
+
+        try {
+            $count = (int) self::$db->fetchValue(
+                'SELECT COUNT(*) FROM tblaccounts WHERE user_email = :e',
+                [':e' => $email]
+            );
+            self::assertSame(1, $count, 'a CSRF-valid sign-up must create exactly one account');
+        } finally {
+            // Remove the probe account and its child rows to restore seed state.
+            try {
+                $userId = (int) self::$db->fetchValue(
+                    'SELECT user_id FROM tblaccounts WHERE user_email = :e',
+                    [':e' => $email]
+                );
+                if ($userId > 0) {
+                    foreach (['tblweddingbook' => 'user_id', 'tblaccounts_detail' => 'user_id', 'tblaccounts' => 'user_id'] as $table => $col) {
+                        self::$db->execute('DELETE FROM ' . $table . ' WHERE ' . $col . ' = :id', [':id' => $userId]);
+                    }
+                }
+            } catch (Throwable $cleanupIgnored) {
+                // Leave the row rather than fail the test on cleanup trouble.
+            }
+        }
     }
 }
