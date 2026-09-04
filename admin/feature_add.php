@@ -100,7 +100,7 @@
                         <label for="wedding_type">Wedding Type</label>
                         <select name="wedding_type" id="wedding_type" class="form-control">
                         <?php foreach ($category as $categories) : ?>
-                            <option value="<?= $categories->id; ?>"><?= $categories->wedding_type; ?> - Price: KSh <?= number_format($categories->price, 2); ?></option>
+                            <option value="<?= $categories->id; ?>"><?= $categories->wedding_type; ?> - Price: <?= format_ksh($categories->price, 2); ?></option>
                         <?php endforeach; ?>
                         </select>
                     </div>

@@ -77,3 +77,12 @@ function formatBytes($size, $precision = 2)
 
     return round(pow(1024, $base - floor($base)), $precision) .' '. $suffixes[floor($base)];
 }
+
+/**
+ * Format an amount as Kenyan Shillings, e.g. KSh 1,500,000.
+ * Decimals default to 0 (KSh amounts rarely need cents).
+ */
+function format_ksh($amount, $decimals = 0)
+{
+    return 'KSh ' . number_format((float) $amount, $decimals);
+}

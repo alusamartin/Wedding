@@ -71,7 +71,7 @@
     <div class="col-md-3">
         <div class="stat-card" style="border-left-color: #f39c12;">
             <h6>Total Harambee</h6>
-            <div class="value">KSh <?= number_format($total_harambee, 2); ?></div>
+            <div class="value"><?= format_ksh($total_harambee, 2); ?></div>
         </div>
     </div>
     <div class="col-md-3">
@@ -128,7 +128,7 @@
             <td class="special"><?= ($g->out_of_town == 'y') ? '<i class="mdi mdi-check text-success"></i> Yes' : '<i class="mdi mdi-close text-muted"></i>'; ?></td>
             <td class="special"><?= $g->upcountry_accommodation ? '<i class="mdi mdi-bed text-success"></i>' : ''; ?></td>
             <td class="special"><?= $g->transport_needed ? '<i class="mdi mdi-bus text-primary"></i>' : ''; ?></td>
-            <td class="special"><?= $g->harambee_contribution > 0 ? 'KSh ' . number_format($g->harambee_contribution) : ''; ?></td>
+            <td class="special"><?= $g->harambee_contribution > 0 ? format_ksh($g->harambee_contribution) : ''; ?></td>
             <td class="special"><?= htmlspecialchars($g->dietary_requirements); ?></td>
             <td class="special">
                 <a href="guest_edit.php?id=<?= $g->id; ?>&<?= $links; ?>" class="btn btn-secondary btn-sm" title="Edit"><i class="mdi mdi-pencil"></i></a>

@@ -59,19 +59,19 @@
     <div class="col-md-3">
         <div class="stat-card">
             <h6>Package Price</h6>
-            <div class="value">KSh <?= number_format($category_details->price ?? 0, 0); ?></div>
+            <div class="value"><?= format_ksh($category_details->price ?? 0); ?></div>
         </div>
     </div>
     <div class="col-md-3">
         <div class="stat-card" style="border-left-color: #27ae60;">
             <h6>Total Paid</h6>
-            <div class="value">KSh <?= number_format($totals['grand_total'] ?? 0, 0); ?></div>
+            <div class="value"><?= format_ksh($totals['grand_total'] ?? 0); ?></div>
         </div>
     </div>
     <div class="col-md-3">
         <div class="stat-card" style="border-left-color: #e67e22;">
             <h6>Balance Due</h6>
-            <div class="value">KSh <?= number_format(($category_details->price ?? 0) - ($totals['grand_total'] ?? 0), 0); ?></div>
+            <div class="value"><?= format_ksh(($category_details->price ?? 0) - ($totals['grand_total'] ?? 0)); ?></div>
         </div>
     </div>
     <div class="col-md-3">
@@ -91,15 +91,15 @@
                 <div class="row">
                     <div class="col-md-4 text-center">
                         <h5 class="mpesa-green"><i class="mdi mdi-cellphone"></i> M-Pesa</h5>
-                        <strong>KSh <?= number_format($totals['mpesa_total'] ?? 0, 0); ?></strong>
+                        <strong><?= format_ksh($totals['mpesa_total'] ?? 0); ?></strong>
                     </div>
                     <div class="col-md-4 text-center">
                         <h5 class="cash-blue"><i class="mdi mdi-cash"></i> Cash</h5>
-                        <strong>KSh <?= number_format($totals['cash_total'] ?? 0, 0); ?></strong>
+                        <strong><?= format_ksh($totals['cash_total'] ?? 0); ?></strong>
                     </div>
                     <div class="col-md-4 text-center">
                         <h5 class="credit-orange"><i class="mdi mdi-bank"></i> Bank Transfer</h5>
-                        <strong>KSh <?= number_format($totals['credit_total'] ?? 0, 0); ?></strong>
+                        <strong><?= format_ksh($totals['credit_total'] ?? 0); ?></strong>
                     </div>
                 </div>
             </div>
@@ -142,13 +142,13 @@
             <td>Event #<?= $item->event_id; ?></td>
             <td><?= $method_label; ?></td>
             <td><?= htmlspecialchars($item->mpesa_code ?? ''); ?></td>
-            <td class="text-right font-weight-bold">KSh <?= number_format($item->payment, 2); ?></td>
+            <td class="text-right font-weight-bold"><?= format_ksh($item->payment, 2); ?></td>
         </tr>
     <?php endforeach; ?>
     <tfoot>
         <tr class="table-dark">
             <td colspan="5" class="text-right"><strong>TOTAL:</strong></td>
-            <td class="text-right"><strong>KSh <?= number_format($total, 2); ?></strong></td>
+            <td class="text-right"><strong><?= format_ksh($total, 2); ?></strong></td>
         </tr>
     </tfoot>
     </tbody>

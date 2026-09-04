@@ -92,7 +92,7 @@
                         <span class="badge badge-success float-right" style="font-size: 10px;">MOST POPULAR</span>
                     <?php endif; ?>
                     <h4><?= htmlspecialchars($plan->name); ?></h4>
-                    <div class="price">KSh <?= number_format($plan->price); ?></div>
+                    <div class="price"><?= format_ksh($plan->price); ?></div>
                     <div class="period">per month</div>
                     <ul>
                         <?php foreach (explode(',', $plan->features) as $feature): ?>
@@ -171,7 +171,7 @@
             <?php foreach ($sub_history as $sub): ?>
                 <tr>
                     <td><?= ucfirst($sub->plan); ?></td>
-                    <td>KSh <?= number_format($sub->amount); ?></td>
+                    <td><?= format_ksh($sub->amount); ?></td>
                     <td><?= htmlspecialchars($sub->mpesa_code ?? ''); ?></td>
                     <td><?= date('d M Y', strtotime($sub->start_date)); ?></td>
                     <td><?= date('d M Y', strtotime($sub->expiry_date)); ?></td>

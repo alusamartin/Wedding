@@ -101,7 +101,7 @@ $category = Category::find_all();
             
             <div class="float-left" style="width: 47%;"> 
                 <ul class="list-group">
-                    <li class="list-group-item bg-danger active" style="padding-top: 12px;"><h6 class="h6 text-center"><?= $category_row->wedding_type; ?> Package Wedding - Price: KSh <?= number_format($category_row->price,2); ?></h6></li>
+                    <li class="list-group-item bg-danger active" style="padding-top: 12px;"><h6 class="h6 text-center"><?= $category_row->wedding_type; ?> Package Wedding - Price: <?= format_ksh($category_row->price, 2); ?></h6></li>
                     <li class="list-group-item  list-group-item-light "><b>THIS PACKAGE INCLUDES:</b></li>
                     <?php $feature = Features::find_by_feature_all($category_row->id); ?>
                     <?php foreach ($feature as $feature_item) : ?>

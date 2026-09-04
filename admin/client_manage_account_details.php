@@ -123,7 +123,7 @@
                     <!-- <div class="card-header">Amount Paid To Date</div> -->
                     <div class="card-header">Amount Paid To Date</div>
                     <div class="card-body">
-                        <h5 class="card-title">KSh <?= number_format($cash,2); ?></h5>
+                        <h5 class="card-title"><?= format_ksh($cash, 2); ?></h5>
                         <p class="card-text"></p>
                     </div>
                 </div>
@@ -133,7 +133,7 @@
                 <div class="card text-white bg-dark mb-3" style="max-width: 18rem;">
                     <div class="card-header"> Amount Paid</div>
                     <div class="card-body">
-                        <h5 class="card-title">KSh <?= number_format($account_details->cash_advanced, 2); ?></h5>
+                        <h5 class="card-title"><?= format_ksh($account_details->cash_advanced, 2); ?></h5>
                         <p class="card-text"></p>
                     </div>
                 </div>
@@ -143,7 +143,7 @@
                 <div class="card text-white bg-dark mb-3" style="max-width: 18rem;">
                     <div class="card-header">Balance Due</div>
                     <div class="card-body">
-                        <h5 class="card-title">KSh <?= @number_format($category_details->price - $account_details->cash_advanced, 2); ?></h5>
+                        <h5 class="card-title"><?= format_ksh($category_details->price - $account_details->cash_advanced, 2); ?></h5>
                         <p class="card-text"></p>
                     </div>
                 </div>

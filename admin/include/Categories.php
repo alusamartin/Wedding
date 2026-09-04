@@ -89,7 +89,7 @@ class Category extends DB_Object
      * Format price in Kenyan Shillings
      */
     public function formatted_price() {
-        return 'KSh ' . number_format($this->price, 0);
+        return format_ksh($this->price);
     }
 
     /**

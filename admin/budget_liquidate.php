@@ -105,13 +105,13 @@
                 <?php echo $luquidate_item->title; ?> <?php echo $luquidate_item->booking_id; ?>
             </td>
             <td class="special-budget">
-                KSh <?= number_format($luquidate_item->payment, 2); ?>
+                <?= format_ksh($luquidate_item->payment, 2); ?>
             </td>
             <td class="special-budget">
-                KSh <?= number_format($luquidate_item->cash, 2); ?>
+                <?= format_ksh($luquidate_item->cash, 2); ?>
             </td>
             <td class="special-budget">
-                KSh <?= number_format($luquidate_item->credit, 2); ?>
+                <?= format_ksh($luquidate_item->credit, 2); ?>
             </td>
             <td class="special-budget">
                 <?= $luquidate_item->date_issue; ?>
@@ -126,9 +126,9 @@
     <tfooter>
         <tr>
             <td align="right"><b>Total</b></td>
-            <td><b><?= number_format($amount, 2); ?></b></td>
-            <td><b><?= number_format($cash, 2); ?></b></td>
-            <td><b><?= number_format($credit, 2); ?></b></td>
+            <td><b><?= format_ksh($amount, 2); ?></b></td>
+            <td><b><?= format_ksh($cash, 2); ?></b></td>
+            <td><b><?= format_ksh($credit, 2); ?></b></td>
         </tr>
     </tfooter>
 </table>

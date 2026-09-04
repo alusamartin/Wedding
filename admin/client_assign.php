@@ -221,9 +221,9 @@ if (isset($_POST['fraud'])) {
 
                                 <?php foreach($categories as $category) : ?>
                                     <?php if ($category->id == $booking_detail->wedding_type): ?>
-                                        <option value="<?= $category->id;?>" selected><?= $category->wedding_type; ?> - KSh <?= number_format($category->price); ?> </option>
+                                        <option value="<?= $category->id;?>" selected><?= $category->wedding_type; ?> - <?= format_ksh($category->price); ?> </option>
                                         <?php else: ?>
-                                        <option value="<?= $category->id;?>"><?= $category->wedding_type; ?> - KSh <?= number_format($category->price); ?> </option>
+                                        <option value="<?= $category->id;?>"><?= $category->wedding_type; ?> - <?= format_ksh($category->price); ?> </option>
                                             
                                     <?php endif ?>
 

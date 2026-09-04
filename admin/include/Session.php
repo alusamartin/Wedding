@@ -254,16 +254,18 @@ class Session
      */
     public function login(object $user): void
     {
-        if (!$user || !isset($user->id)) {
-            throw new InvalidArgumentException('Session::login() requires user object with ->id');
+        // Accounts (tblaccounts) key their primary key as user_id; Users (tblusers) use id.
+        $userId = $user->id ?? $user->user_id ?? null;
+        if (!$user || $userId === null) {
+            throw new InvalidArgumentException('Session::login() requires user object with ->id or ->user_id');
         }
 
         // Prevent fixation: regenerate BEFORE writing auth state
         $this->regenerate();
 
         // Bind auth state
-        $this->user_id   = $_SESSION['id'] = $user->id;
-        $_SESSION['user_email'] = $user->email ?? '';
+        $this->user_id   = $_SESSION['id'] = $userId;
+        $_SESSION['user_email'] = $user->email ?? $user->user_email ?? '';
         $_SESSION['_fingerprint'] = $this->computeFingerprint();
         $_SESSION['_last_activity'] = time();
         $_SESSION['privilege_level'] = $user->access_level ?? $user->designation ?? 'user';

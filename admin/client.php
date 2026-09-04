@@ -56,7 +56,7 @@
         </td>';
         $html .= '<td>
             <span class="badge badge-info">' . htmlspecialchars($package_name) . '</span>
-            <br><small class="text-muted">KSh ' . number_format($package_price) . '</small>
+            <br><small class="text-muted">' . format_ksh($package_price) . '</small>
         </td>';
         $html .= '<td>
             <i class="mdi mdi-phone text-success"></i> ' . htmlspecialchars($bookWedding->phone) . '
@@ -68,7 +68,7 @@
         </td>';
         $html .= '<td>
             <div class="mb-1"><i class="mdi mdi-account-multiple text-primary"></i> ' . $guest_count . ' guests</div>
-            <div><i class="mdi mdi-cash text-success"></i> KSh ' . number_format($budget) . ' paid</div>
+            <div><i class="mdi mdi-cash text-success"></i> ' . format_ksh($budget) . ' paid</div>
         </td>';
         $html .= '<td><span class="status-badge ' . $status_class . '">' . $status_label . '</span></td>';
         $html .= '<td>
@@ -320,7 +320,7 @@
         <div class="col-md-3">
             <div class="stat-card warning">
                 <h6><i class="mdi mdi-cash-multiple"></i> Revenue Collected</h6>
-                <div class="value">KSh <?= number_format($total_budget); ?></div>
+                <div class="value"><?= format_ksh($total_budget); ?></div>
                 <div class="trend">Total payments received</div>
             </div>
         </div>
@@ -523,7 +523,7 @@
                     </div>
                     <div class="mb-3">
                         <small class="text-muted">Average Budget Collected</small>
-                        <h4>KSh <?= $total_confirmed > 0 ? number_format($total_budget / $total_confirmed) : 0; ?></h4>
+                        <h4><?= $total_confirmed > 0 ? format_ksh($total_budget / $total_confirmed) : 'KSh 0'; ?></h4>
                     </div>
                     <div class="mb-3">
                         <small class="text-muted">This Month's Bookings</small>

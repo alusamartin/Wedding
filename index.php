@@ -215,7 +215,7 @@
                             <?php foreach ($feature as $feature_item) : ?>
                                 <li class="list-group-item"><?= $feature_item->title; ?></li>
                             <?php endforeach; ?>
-                        <li class="list-group-item font-weight-bold">Price: KSh <?= number_format($category_row->price); ?>
+                        <li class="list-group-item font-weight-bold">Price: <?= format_ksh($category_row->price); ?>
                          </li>
                         <li class="list-group-item font-weight-bold">
                             <a href="package_detail.php?id=<?= $category_row->id; ?>" class="btn btn-custom">View Details</a>

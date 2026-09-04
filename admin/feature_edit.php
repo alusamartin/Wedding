@@ -101,11 +101,11 @@
                         <?php foreach ($category as $categories) : ?>
                             <?php if($categories->id  == $features->category_id) : ?>
                                 <option value="<?= $categories->id; ?>" selected>
-                                    <?= $categories->wedding_type; ?> - Price: KSh <?= number_format($categories->price, 2); ?>
+                                    <?= $categories->wedding_type; ?> - Price: <?= format_ksh($categories->price, 2); ?>
                                 </option>
                             <?php else : ?>
                                 <option value="<?= $categories->id; ?>">
-                                    <?= $categories->wedding_type; ?> - Price: KSh <?= number_format($categories->price, 2); ?>
+                                    <?= $categories->wedding_type; ?> - Price: <?= format_ksh($categories->price, 2); ?>
                                 </option>
                             <?php endif; ?>
                         <?php endforeach; ?>

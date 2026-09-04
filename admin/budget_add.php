@@ -61,7 +61,7 @@
         $liquidate->date_issue = date("F j, Y, g:i a");
         $liquidate->save();
 
-        $session->message('<div class="alert alert-success"><strong><i class="mdi mdi-check"></i></strong> Payment of <strong>KSh ' . number_format($payment, 2) . '</strong> recorded successfully.</div>');
+        $session->message('<div class="alert alert-success"><strong><i class="mdi mdi-check"></i></strong> Payment of <strong>' . format_ksh($payment, 2) . '</strong> recorded successfully.</div>');
         redirect_to("budget_add.php?$links");
     }
 ?>
