@@ -35,7 +35,7 @@
                 <?php else: ?>
                     <a class="wpms-cta-ghost btn btn-sm" href="#" data-toggle="modal" data-target="#loginModal">Login</a>
                     <a class="wpms-cta-ghost btn btn-sm" href="admin/login.php"><i class="mdi mdi-shield-account-outline mr-1"></i> Admin</a>
-                    <a class="wpms-cta btn btn-sm" href="sign_up.php">Join Now — Free</a>
+                    <a class="wpms-cta btn btn-sm" href="index.php#sign-up">Join Now — Free</a>
                 <?php endif; ?>
             </div>
         </div>
@@ -82,7 +82,7 @@
                             </button>
                             <a href="contact.php" style="color: #6B82A6;">Forgot your password?</a>
                             <br/>
-                            <div class="mt-2">Not a member yet? <a href="sign_up.php" style="color: #6B82A6;">Join Now</a></div>
+                            <div class="mt-2">Not a member yet? <a href="index.php#sign-up" style="color: #6B82A6;">Join Now</a></div>
                         </div>
                     </div>
                 </form>

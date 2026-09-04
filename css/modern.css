@@ -302,5 +302,7 @@ footer .text-muted{ color:#A8A29E !important; }
 .empty-state .btn{ border-radius:999px !important; }
 
 /* ---------- UTILS : focus, reduced-motion ---------- */
+/* Hero sign-up card anchor must clear the fixed 72px nav when deep-linked (#sign-up). */
+#sign-up{ scroll-margin-top:96px; }
 *:focus-visible{ outline:none; box-shadow:var(--ring); }
 @media(prefers-reduced-motion:reduce){ *{ scroll-behavior:auto !important; transition:none !important; } }

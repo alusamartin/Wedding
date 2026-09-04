@@ -91,7 +91,7 @@
                             echo $session->message();
                         }
                     ?>
-                    <form class="bgact" action="<?php echo $_SERVER['PHP_SELF']; ?>" method="post">
+                    <form class="bgact" id="sign-up" action="<?php echo $_SERVER['PHP_SELF']; ?>" method="post">
                     <?= $session->csrf_field(); ?>
                     <div class="d-inline-flex align-items-center" style="gap:.4rem; background:var(--kenya-cream); border:1px solid #FDE68A; border-radius:999px; padding:4px 10px; font-size:11px; font-weight:600; color:#92400E; margin:0 auto 10px; display:table;"><i class="mdi mdi-map-marker-outline"></i> Nairobi · Mombasa · Kisumu · Nakuru — KSh pricing</div>
                     <h2 class="text-center hero-lead">Kenyan Wedding<br>Planning Starts Here</h2>

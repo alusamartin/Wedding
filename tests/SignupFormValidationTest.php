@@ -6,14 +6,15 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Public sign-up form guards (index.php + sign_up.php) against a real php -S
- * server:
+ * Public sign-up form guards against a real php -S server:
  *
- *  1. Both forms embed native client-side validation — every field required,
- *     email/phone typed, password minlength 8, plus the wedding-date guard —
- *     so invalid submissions are blocked in the browser instead of bouncing
- *     silently server-side.
- *  2. A tokenless sign-up POST is rejected (302 back to the form) and never
+ *  1. The index.php hero form embeds native client-side validation — every
+ *     field required, email/phone typed, password minlength 8, plus the
+ *     wedding-date guard — so invalid submissions are blocked in the browser
+ *     instead of bouncing silently server-side.
+ *  2. sign_up.php (the former duplicate join page) now redirects to index.php,
+ *     so index.php is the single client-facing registration entry point.
+ *  3. A tokenless sign-up POST is rejected (302 back to the form) and never
  *     creates an account.
  *
  * Integration ('integration' group) — requires a bootable php -S and (for the
@@ -35,19 +36,10 @@ final class SignupFormValidationTest extends TestCase
                 'Please pick your wedding date from the calendar (MM/DD/YYYY).',
             ],
         ],
-        'sign_up.php'  => [
-            'sign_up.php',
-            [
-                'id="user_firstname" required',
-                'id="user_lastname"',
-                'type="email" class="form-control" name="user_email" id="user_email" placeholder="youremailaddress@mail.com" required',
-                'id="user_phone" placeholder="Contact Number (e.g. 0712 345 678)" required',
-                'autocomplete="new-password" minlength="8" required',
-                'id="wedding_date" required',
-                'Please pick your wedding date from the calendar (MM/DD/YYYY).',
-            ],
-        ],
     ];
+
+    /** The duplicate join page must hand off to the single entry point. */
+    public const LEGACY_SIGNUP = '/sign_up.php';
 
     private static ?Database $db = null;
     private static ?string $base = null;
@@ -223,12 +215,22 @@ final class SignupFormValidationTest extends TestCase
     }
 
     #[Group('integration')]
+    public function testLegacySignupPageRedirectsToTheSingleEntryPoint(): void
+    {
+        $this->requireServer();
+
+        $res = self::http('GET', self::LEGACY_SIGNUP);
+        self::assertSame(301, $res['status'], 'sign_up.php must permanently redirect');
+        self::assertStringContainsString('index.php', $res['location'] ?? '', 'sign_up.php must redirect to the index.php hero form');
+    }
+
+    #[Group('integration')]
     public function testTokenlessSignupPostIsRejectedWithoutCreatingAnAccount(): void
     {
         $this->requireServer();
 
         $email = 'csrfnone@example.com';
-        $post  = self::http('POST', '/sign_up.php', [
+        $post  = self::http('POST', '/index.php', [
             'register'       => 'Sign Up',
             'user_firstname' => 'Csrf',
             'user_lastname'  => 'None',
@@ -238,7 +240,7 @@ final class SignupFormValidationTest extends TestCase
             'wedding_date'   => date('m/d/Y', strtotime('+300 days')),
         ]);
         self::assertSame(302, $post['status'], 'tokenless POST must be rejected (no CSRF token posted)');
-        self::assertStringContainsString('sign_up.php', $post['location'] ?? '', 'tokenless POST must bounce back to the sign-up page');
+        self::assertStringContainsString('index.php', $post['location'] ?? '', 'tokenless POST must bounce back to the sign-up form');
 
         if (self::$db === null) {
             self::markTestSkipped('DB unavailable — skipping no-account-created assertion');

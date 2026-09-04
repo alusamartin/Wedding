@@ -90,8 +90,11 @@ section 12.1 of the manual for full examples.
 | Entry | URL |
 |---|---|
 | Public site (home + sign-up hero) | http://localhost/Wedding/ |
-| Dedicated sign-up page | http://localhost/Wedding/sign_up.php |
 | Client / couple login | http://localhost/Wedding/login.php |
+
+> Registration happens on the **index.php hero form** — the single
+> client-facing entry point. `sign_up.php` is a legacy stub that permanently
+> redirects there (`301 → /#sign-up`).
 | Admin login | http://localhost/Wedding/admin/login.php |
 
 Ensure Apache can write to `admin/upload/{categories,events,gallery,users}/`.
@@ -140,7 +143,7 @@ composer migrate:db-compat       # mysqli -> PDO compat helper (scripts/)
 Project layout at a glance:
 
 ```
-index.php, sign_up.php, login.php …   public site pages
+index.php, login.php …                public site pages (sign_up.php → 301 to index.php)
 admin/                                client + staff backend (login, dashboard, …)
 admin/include/                        models + PDO Database wrapper + config
 css/, js/, images/                    shared front-end assets
