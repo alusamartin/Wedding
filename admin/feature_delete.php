@@ -1,28 +1,27 @@
-<?php include("include/init.php"); ?>
+<?php include("include/init.php"); require_staff(); ?>
 
 <?php 
 
-if (!is_staff()) {
-	redirect_to("../login.php");
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !$session->verify_csrf()) {
+    $session->message('<div class="alert alert-danger alert-dismissible fade show" role="alert">Invalid request. Please use the Delete button on the feature list.<button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>');
+    redirect_to("service_list.php");
+    die();
 }
 
-if(empty($_GET['id'])) {
-	redirect_to("service_list.php");
+if (empty($_GET['id'])) {
+    redirect_to("service_list.php");
+    die();
 }
 
-$features = Features::find_by_feature_id($_GET['id']);
+$id = (int) $_GET['id'];
+$features = Features::find_by_feature_id($id);
 
-if($features) {
-	$session->message("<div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
-              <strong><i class='mdi mdi-account-alert'></i></strong> The features {$features->title}  has been deleted.
-              <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
-                <span aria-hidden=\"true\">&times;</span>
-              </button>
-            </div>");
-	$features->delete_feature($_GET['id']);
-	redirect_to("service_list.php");
+if ($features) {
+    $features->delete_feature($id);
+    $session->message('<div class="alert alert-success alert-dismissible fade show" role="alert">The feature ' . htmlspecialchars($features->title ?? '') . ' has been deleted.<button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>');
 } else {
-	redirect_to("service_list.php");
+    $session->message('<div class="alert alert-danger alert-dismissible fade show" role="alert">That feature no longer exists.<button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>');
 }
-
+redirect_to("service_list.php");
+die();
 ?>

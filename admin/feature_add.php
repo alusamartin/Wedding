@@ -8,6 +8,13 @@
 
     if (isset($_POST['submit'])) {
 
+        // CSRF validation
+        if (!$session->verify_csrf()) {
+            $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Invalid security token. Please try again.</div>');
+            redirect_to("feature_add.php");
+            die();
+        }
+
         $wedding_type = clean($_POST['wedding_type']);
         $title = clean($_POST['title']);
         $description = clean($_POST['description']);
@@ -83,6 +90,7 @@
             
                 <form method="post" action="">
                 
+                    <?= $session->csrf_field(); ?>
                     <h4 class="h4 mt-4 pb-2" style="border-bottom: 1px solid #dee2e6!important;">Add New Feature
                      <a href="service_list.php" class="btn btn-sm btn-light active float-right" style="font-size: 12px;"><i class="mdi mdi-left-arrow"></i> Back</a></h4>
 

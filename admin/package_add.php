@@ -7,11 +7,18 @@
 
     if (isset($_POST['submit'])) {
 
+        // CSRF validation
+        if (!$session->verify_csrf()) {
+            $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Invalid security token. Please try again.</div>');
+            redirect_to("package_add.php");
+            die();
+        }
+
         $wedding_type = clean($_POST['wedding_type']);
         $price = clean($_POST['price']);
         
          if (empty($wedding_type) || empty($price)) {
-            redirect_to("services_list.php");
+            redirect_to("service_list.php");
             $session->message("
             <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
               <strong><i class='mdi mdi-account-alert'></i></strong> Please Fill up all the information.
@@ -80,6 +87,7 @@
             
                 <form method="post" action="" enctype="multipart/form-data">
 
+                    <?= $session->csrf_field(); ?>
                     <h4 class="h4 mt-4 pb-2" style="border-bottom: 1px solid #dee2e6!important;">Add New Package</h4>
 
                     <?php
@@ -102,7 +110,7 @@
                         <label for="preview_image">Preview Image</label>
                         <input type="file" name="preview_image">
                    </div>
-                     <a href="services_list.php" class="btn btn-sm btn-danger float-right" style="font-size: 12px;">Cancel</a>
+                     <a href="service_list.php" class="btn btn-sm btn-danger float-right" style="font-size: 12px;">Cancel</a>
 
                         <button type="submit" name="submit" class="btn btn-sm btn-success float-right mr-2" style="font-size: 12px;">Save</button>
                 </form><!-- end of input form -->

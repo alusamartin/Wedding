@@ -7,6 +7,14 @@
     $users = Users::find_by_id($_GET['id']);
 
     if (isset($_POST['submit'])) {
+
+        // CSRF validation
+        if (!$session->verify_csrf()) {
+            $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Invalid security token. Please try again.</div>');
+            redirect_to("users_edit.php?id=" . (int) ($_GET['id'] ?? 0));
+            die();
+        }
+
         $firstname   = clean($_POST['firstname']);
         $lastname    = clean($_POST['lastname']);
         $address     = clean($_POST['address']);
@@ -16,7 +24,7 @@
         $designation = clean($_POST['designation']);
 
          if (empty($firstname) || empty($lastname) || empty($address) || empty($email) || empty($username)) {
-            redirect_to("users_add.php");
+            redirect_to("users_edit.php?id=" . (int) ($_GET['id'] ?? 0));
             $session->message("
             <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
               <strong><i class='mdi mdi-account-alert'></i></strong> Please Fill up all the information.
@@ -102,6 +110,7 @@
         
             <form method="post" action="" enctype="multipart/form-data">
             
+                <?= $session->csrf_field(); ?>
                 <h6 class="h6 mt-4 pb-2" style="border-bottom: 1px solid #dee2e6!important;">Edit User Information
                     <a href="users.php" class="btn btn-sm btn-danger float-right" style="font-size: 12px;"><i class="mdi mdi-close-circle mr-2"></i> Cancel</a>
 

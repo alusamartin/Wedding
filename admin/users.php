@@ -109,7 +109,10 @@
                 <a href="users_edit.php?id=<?= $user->id; ?>" class="btn btn-info btn-sm" data-toggle="tooltip" data-placement="top" title="
                     Edit This User"><i class="mdi mdi-pencil"></i></a>
 
-                <a href="users_delete.php?id=<?= $user->id; ?>" class="btn btn-danger btn-sm" data-toggle="tooltip" data-placement="top" title="Delete This User"><i class="mdi mdi-delete"></i></a>
+                <form method="post" action="users_delete.php?id=<?= $user->id; ?>" class="d-inline" onsubmit="return confirm('Delete this user?');">
+                    <?= $session->csrf_field(); ?>
+                    <button type="submit" class="btn btn-danger btn-sm" data-toggle="tooltip" data-placement="top" title="Delete This User"><i class="mdi mdi-delete"></i></button>
+                </form>
             </td>
         </tr>
 

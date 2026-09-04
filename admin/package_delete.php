@@ -2,23 +2,25 @@
 
 <?php 
 
-if(empty($_GET['id'])) {
-	redirect_to("service_list.php");
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !$session->verify_csrf()) {
+    $session->message('<div class="alert alert-danger alert-dismissible fade show" role="alert">Invalid request. Please use the Delete button on the packages list.<button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>');
+    redirect_to("service_list.php");
+    die();
 }
 
-$category = Category::find_by_id($_GET['id']);
+if (empty($_GET['id'])) {
+    redirect_to("service_list.php");
+    die();
+}
 
-if($category) {
-	$session->message("<div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
-              <strong><i class='mdi mdi-account-alert'></i></strong> The category {$category->wedding_type}  has been deleted.
-              <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
-                <span aria-hidden=\"true\">&times;</span>
-              </button>
-            </div>");
-	$category->delete_photo();
-	redirect_to("service_list.php");
+$category = Category::find_by_id((int) $_GET['id']);
+
+if ($category) {
+    $category->delete_photo();
+    $session->message('<div class="alert alert-success alert-dismissible fade show" role="alert">The package ' . htmlspecialchars($category->wedding_type ?? '') . ' has been deleted.<button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>');
 } else {
-	redirect_to("service_list.php");
+    $session->message('<div class="alert alert-danger alert-dismissible fade show" role="alert">That package no longer exists.<button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>');
 }
-
+redirect_to("service_list.php");
+die();
 ?>

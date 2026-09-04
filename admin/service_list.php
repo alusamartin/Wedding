@@ -90,7 +90,10 @@
                             <a href="package_edit.php?id=<?= $category_row->id; ?>" class="btn btn-secondary btn-sm" data-toggle="tooltip" data-placement="top" title="Edit This Package">
                                 <i class="mdi mdi-pen"></i></a>
 
-                            <a href="package_delete.php?id=<?= $category_row->id; ?>" class="btn btn-danger btn-sm" data-toggle="tooltip" data-placement="top" title="Delete This Package"><i class="mdi mdi-delete"></i></a>
+                            <form method="post" action="package_delete.php?id=<?= $category_row->id; ?>" class="d-inline" onsubmit="return confirm('Delete this package?');">
+                                <?= $session->csrf_field(); ?>
+                                <button type="submit" class="btn btn-danger btn-sm" data-toggle="tooltip" data-placement="top" title="Delete This Package"><i class="mdi mdi-delete"></i></button>
+                            </form>
                             <button type="button" name="view" value="view" id="<?= $category_row->id; ?>" class="btn btn-info btn-sm view_data">
                                 <i class="mdi mdi-eye-outline"></i> 
                             </button>
@@ -135,7 +138,10 @@
                             <a href="feature_edit.php?id=<?= $features_row->feature_id; ?>" class="btn btn-secondary btn-sm" data-toggle="tooltip" data-placement="top" title="Edit This feature">
                                 <i class="mdi mdi-pen"></i></a>
 
-                            <a href="feature_delete.php?id=<?= $features_row->feature_id; ?>" class="btn btn-danger btn-sm" data-toggle="tooltip" data-placement="top" title="Delete This feature"><i class="mdi mdi-delete"></i></a>
+                            <form method="post" action="feature_delete.php?id=<?= $features_row->feature_id; ?>" class="d-inline" onsubmit="return confirm('Delete this feature?');">
+                                <?= $session->csrf_field(); ?>
+                                <button type="submit" class="btn btn-danger btn-sm" data-toggle="tooltip" data-placement="top" title="Delete This feature"><i class="mdi mdi-delete"></i></button>
+                            </form>
 
                         </td>
                     </tr>

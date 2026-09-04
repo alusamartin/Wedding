@@ -7,11 +7,18 @@
 
     if (isset($_POST['submit'])) {
 
+        // CSRF validation
+        if (!$session->verify_csrf()) {
+            $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Invalid security token. Please try again.</div>');
+            redirect_to("package_edit.php?id=" . (int) ($_GET['id'] ?? 0));
+            die();
+        }
+
         $wedding_type = clean($_POST['wedding_type']);
         $price = clean($_POST['price']);
        
          if (empty($wedding_type) || empty($price)) {
-            redirect_to("services_list.php");
+            redirect_to("service_list.php");
             $session->message("
             <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
               <strong><i class='mdi mdi-account-alert'></i></strong> Please Fill up all the information.
@@ -96,6 +103,7 @@
             
                 <form method="post" action="" enctype="multipart/form-data">
 
+                    <?= $session->csrf_field(); ?>
                     <h4 class="h4 mt-4 pb-2" style="border-bottom: 1px solid #dee2e6!important;">Edit Package</h4>
             
                     <?php

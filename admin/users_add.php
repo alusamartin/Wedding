@@ -7,6 +7,14 @@
     $users = new Users();
 
     if (isset($_POST['submit'])) {
+
+        // CSRF validation
+        if (!$session->verify_csrf()) {
+            $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Invalid security token. Please try again.</div>');
+            redirect_to("users_add.php");
+            die();
+        }
+
         $firstname   = clean($_POST['firstname']);
         $lastname    = clean($_POST['lastname']);
         $address     = clean($_POST['address']);
@@ -106,6 +114,7 @@
         <div class="col-lg-8 offset-2 pl-3 pb-3 box-shadow mt-4">
         
             <form method="post" action="" enctype="multipart/form-data">
+                <?= $session->csrf_field(); ?>
 
                 <h4 class="h4 mt-4 pb-2" style="border-bottom: 1px solid #dee2e6!important;">New User Information
                     <a href="users.php" class="btn btn-sm btn-danger float-right" style="font-size: 12px;"><i class="mdi mdi-close-circle mr-2"></i> Cancel</a>

@@ -12,6 +12,13 @@
     
     if (isset($_POST['submit'])) {
 
+        // CSRF validation
+        if (!$session->verify_csrf()) {
+            $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Invalid security token. Please try again.</div>');
+            redirect_to("client_edit.php?booking=$booking_id&user_id=$user_id");
+            die();
+        }
+
         if ($booking_detail) {
 
             $firstname = clean($_POST['firstname']);
@@ -98,6 +105,7 @@
 
                 <form method="post" action="">
 
+                    <?= $session->csrf_field(); ?>
                     <h4 class="h4 mt-4 pb-2" style="border-bottom: 1px solid #dee2e6!important;">Edit Client Information
                         <a href="client.php" class="btn btn-sm btn-danger float-right" style="font-size: 12px;"><i class="mdi mdi-close-circle mr-2"></i> Cancel</a>
                         <button type="submit" name="submit" class="btn btn-sm btn-success float-right mr-2" style="font-size: 12px;"><i class="mdi mdi-account-plus mr-2"></i> Edit Customer</button>

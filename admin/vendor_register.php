@@ -34,20 +34,21 @@
         if ($stmt->execute([':uid' => $user_id, ':bname' => $business_name, ':cat' => $category, ':descr' => $description, ':phone' => $phone, ':email' => $email, ':loc' => $location, ':county' => $county])) {
             $vendor_id = (int) $db->the_insert_id();
 
-            // Add packages
-            if (!empty($_POST['package_name'])) {
-                $pkg_names = $_POST['package_name'];
-                $pkg_prices = $_POST['package_price'];
-                $pkg_descriptions = $_POST['package_description'];
+            // Add packages — sanitize each element; rows must be title + price
+            $pkg_names = $_POST['package_name'] ?? [];
+            $pkg_prices = $_POST['package_price'] ?? [];
+            $pkg_descriptions = $_POST['package_description'] ?? [];
 
-                for ($i = 0; $i < count($pkg_names); $i++) {
-                    if (!empty($pkg_names[$i]) && !empty($pkg_prices[$i])) {
-                        $pkg_sql = "INSERT INTO tblvendor_packages (vendor_id, title, description, price) VALUES (:vid, :title, :descr, :price)";
-                        $pkg_stmt = $db->prepare($pkg_sql);
-                        $price = floatval($pkg_prices[$i]);
-                        $pkg_stmt->execute([':vid' => $vendor_id, ':title' => $pkg_names[$i], ':descr' => $pkg_descriptions[$i], ':price' => $price]);
-                    }
+            for ($i = 0; $i < count($pkg_names); $i++) {
+                $pkg_title = clean((string) ($pkg_names[$i] ?? ''));
+                $pkg_desc  = clean((string) ($pkg_descriptions[$i] ?? ''));
+                $price     = (float) ($pkg_prices[$i] ?? 0);
+                if ($pkg_title === '' || $price <= 0) {
+                    continue;
                 }
+                $pkg_sql = "INSERT INTO tblvendor_packages (vendor_id, title, description, price) VALUES (:vid, :title, :descr, :price)";
+                $pkg_stmt = $db->prepare($pkg_sql);
+                $pkg_stmt->execute([':vid' => $vendor_id, ':title' => $pkg_title, ':descr' => $pkg_desc, ':price' => $price]);
             }
 
             $session->message('<div class="alert alert-success"><strong><i class="mdi mdi-check"></i></strong> Vendor registration submitted! You will be notified once approved.</div>');

@@ -7,6 +7,14 @@
 <?php $users_profile = Users::find_by_id($_SESSION['id']); ?>
 <?php 
     if (isset($_POST['submit'])) {
+
+            // CSRF validation
+            if (!$session->verify_csrf()) {
+                $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Invalid security token. Please try again.</div>');
+                redirect_to("users_profile.php");
+                die();
+            }
+
             $firstname   = clean($_POST['firstname']);
             $lastname    = clean($_POST['lastname']);
             $address     = clean($_POST['address']);
@@ -16,7 +24,7 @@
             $designation = clean($_POST['designation']);
 
              if (empty($firstname) || empty($lastname) || empty($address) || empty($email) || empty($username)) {
-                redirect_to("users_add.php");
+                redirect_to("users_profile.php");
                 $session->message("
                 <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
                   <strong><i class='mdi mdi-account-alert'></i></strong> Please Fill up all the information.
@@ -129,6 +137,7 @@
     <div class="col-lg-8 offset-2 pl-3 pb-3 box-shadow mt-4">
             <form method="post" action="" enctype="multipart/form-data">
             
+                <?= $session->csrf_field(); ?>
                 <h6 class="h6 mt-4 pb-2" style="border-bottom: 1px solid #dee2e6!important;">Profile Detail
                    
                 </h6>
