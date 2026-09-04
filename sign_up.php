@@ -266,6 +266,12 @@ $blogEvent = EventWedding::getEventBlogs();
                     <!-- <h2 class="text-center hero-lead">Wedding Planning Starts Here</h2>
                     <p class="lead text-center" style="color:white;">START BY CREATING YOUR FREE ACCOUNT</p> -->
                     <form class="bgact" action="<?php echo $_SERVER['PHP_SELF']; ?>" method="post">
+                        <?= $session->csrf_field(); ?>
+                        <?php
+                            if ($session->message()) {
+                                echo $session->message();
+                            }
+                        ?>
                         <h2 class="text-center hero-lead">Wedding Planning Starts Here</h2>
                         <p class="lead text-center" style="color:white;">START BY FILLING UP THE FORM</p>
                             <div class="form-row">
