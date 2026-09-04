@@ -61,6 +61,22 @@
                     $error = $result['error'];
                 } else {
                     $_SESSION['last_deposit_ts'] = time();
+
+                    // Notify the assigned planner (in-app alert with deep link).
+                    $plannerId = (int) ($booking->organizer_id ?? 0);
+                    if ($plannerId > 0) {
+                        $coupleName = $couple !== '&' ? $couple : (string) ($_SESSION['user_email'] ?? 'Your couple');
+                        $newBalance = max(0.0, $balance_due - $result['payment']);
+                        $plannerMessage = sprintf(
+                            'M-Pesa deposit of %s received from %s (ref %s). Balance due: %s.',
+                            format_ksh($result['payment'], 2),
+                            $coupleName,
+                            $result['mpesa_code'],
+                            format_ksh($newBalance, 2)
+                        );
+                        Notification::create($plannerId, $booking_id, $plannerMessage, 'budget.php?' . $links);
+                    }
+
                     $session->message(
                         '<div class="alert alert-success"><strong><i class="mdi mdi-check"></i></strong> ' .
                         'Deposit of <strong>' . format_ksh($result['payment'], 2) . '</strong> recorded. ' .

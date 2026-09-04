@@ -27,6 +27,8 @@ final class ClientDepositFlowTest extends TestCase
     private const OWN_BOOKING  = 200;
     private const OWN_USER     = 200;
     private const FOREIGN_BOOK = 201;
+    /** staff user assigned to booking 200 (tblweddingbook.organizer_id) */
+    private const PLANNER_USER = 7;
 
     private static ?Database $db = null;
     private static ?string $base = null;
@@ -43,6 +45,9 @@ final class ClientDepositFlowTest extends TestCase
             }
             if (!class_exists('DB_Object', false)) {
                 require_once __DIR__ . '/../admin/include/db_object.php';
+            }
+            if (!class_exists('Notification', false)) {
+                require_once __DIR__ . '/../admin/include/Notification.php';
             }
             global $db;
             $db = self::$db = new Database();
@@ -313,7 +318,24 @@ final class ClientDepositFlowTest extends TestCase
         self::assertSame(200, $payments['status']);
         self::assertStringContainsString((string) $row->mpesa_code, $payments['body'], 'The STK reference must appear on My Payments');
 
-        // Cleanup — restore the seed state.
+        // The assigned planner must receive an in-app notification.
+        $notif = self::$db->fetchOne(
+            'SELECT * FROM tblnotifications WHERE booking_id = :b AND user_id = :u ORDER BY id DESC LIMIT 1',
+            [':b' => self::OWN_BOOKING, ':u' => self::PLANNER_USER]
+        );
+        self::assertNotNull($notif, 'The assigned planner must receive a deposit notification');
+        self::assertStringContainsString((string) $row->mpesa_code, (string) $notif->message, 'Notification must carry the M-Pesa reference');
+        self::assertStringContainsString('M-Pesa deposit of KSh 2,500', (string) $notif->message, 'Notification must state the amount');
+        self::assertSame(0, (int) $notif->is_read, 'A fresh notification starts unread');
+        self::assertStringContainsString('budget.php?booking_id=200&user_id=200', (string) $notif->link, 'Notification must deep-link to the booking budget page');
+
+        // Notification::mark_read must flip it (the staff bell path).
+        self::assertTrue(Notification::mark_read((int) $notif->id, self::PLANNER_USER), 'mark_read must succeed');
+        $check = self::$db->fetchValue('SELECT is_read FROM tblnotifications WHERE id = :id', [':id' => (int) $notif->id]);
+        self::assertSame('1', (string) $check, 'mark_read must persist is_read = 1');
+
+        // Cleanup — restore the seed state (ledger row + notification).
+        self::$db->execute('DELETE FROM tblnotifications WHERE id = :id', [':id' => (int) $notif->id]);
         self::$db->execute('DELETE FROM tbl_liquidation WHERE id = :id', [':id' => (int) $row->id]);
     }
 

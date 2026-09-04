@@ -28,6 +28,20 @@ INSERT INTO `tblweddingcategories` (`wedding_type`, `price`, `preview_image`) VA
 ('Reception Package', 350000, 'default.jpg'),
 ('After-Party Celebration', 100000, 'default.jpg');
 
+-- 3b. tblnotifications - planner in-app alerts (couple M-Pesa deposits etc.)
+CREATE TABLE IF NOT EXISTS `tblnotifications` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id` INT NOT NULL,
+  `booking_id` INT NOT NULL DEFAULT 0,
+  `message` VARCHAR(255) NOT NULL,
+  `link` VARCHAR(255) NOT NULL DEFAULT '',
+  `is_read` TINYINT(1) NOT NULL DEFAULT 0,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_user_read` (`user_id`, `is_read`),
+  KEY `idx_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- 4. tbl_features - Kenyan Features
 INSERT INTO `tbl_features` (`category_id`, `title`, `description`) VALUES
 (1, 'Nyama Choma & Pilau Catering', 'Traditional Kenyan feast with nyama choma, pilau, and ugali'),

@@ -148,6 +148,42 @@
                 </div>
 
                 <div class="form-inline my-2 my-lg-0">
+                    <?php if ($sidebar_user): ?>
+                    <?php
+                        $notifUserId = (int) $sidebar_user->id;
+                        $notifCount  = Notification::unread_count($notifUserId);
+                        $notifs      = Notification::latest($notifUserId, 8);
+                    ?>
+                    <div class="dropdown mr-2">
+                        <button class="btn btn-sm btn-light border position-relative" type="button"
+                                data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"
+                                title="Notifications" style="border-radius:8px;">
+                            <i class="mdi mdi-bell-outline" style="font-size:18px;"></i>
+                            <?php if ($notifCount > 0): ?>
+                            <span class="badge badge-pill badge-danger"
+                                  style="position:absolute; top:-6px; right:-6px; font-size:10px;"><?= (int) $notifCount; ?></span>
+                            <?php endif; ?>
+                        </button>
+                        <div class="dropdown-menu dropdown-menu-right p-0" style="width: 340px; border-radius:10px;">
+                            <div class="px-3 py-2 d-flex justify-content-between align-items-center" style="border-bottom:1px solid #eef2f7;">
+                                <strong style="font-size:13px;">Notifications</strong>
+                                <?php if ($notifCount > 0): ?>
+                                <a href="notifications.php?action=readall" style="font-size:12px;">Mark all read</a>
+                                <?php endif; ?>
+                            </div>
+                            <?php if (empty($notifs)): ?>
+                                <div class="text-center text-muted py-3" style="font-size:13px;">You're all caught up</div>
+                            <?php else: foreach ($notifs as $notif): ?>
+                                <a class="dropdown-item py-2 <?= ((int) $notif->is_read === 0) ? 'font-weight-bold' : ''; ?>"
+                                   href="notifications.php?action=read&id=<?= (int) $notif->id; ?>"
+                                   style="white-space:normal; font-size:13px; border-bottom:1px solid #f1f5f9;">
+                                    <?= htmlspecialchars($notif->message); ?>
+                                    <span class="d-block text-muted" style="font-size:11px;"><?= htmlspecialchars($notif->created_at); ?></span>
+                                </a>
+                            <?php endforeach; endif; ?>
+                        </div>
+                    </div>
+                    <?php endif; ?>
                     <a class="nav-link" href="<?= $sidebar_user ? 'users_profile.php' : 'client.php'; ?>"><b><?= $sidebar_user ? ucfirst($sidebar_user->firstname) . ' ' . ucfirst($sidebar_user->lastname) : htmlspecialchars((string) ($_SESSION['user_email'] ?? 'Client')); ?></b></a>
                     <a class="nav-link" href="logout.php"><b><i class="mdi mdi-logout"></i> Logout</b></a>
                 </div>
