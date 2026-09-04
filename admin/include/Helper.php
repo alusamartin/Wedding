@@ -86,3 +86,98 @@ function format_ksh($amount, $decimals = 0)
 {
     return 'KSh ' . number_format((float) $amount, $decimals);
 }
+
+/**
+ * Atomically create a client account + booking from the public sign-up flow.
+ *
+ * - Hashes the password (PASSWORD_DEFAULT) and stamps access_level '0'
+ * - Canonicalizes the wedding date to Y-m-d and rejects invalid input
+ * - Runs all three inserts inside one transaction
+ *
+ * Returns ['ok' => true] or ['ok' => false, 'error' => message].
+ */
+function register_client(
+    string $firstname,
+    string $lastname,
+    string $email,
+    string $phone,
+    string $password,
+    string $weddingDate,
+    ?int $weddingType = null
+): array {
+    global $db;
+
+    if (strlen($password) < 8) {
+        return ['ok' => false, 'error' => 'Password must be at least 8 characters.'];
+    }
+    if (Accounts::email_exists($email)) {
+        return ['ok' => false, 'error' => 'That email is already registered.'];
+    }
+
+    // Datepicker sends m/d/Y; canonicalize so availability + reports sort correctly.
+    $date = DateTime::createFromFormat('m/d/Y', $weddingDate);
+    if (!$date) {
+        $date = DateTime::createFromFormat('Y-m-d', $weddingDate);
+    }
+    if (!$date) {
+        return ['ok' => false, 'error' => 'Please enter a valid wedding date.'];
+    }
+    $canonical = $date->format('Y-m-d');
+
+    $check = new Booking();
+    if ($check->check_wedding_date($canonical)) {
+        return ['ok' => false, 'error' => 'That wedding date is already booked. Please choose another.'];
+    }
+
+    $db->execute('START TRANSACTION');
+    try {
+        $account = new Accounts();
+        $account->user_email    = $email;
+        $account->user_password = password_hash($password, PASSWORD_DEFAULT);
+        $account->access_level  = '0';
+        if (!$account->create()) {
+            throw new RuntimeException('accounts insert failed');
+        }
+        $userId = (int) $db->the_insert_id();
+
+        $detail = new Account_Details();
+        $detail->user_id          = $userId;
+        $detail->firstname        = $firstname;
+        $detail->lastname         = $lastname;
+        $detail->phone            = $phone;
+        $detail->status           = 'pending';
+        $detail->datetime_created = date('Y-m-d H:i:s');
+        // Explicit defaults for the remaining NOT NULL columns
+        $detail->city                = '';
+        $detail->description         = '';
+        $detail->location            = '';
+        $detail->expectation_visitor = '0';
+        $detail->cash_advanced       = 0.0;
+        $detail->date_signed         = date('Y-m-d H:i:s');
+        if (!$detail->create()) {
+            throw new RuntimeException('accounts_detail insert failed');
+        }
+
+        $booking = new Booking();
+        $booking->user_id      = $userId;
+        $booking->user_email   = $email;
+        $booking->wedding_date = $canonical;
+        $booking->wedding_type = (int) ($weddingType ?? 0);
+        $booking->bride        = '';
+        $booking->groom        = '';
+        $booking->organizer_id = 0;
+        if (!$booking->create()) {
+            throw new RuntimeException('tblweddingbook insert failed');
+        }
+
+        $db->execute('COMMIT');
+        return ['ok' => true];
+    } catch (Throwable $e) {
+        try {
+            $db->execute('ROLLBACK');
+        } catch (Throwable $ignored) {
+        }
+        error_log('[WPMS][Register] ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Registration could not be completed. Please try again.'];
+    }
+}

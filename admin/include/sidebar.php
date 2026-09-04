@@ -1,7 +1,11 @@
 
-
+<?php
+    // Staff pages resolve the profile from tblusers; client sessions (self-service
+    // dashboard on client.php) have no tblusers row, so fall back to a client chip.
+    $sidebar_user = ($users_profile instanceof Users) ? $users_profile : null;
+?>
 <nav class="navbar sticky-top p-0" style="width: 16.7%;background-color: #f44336;">
-    <a class="navbar-brand col-sm-3 col-md-2 mr-0" style="color:white;" href="dashboard.php">
+    <a class="navbar-brand col-sm-3 col-md-2 mr-0" style="color:white;" href="<?= $sidebar_user ? 'dashboard.php' : 'client.php'; ?>">
         <!-- <img src="images/admin.png" alt="" style="width: 200px;"> -->
         Everafter Planner
     </a>
@@ -12,17 +16,37 @@
         <nav class="col-md-2 d-none d-md-block bg-light sidebar">
             <div class="sidebar-sticky">
                 <ul class="nav flex-column">
+                    <?php if ($sidebar_user): ?>
                     <li class="nav-item mt-3">
                         <div class="text-center">
                             <a href="users_profile.php" class="user-button">
-                                <img src="<?= $users_profile->profile_picture_picture(); ?>" class="img-fluid rounded-circle" width="52" height="52" alt="">
-                                <div class="user-profile"><?= $users_profile->firstname . ' ' . $users_profile->lastname; ?></div>
+                                <img src="<?= $sidebar_user->profile_picture_picture(); ?>" class="img-fluid rounded-circle" width="52" height="52" alt="">
+                                <div class="user-profile"><?= $sidebar_user->firstname . ' ' . $sidebar_user->lastname; ?></div>
                             </a>
                                 <div class="text-center mt-0" style="font-size: 11px;color:#72777a;">
-                                    <?= ($users_profile->designation == 0) ? 'Administrator' : 'Moderator'; ?>
+                                    <?= ($sidebar_user->designation == 0) ? 'Administrator' : 'Moderator'; ?>
                                 </div>
                         </div>
                     </li>
+                    <?php else: ?>
+                    <li class="nav-item mt-3">
+                        <div class="text-center">
+                            <a href="client.php" class="user-button">
+                                <div class="d-inline-flex align-items-center justify-content-center bg-secondary text-white rounded-circle mx-auto" style="width:52px;height:52px;font-size:20px;"><?= strtoupper(substr((string) ($_SESSION['user_email'] ?? 'C'), 0, 1)); ?></div>
+                                <div class="user-profile"><?= htmlspecialchars((string) ($_SESSION['user_email'] ?? 'Client')); ?></div>
+                            </a>
+                            <div class="text-center mt-0" style="font-size: 11px;color:#72777a;">Client Account</div>
+                        </div>
+                    </li>
+                    <li class="nav-item"><div class="dropdown-divider"></div></li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="client.php">
+                            <i class="mdi mdi-calendar-multiple-check mr-3" style="color: #2196f3"></i>
+                            My Bookings
+                        </a>
+                    </li>
+                    <?php endif; ?>
+                    <?php if ($sidebar_user): ?>
                     <li class="nav-item"><div class="dropdown-divider"></div></li>
 
                     <li class="nav-item">
@@ -108,6 +132,7 @@
                             Task Calendar
                         </a>
                     </li>
+                    <?php endif; ?>
                 </ul>
             </div>
         </nav>
@@ -123,7 +148,7 @@
                 </div>
 
                 <div class="form-inline my-2 my-lg-0">
-                    <a class="nav-link" href="users_profile.php"><b><?= ucfirst($users_profile->firstname) . ' ' . ucfirst($users_profile->lastname); ?></b></a>
+                    <a class="nav-link" href="<?= $sidebar_user ? 'users_profile.php' : 'client.php'; ?>"><b><?= $sidebar_user ? ucfirst($sidebar_user->firstname) . ' ' . ucfirst($sidebar_user->lastname) : htmlspecialchars((string) ($_SESSION['user_email'] ?? 'Client')); ?></b></a>
                     <a class="nav-link" href="logout.php"><b><i class="mdi mdi-logout" style="color: #f44336!important;"></i> Logout</b></a>
                 </div>
             </nav>

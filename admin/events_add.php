@@ -2,7 +2,7 @@
 <?php
 
 
-    if (!isset($_SESSION['id'])) { redirect_to("../"); }
+    if (!is_staff()) { redirect_to("../"); }
     
     $booking_id = $_GET['booking_id'];
     $user_id = $_GET['user_id'];

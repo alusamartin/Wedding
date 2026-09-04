@@ -2,7 +2,7 @@
     include 'include/init.php'; 
     $count = 0;
     $error = '';
-    if (!isset($_SESSION['id'])) { redirect_to("../"); }
+    if (!is_staff()) { redirect_to("../"); }
     $event_wedding =   EventWedding::find_by_id($_GET['id']);
 $category = Category::find_all();
     if (isset($_POST['submit'])) {

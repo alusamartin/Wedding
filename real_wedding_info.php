@@ -106,49 +106,6 @@
 
     </div>
 </div>
-<!-- MODAL LOGIN SECTION-->
-<div class="modal fade" id="loginModal" tabindex="-1" role="dialog" aria-labelledby="loginModal" aria-hidden="true">
-    <div class="modal-dialog" role="document">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="loginModal"><img src="images/logo/everafter-crest.png" alt="Everafter Planner" style="height:40px;"></h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-            </div>
-            <div class="modal-body">
-                <form action="login.php" method="post">
-                    <div class="form-group row">
-                        <label for="inputEmail" class="col-sm-2 col-form-label">Email:</label>
-                        <div class="col-sm-10">
-                            <input type="text" class="form-control" id="inputEmail" name="input_email"
-                                   placeholder="Enter email">
-                        </div>
-                    </div>
-                    <div class="form-group row">
-                        <label for="inputPassword" class="col-sm-2 col-form-label">Password:</label>
-                        <div class="col-sm-10">
-                            <input type="password" class="form-control" id="inputPassword" name="input_password" placeholder="Enter password">
-                        </div>
-                    </div>
-                    <div class="form-group row">
-                        <label for="login" class="col-sm-2 col-form-label"></label>
-                        <div class="col-sm-10">
-                            <button type="submit" name="login" class="btn btn-primary mr-2 custom-btn" style="font-size: 14px;">
-                                Login
-                            </button>
-                            <a href="contact.php" style="color: #22adb5;">Forgot your password?</a>
-                            <br/>
-                            <div class="mt-2">Not a member yet? <a href="sign_up.php" style="color: #22adb5;">Join Now</a></div>
-                        </div>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-
 <!-- Optional JavaScript -->
 <!-- jQuery first, then Popper.js, then Bootstrap JS -->
 <script src="js/jquery-3.2.1.slim.min.js"></script>

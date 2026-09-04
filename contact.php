@@ -1,3 +1,45 @@
+<?php
+// Contact form handler — self-contained (no DB/session needed).
+// TODO: replace with the real business inbox once provided.
+$contact_recipient = 'info@wpms.co.ke';
+
+$contact_name = $contact_email = $contact_phone = $contact_message = '';
+$contact_error = '';
+$contact_sent  = isset($_GET['sent']);
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
+    $contact_name    = trim((string) ($_POST['contact_person'] ?? ''));
+    $contact_email   = trim((string) ($_POST['contact_email'] ?? ''));
+    $contact_phone   = trim((string) ($_POST['contact_phone'] ?? ''));
+    $contact_message = trim((string) ($_POST['contact_message'] ?? ''));
+
+    if ($contact_name === '' || $contact_message === '') {
+        $contact_error = 'Please provide your name and a message.';
+    } elseif (!filter_var($contact_email, FILTER_VALIDATE_EMAIL)) {
+        $contact_error = 'Please enter a valid email address so we can reply.';
+    } else {
+        // Strip CR/LF to block header injection through name/email.
+        $safe_name  = str_replace(["\r", "\n"], '', $contact_name);
+        $safe_email = str_replace(["\r", "\n"], '', $contact_email);
+
+        $subject = 'Website enquiry from ' . $safe_name;
+        $body    = "Name:    {$safe_name}\n"
+                 . "Email:   {$safe_email}\n"
+                 . "Phone:   " . ($contact_phone !== '' ? $contact_phone : '-') . "\n\n"
+                 . "Message:\n{$contact_message}\n";
+        $headers = "From: Everafter Planner <{$contact_recipient}>\r\n"
+                 . "Reply-To: {$safe_name} <{$safe_email}>\r\n";
+
+        $sent = @mail($contact_recipient, $subject, $body, $headers);
+        if ($sent) {
+            header('Location: contact.php?sent=1');
+            exit;
+        }
+        $contact_error = 'Sorry — the message could not be sent right now. Please email us directly at '
+            . htmlspecialchars($contact_recipient) . ' or call +254 700 000 000.';
+    }
+}
+?>
 <!doctype html>
 <html lang="en">
 <head>
@@ -102,29 +144,34 @@
     <div class="row">
         <div class="col-lg-12">
             <h3 class="text-center mb-3">CONTACT US</h3>
+            <?php if ($contact_sent) : ?>
+                <div class="alert alert-success" role="alert"><strong>Thank you!</strong> Your message has been sent — we will get back to you soon.</div>
+            <?php elseif ($contact_error !== '') : ?>
+                <div class="alert alert-danger" role="alert"><?= htmlspecialchars($contact_error); ?></div>
+            <?php endif; ?>
             <div class="bg-white p-4">
                 <div class="contact-information">
-                    <h5>LANDMARKET</h5>
+                    <h5>Everafter Planner</h5>
                     <div class="row">
                         <div class="col-md-8">
                             <table class="table table-sm" style="font-size: 12px;">
                                 <tr>
-                                    <td>Big Day Planners</td>
-                                    <td><i class="mdi mdi-deskphone mr-3"></i> 999 (999) 999</td>
+                                    <td><i class="mdi mdi-map-marker mr-2"></i> Nairobi, Kenya</td>
+                                    <td><i class="mdi mdi-email mr-3"></i> info@wpms.co.ke</td>
                                 </tr>
                                 <tr>
-                                    <td>6th Floor, Valencia City</td>
-                                    <td><i class="mdi mdi-phone mr-3"></i> +91 99896722351</td>
+                                    <td><i class="mdi mdi-phone mr-2"></i> +254 700 000 000</td>
+                                    <td><i class="mdi mdi-whatsapp mr-3"></i> +254 700 000 000</td>
                                 </tr>
                                 <tr>
-                                    <td>Street P-4 Poblacion 88825</td>
-                                    <td><i class="mdi mdi-email mr-3"></i> contactemail@gmail.com</td>
+                                    <td><i class="mdi mdi-web mr-2"></i> www.wpms.co.ke</td>
+                                    <td></td>
                                 </tr>
                             </table>
                         </div>
                         <div class="col-md-4">
                             <div class="text-center mt-3">
-                                <i class="mdi mdi-map-marker" style="font-size: 110px;color: #22ADB5;"></i>
+                                <i class="mdi mdi-map-marker" style="font-size: 110px;color: #065F46;"></i>
                             </div>
                         </div>
                     </div>
@@ -133,36 +180,33 @@
             <div class="bg-white mt-3 pt-1 pl-4 pb-3">
                 <div class="row mt-3">
                     <div class="col-md-12">
-                        <form action="" method="post" style="font-size: 12px;">
+                        <form action="contact.php" method="post" style="font-size: 12px;">
                             <div class="row">
-                                <div class="col-md-6">
+                                <div class="col-md-12">
                                     <div class="form-row">
-                                        <div class="form-group col-md-12 mb-1">
+                                        <div class="form-group col-md-6 mb-1">
                                             <label for="contact_person">Name</label>
-                                            <input type="email" class="form-control" id="contact_person" placeholder="Enter contact person">
+                                            <input type="text" class="form-control" id="contact_person" name="contact_person" value="<?= htmlspecialchars($contact_name); ?>" placeholder="Your full name">
                                         </div>
-                                        <div class="form-group col-md-12 mb-1">
+                                        <div class="form-group col-md-6 mb-1">
                                             <label for="contact_email">Email</label>
-                                            <input type="password" class="form-control" id="contact_email" placeholder="Enter email">
+                                            <input type="email" class="form-control" id="contact_email" name="contact_email" value="<?= htmlspecialchars($contact_email); ?>" placeholder="you@example.com">
                                         </div>
-                                        <div class="form-group col-md-12 mb-1">
+                                        <div class="form-group col-md-6 mb-1">
                                             <label for="contact_phone">Phone</label>
-                                            <input type="text" class="form-control" id="contact_phone" placeholder="Enter mobile phone">
+                                            <input type="tel" class="form-control" id="contact_phone" name="contact_phone" value="<?= htmlspecialchars($contact_phone); ?>" placeholder="+254 7XX XXX XXX">
                                         </div>
                                         <div class="form-group col-md-12 mb-1">
                                             <label for="contact_message">Message</label>
-                                            <textarea type="text" class="form-control"
+                                            <textarea class="form-control" name="contact_message"
                                                       style="resize: none;" rows="8"
-                                                      id="contact_message" placeholder="Enter message"></textarea>
+                                                      id="contact_message" placeholder="How can we help with your wedding planning?"><?= htmlspecialchars($contact_message); ?></textarea>
                                         </div>
 
                                     </div>
                                 </div>
-                                <div class="col-md-6 pr-2">
-                                    <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3951.804581750715!2d125.08993251421961!3d7.915471407613357!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x32ff1a2d27bfc2c5%3A0x49f6694edf036a5a!2sAMA+Computer+Learning+Center!5e0!3m2!1sen!2sph!4v1518944564341" width="95%" height="395" frameborder="0" style="border:0" allowfullscreen></iframe>
-                                </div>
                             </div>
-                            <button type="submit" class="btn btn-primary btn-sm rounded-0" style="font-size: 12px;margin-top: 10px;background: #22adb5;border: 0;">Send Message</button>
+                            <button type="submit" name="contact_submit" class="btn btn-sm" style="font-size: 13px;margin-top: 10px;background: #065F46;color: #fff;border-radius: 999px;padding: .5rem 1.5rem;font-weight: 600;border: 0;">Send Message</button>
                         </form>
                     </div>
                 </div>
@@ -171,48 +215,6 @@
         </div>
     </div>
 </div>
-<!-- MODAL LOGIN SECTION-->
-<div class="modal fade" id="loginModal" tabindex="-1" role="dialog" aria-labelledby="loginModal" aria-hidden="true">
-    <div class="modal-dialog" role="document">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="loginModal"><img src="images/logo/everafter-crest.png" alt="Everafter Planner" style="height:40px;"></h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-            </div>
-            <div class="modal-body">
-                <form action="login.php" method="post">
-                    <div class="form-group row">
-                        <label for="inputEmail" class="col-sm-2 col-form-label">Email:</label>
-                        <div class="col-sm-10">
-                            <input type="text" class="form-control" id="inputEmail" name="input_email"
-                                   placeholder="Enter email">
-                        </div>
-                    </div>
-                    <div class="form-group row">
-                        <label for="inputPassword" class="col-sm-2 col-form-label">Password:</label>
-                        <div class="col-sm-10">
-                            <input type="password" class="form-control" id="inputPassword" name="input_password" placeholder="Enter password">
-                        </div>
-                    </div>
-                    <div class="form-group row">
-                        <label for="login" class="col-sm-2 col-form-label"></label>
-                        <div class="col-sm-10">
-                            <button type="submit" name="login" class="btn btn-primary mr-2 custom-btn" style="font-size: 14px;">
-                                Login
-                            </button>
-                            <a href="contact.php" style="color: #22adb5;">Forgot your password?</a>
-                            <br/>
-                            <div class="mt-2">Not a member yet? <a href="sign_up.php" style="color: #22adb5;">Join Now</a></div>
-                        </div>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Optional JavaScript -->
 <!-- jQuery first, then Popper.js, then Bootstrap JS -->
 <script src="js/jquery-3.2.1.slim.min.js"></script>

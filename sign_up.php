@@ -10,96 +10,36 @@ $booking = new Booking();
 $category = Category::find_all();
 $blogEvent = EventWedding::getEventBlogs();
 
-if (isset($_POST['register'])) {
-
-    $user_firstname = clean($_POST['user_firstname']);
-    $user_lastname = clean($_POST['user_lastname']);
-    $user_email = clean($_POST['user_email']);
-    $user_phone = clean($_POST['user_phone']);
-    $wedding_date = clean($_POST['wedding_date']);
-
-    $checkdate = $booking->check_wedding_date($wedding_date);
-
-    if ($checkdate) {
-        redirect_to("sign_up.php");
-        $session->message("
-            <div class=\"alert alert-warning alert-dismissible fade show\" role=\"alert\">
-              <strong><i class='mdi mdi-alert'></i></strong>  The wedding you enter is already booked. Please Try another set of date!
-              <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
-                <span aria-hidden=\"true\">&times;</span>
-              </button>
-            </div>");
-        die();
-    }
-
-    if (empty($user_firstname) ||
-        empty($user_phone) ||
-        empty($user_email) ||
-        empty($user_lastname) ||
-        empty($wedding_date)) {
-        redirect_to("sign_up.php");
-        $session->message("
-            <div class=\"alert alert-warning alert-dismissible fade show\" role=\"alert\">
-              <strong><i class='mdi mdi-alert'></i></strong>  Please Fill up all the fields.
-              <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
-                <span aria-hidden=\"true\">&times;</span>
-              </button>
-            </div>");
-        die();
-    }
-
-    if (!filter_var($user_email, FILTER_VALIDATE_EMAIL)){
-        redirect_to("sign_up.php");
-        $session->message("
-            <div class=\"alert alert-warning alert-dismissible fade show\" role=\"alert\">
-              <strong><i class='mdi mdi-alert'></i></strong>  Incorrect email format.
-              <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
-                <span aria-hidden=\"true\">&times;</span>
-              </button>
-            </div>");
-        die();
-
-    }
-
-    $check_email = $accounts->email_exists($user_email);
-
-    if ($check_email) {
-        redirect_to("sign_up.php");
-        $session->message("
-            <div class=\"alert alert-warning alert-dismissible fade show\" role=\"alert\">
-              <strong><i class='mdi mdi-alert'></i></strong>  Email is already Exists.
-              <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
-                <span aria-hidden=\"true\">&times;</span>
-              </button>
-            </div>");
-        die();
-    } else {
-        if ($error == '') {
-            $count = $count + 1;
-            $account_details->firstname = $user_firstname;
-            $account_details->lastname = $user_lastname;
-            $account_details->status = 'pending';
-            $account_details->datetime_created  = date("y-m-d h:m:i");
-            $account_details->phone= $user_phone;
-            if ($account_details->save()) {
-                $account_details->user_id = $db->the_insert_id();
-
-                if($account_details->update()) {
-                    $accounts->user_id = $account_details->user_id;
-                    $accounts->user_email= $user_email;
-
-                    if($accounts->save()) {
-                        $booking->user_id = $accounts->user_id;
-                        $booking->user_email = $user_email;
-                        $booking->wedding_date =  $wedding_date;
-                        $booking->save();
-                        redirect_to("thank_you.php");
-                    }
-                }
-            }
+    if (isset($_POST['register'])) {
+        if (!$session->verify_csrf()) {
+            $session->message('<div class="alert alert-danger" role="alert">Invalid security token. Please refresh and try again.</div>');
+            redirect_to("sign_up.php");
+            die();
         }
+
+        $user_firstname = trim((string) ($_POST['user_firstname'] ?? ''));
+        $user_lastname  = trim((string) ($_POST['user_lastname'] ?? ''));
+        $user_email     = trim((string) ($_POST['user_email'] ?? ''));
+        $user_phone     = trim((string) ($_POST['user_phone'] ?? ''));
+        $user_password  = (string) ($_POST['user_password'] ?? '');
+        $wedding_date   = trim((string) ($_POST['wedding_date'] ?? ''));
+        
+        if (!filter_var($user_email, FILTER_VALIDATE_EMAIL)) {
+            $session->message('<div class="alert alert-warning alert-dismissible fade show" role="alert"><strong>Incorrect email format.</strong></div>');
+            redirect_to("sign_up.php");
+            die();
+        }
+
+        $result = register_client($user_firstname, $user_lastname, $user_email, $user_phone, $user_password, $wedding_date);
+
+        if ($result['ok']) {
+            redirect_to("thank_you.php");
+            die();
+        }
+        $session->message('<div class="alert alert-warning alert-dismissible fade show" role="alert"><i class="mdi mdi-alert mr-2"></i>' . htmlspecialchars($result['error']) . '</div>');
+        redirect_to("sign_up.php");
+        die();
     }
-}
 ?>
 <!doctype html>
 <html lang="en">
@@ -341,6 +281,9 @@ if (isset($_POST['register'])) {
                             </div>
                             <div class="form-group">
                                 <input type="text" aria-describedby="phoneHelpBlock" class="form-control" name="user_phone" id="user_phone" placeholder="Contact Number">
+                            </div>
+                            <div class="form-group">
+                                <input type="password" class="form-control" name="user_password" id="user_password" placeholder="Create Password (min 8 chars)" autocomplete="new-password">
                             </div>
                             <div class="form-row">
                                 <div class="input-group col-md-5">

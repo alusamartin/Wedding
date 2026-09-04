@@ -4,115 +4,159 @@ declare(strict_types=1);
 use PHPUnit\Framework\TestCase;
 
 /**
- * WPMS Kenya v2.1 — Session Hardening Tests (Task 1.2)
- * Run: vendor/bin/phpunit --testdox tests/SessionHardeningTest.php
+ * WPMS Kenya v2.1 — Session Hardening Tests (behavioral).
+ *
+ * Successor to the earlier source-assertion suite: these tests instantiate
+ * Session and assert observable behavior (cookie params, session-id
+ * rotation, fingerprint enforcement, timeout, CSRF) instead of grepping
+ * the source file. Pure PHP — no DB required.
  */
 final class SessionHardeningTest extends TestCase
 {
-    public function testSessionFileExistsAndIsStrictTyped(): void
+    protected function setUp(): void
     {
-        $src = (string) file_get_contents(__DIR__ . '/../admin/include/Session.php');
-        self::assertStringContainsString('declare(strict_types=1)', $src);
-        self::assertStringContainsString('class Session', $src);
+        if (!class_exists('Session', false)) {
+            require_once __DIR__ . '/../admin/include/Session.php';
+        }
+        $this->resetSession();
+    }
+
+    protected function tearDown(): void
+    {
+        $this->resetSession();
+    }
+
+    private function resetSession(): void
+    {
+        // Full reset: write_close() alone resumes the same session id in CLI,
+        // so previously-bound state would leak into the next test.
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            $_SESSION = [];
+            session_destroy();
+        }
     }
 
     public function testCookieParamsAreHardened(): void
     {
-        $src = (string) file_get_contents(__DIR__ . '/../admin/include/Session.php');
-        self::assertStringContainsString("'httponly' => true", $src, 'httponly must be true');
-        // Cookie params were refactored to private constants (v2.1) — assert the constant
-        // definitions (spacing-tolerant) and that the params array sources from them.
-        self::assertMatchesRegularExpression("/const COOKIE_SAMESITE\\s+=\\s*'Strict';/", $src, 'samesite must be Strict');
-        self::assertStringContainsString("'samesite' => self::COOKIE_SAMESITE", $src, 'cookie params must source from COOKIE_SAMESITE');
-        self::assertMatchesRegularExpression("/const COOKIE_PATH\\s+=\\s*'\\/';/", $src, 'path must be /');
-        self::assertStringContainsString("'path'     => self::COOKIE_PATH", $src, 'cookie params must source from COOKIE_PATH');
-        self::assertStringContainsString("'secure'   =>", $src, 'secure must be set (auto-detect HTTPS)');
-        self::assertStringContainsString('session.use_strict_mode', $src);
-        self::assertStringContainsString('session.use_only_cookies', $src);
-        self::assertStringContainsString('session.use_trans_sid', $src);
-        self::assertStringContainsString('session_set_cookie_params', $src);
-        self::assertStringContainsString('session.cookie_httponly', $src);
+        new Session();
+
+        $params = session_get_cookie_params();
+        self::assertSame('/', $params['path'], 'Cookie path must be /');
+        self::assertSame('Strict', $params['samesite'] ?? null, 'SameSite must be Strict');
+        self::assertNotEmpty($params['httponly'], 'HttpOnly must be on');
+        // CLI runs over plain http — secure must be off (auto-detected HTTPS only)
+        self::assertFalse((bool) $params['secure'], 'secure must follow the actual protocol');
+
+        self::assertSame('1', ini_get('session.use_strict_mode'));
+        self::assertSame('1', ini_get('session.use_only_cookies'));
+        self::assertSame('0', ini_get('session.use_trans_sid'));
+        self::assertSame('1', ini_get('session.cookie_httponly'));
+        self::assertSame('Strict', ini_get('session.cookie_samesite'));
     }
 
-    public function testFifteenMinuteRegeneration(): void
+    public function testSessionIdRotatesOnlyAfterFifteenMinutes(): void
     {
-        $src = (string) file_get_contents(__DIR__ . '/../admin/include/Session.php');
-        self::assertStringContainsString('REGENERATE_INTERVAL = 900', $src, 'Must regenerate every 15 min (900s)');
-        self::assertStringContainsString('periodicRegeneration', $src);
-        self::assertStringContainsString('_last_regeneration', $src);
-        self::assertStringContainsString('session_regenerate_id(true)', $src);
+        // Fresh session — second construct within the window must NOT rotate.
+        $first = new Session();
+        $idFresh = session_id();
+        self::assertNotSame('', $idFresh);
+
+        new Session();
+        self::assertSame($idFresh, session_id(), 'No rotation within the 15-minute window');
+
+        // Simulate 15+ minutes elapsed, then a new request must rotate.
+        $_SESSION['_last_regeneration'] = time() - 901;
+        new Session();
+
+        self::assertNotSame($idFresh, session_id(), 'Session must regenerate after 15 minutes');
+        self::assertGreaterThan(time() - 5, (int) $_SESSION['_last_regeneration']);
     }
 
-    public function testLoginRegeneratesAndBindsFingerprint(): void
+    public function testLoginRotatesSessionIdAndBindsFingerprint(): void
     {
-        $src = (string) file_get_contents(__DIR__ . '/../admin/include/Session.php');
-        // login() must regenerate BEFORE writing auth state
-        $loginPos = strpos($src, 'function login(');
-        self::assertNotFalse($loginPos);
-        $loginBlock = substr($src, $loginPos, 1500);
-        self::assertStringContainsString('regenerate()', $loginBlock, 'login() must call regenerate()');
-        self::assertStringContainsString('_fingerprint', $loginBlock, 'login() must bind fingerprint');
-        self::assertStringContainsString('privilege_level', $src);
+        $session = new Session();
+        $before = session_id();
+
+        $session->login((object) [
+            'user_id'    => 200,
+            'user_email' => 'brian.wafula@gmail.com',
+            'access_level' => '0',
+        ]);
+
+        self::assertNotSame($before, session_id(), 'login() must regenerate to prevent fixation');
+        self::assertNotEmpty($_SESSION['_fingerprint'], 'login() must bind a fingerprint');
+        self::assertTrue($session->is_signed_in());
     }
 
-    public function testPrivilegeChangeRegenerates(): void
+    public function testPrivilegeChangeRotatesSessionId(): void
     {
-        $src = (string) file_get_contents(__DIR__ . '/../admin/include/Session.php');
-        self::assertStringContainsString('function privilege_changed()', $src, 'Must have privilege_changed() that regenerates');
-        $pos = strpos($src, 'function privilege_changed()');
-        $block = substr($src, $pos, 600);
-        self::assertStringContainsString('regenerate()', $block);
+        $session = new Session();
+        $session->login((object) ['id' => 7, 'email' => 'amina@wpms.co.ke', 'designation' => 'Planner']);
+        $before = session_id();
+
+        $session->privilege_changed();
+
+        self::assertNotSame($before, session_id(), 'privilege_changed() must rotate the session id');
+        self::assertNotEmpty($_SESSION['_fingerprint']);
     }
 
-    public function testFingerprintIsIpPlusUserAgent(): void
+    public function testFingerprintMismatchForcesLogout(): void
     {
-        $src = (string) file_get_contents(__DIR__ . '/../admin/include/Session.php');
-        self::assertStringContainsString('function computeFingerprint()', $src);
-        self::assertStringContainsString('REMOTE_ADDR', $src, 'Fingerprint must include IP');
-        self::assertStringContainsString('HTTP_USER_AGENT', $src, 'Fingerprint must include User-Agent');
-        self::assertStringContainsString('hash_hmac', $src, 'Fingerprint must be HMAC');
-        self::assertStringContainsString('sha256', $src);
-        self::assertStringContainsString('enforceFingerprintCheck', $src);
-        self::assertStringContainsString('hash_equals', $src, 'Fingerprint compare must be timing-safe');
+        $session = new Session();
+        $session->login((object) ['user_id' => 200, 'user_email' => 'a@b.co.ke', 'access_level' => '0']);
+        self::assertTrue($session->is_signed_in());
+
+        // Next request comes from a different client (stale/forged fingerprint).
+        $_SESSION['_fingerprint'] = 'forged-fingerprint-value';
+
+        $next = new Session();
+
+        self::assertFalse($next->is_signed_in(), 'Fingerprint mismatch must force logout');
+        self::assertArrayNotHasKey('_fingerprint', $_SESSION, 'Fingerprint must be cleared for the next login');
+        self::assertStringContainsString('Session invalidated', (string) ($_SESSION['message'] ?? ''));
     }
 
-    public function testCsrfStillUsesRandomBytesAndHashEquals(): void
+    public function testInactivityTimeoutLogsOutAfterTwoHours(): void
     {
-        $src = (string) file_get_contents(__DIR__ . '/../admin/include/Session.php');
-        self::assertStringContainsString('random_bytes(32)', $src);
-        self::assertStringContainsString('hash_equals', $src);
-        self::assertStringContainsString('function csrf_token()', $src);
-        self::assertStringContainsString('function csrf_field()', $src);
-        self::assertStringContainsString('function verify_csrf', $src);
-        self::assertStringContainsString('htmlspecialchars', $src);
-        self::assertStringContainsString('ENT_QUOTES', $src);
+        $session = new Session();
+        $session->login((object) ['id' => 7, 'email' => 'a@b.co.ke', 'designation' => 'Planner']);
+        self::assertTrue($session->is_signed_in());
+
+        // Simulate 2h+ of inactivity, then a new request.
+        $_SESSION['_last_activity'] = time() - 7201;
+
+        $next = new Session();
+
+        self::assertFalse($next->is_signed_in(), 'Two-hour inactivity must force logout');
+        self::assertStringContainsString('expired due to inactivity', (string) ($_SESSION['message'] ?? ''));
     }
 
-    public function testInactivityTimeoutIsTwoHours(): void
+    public function testCsrfTokenIsStableVerifiableAndTimeSafe(): void
     {
-        $src = (string) file_get_contents(__DIR__ . '/../admin/include/Session.php');
-        self::assertStringContainsString('INACTIVITY_TIMEOUT  = 7200', $src, 'Inactivity timeout must be 2 hours');
-        self::assertStringContainsString('enforceTimeout', $src);
-        self::assertStringContainsString('_last_activity', $src);
-    }
+        $session = new Session();
 
-    public function testManualVerificationSteps(): void
-    {
-        // Document manual steps as assertions on file existence for CI
-        self::assertFileExists(__DIR__ . '/../admin/include/Session.php');
-        self::assertFileExists(__DIR__ . '/../migrations/v2.1_phase1_hardening.sql');
-        // Verify the deliverable doc's frontend snippet exists (created below)
-        // This test will be updated once frontend snippet file is created
-        self::assertTrue(true, <<<'TXT'
-        Manual verification (perform in browser):
-        1. Open DevTools → Application → Cookies. Verify Set-Cookie has HttpOnly; Path=/; SameSite=Strict; Secure (on HTTPS).
-        2. Log in via admin/login.php. In DevTools → Network, verify session cookie rotated (new PHPSESSID).
-        3. Wait 15 min (or set REGENERATE_INTERVAL to 30s temporarily) and reload — verify PHPSESSID rotated again.
-        4. Change User-Agent (curl -A) with same PHPSESSID — verify forced logout + "Session invalidated" message.
-        5. Change IP via VPN — verify same forced logout (if enforceFingerprint=true).
-        6. Elevate privilege (change access_level) and call $session->privilege_changed() — verify rotation.
-        7. Leave tab idle 2h — verify inactivity logout.
-        TXT
+        $token = $session->csrf_token();
+        self::assertSame(64, strlen($token), 'CSRF token must be 32 bytes of random as hex (64 chars)');
+        self::assertSame($token, $session->csrf_token(), 'Token must be stable within a session');
+
+        self::assertTrue($session->verify_csrf($token), 'Correct token must verify');
+        self::assertFalse($session->verify_csrf(str_repeat('0', 64)), 'Wrong token must not verify');
+        self::assertFalse($session->verify_csrf(''), 'Empty token must not verify');
+
+        // verify_csrf() falls back to $_POST['_token']
+        $_POST['_token'] = $token;
+        try {
+            self::assertTrue($session->verify_csrf(), 'POST-supplied token must verify');
+        } finally {
+            unset($_POST['_token']);
+        }
+
+        $field = $session->csrf_field();
+        self::assertStringContainsString('name="_token"', $field);
+        self::assertStringContainsString(
+            htmlspecialchars($token, ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+            $field,
+            'csrf_field() must render the token HTML-escaped'
         );
     }
 }

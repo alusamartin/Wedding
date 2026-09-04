@@ -4,7 +4,7 @@
     $count = 0;
     $error = '';
     $firstname = $lastname = $email = $wedding_date = $bride = $groom = $phone = $city = '';
-    if (!isset($_SESSION['id'])) { redirect_to("../"); }
+    if (!is_staff()) { redirect_to("../"); }
 
     // $booking_id = $_GET['booking'];
     // $user_id = $_GET['user_id'];

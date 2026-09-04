@@ -1,6 +1,6 @@
 <?php include 'include/init.php'; ?>
 <?php
-     if (!isset($_SESSION['id'])) {
+     if (!is_staff()) {
          redirect_to("../");
      }
      $users =  Users::find_all();

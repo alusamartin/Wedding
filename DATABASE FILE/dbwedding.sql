@@ -603,6 +603,11 @@ ALTER TABLE `calendar`
 ALTER TABLE `events`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=17;
 --
+-- AUTO_INCREMENT for table `tblaccounts`
+--
+ALTER TABLE `tblaccounts`
+  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT;
+--
 -- AUTO_INCREMENT for table `tblaccounts_detail`
 --
 ALTER TABLE `tblaccounts_detail`

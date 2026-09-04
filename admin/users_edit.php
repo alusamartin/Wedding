@@ -2,7 +2,7 @@
 <?php
 
 
-    if (!isset($_SESSION['id'])) { redirect_to("../"); }
+    if (!is_staff()) { redirect_to("../"); }
 
     $users = Users::find_by_id($_GET['id']);
 

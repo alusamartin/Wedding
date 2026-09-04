@@ -56,6 +56,11 @@ class Session
         if (headers_sent()) {
             return;
         }
+        // Session ini settings cannot be changed once a session is active;
+        // params were already applied at first start (one Session per request).
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            return;
+        }
 
         $isHttps = $this->isHttps();
 

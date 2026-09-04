@@ -1,7 +1,7 @@
 <?php
 include 'include/init.php';
 
-if (!isset($_SESSION['id'])) { redirect_to("../"); }
+if (!is_staff()) { redirect_to("../"); }
 
 // CSRF validation
 if (!$session->verify_csrf()) {

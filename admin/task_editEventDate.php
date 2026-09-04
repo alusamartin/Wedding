@@ -1,6 +1,8 @@
 <?php
-
-$bdd = new PDO('mysql:host=localhost;dbname=dbwedding', 'root', '');
+require_once __DIR__ . '/include/init.php';
+require_staff();
+global $db;
+$bdd = $db->pdo();
 
 if (isset($_POST['Event'][0]) && isset($_POST['Event'][1]) && isset($_POST['Event'][2])){
 	

@@ -1,6 +1,6 @@
 <?php include 'include/init.php'; ?>
 <?php
-    if (!isset($_SESSION['id'])) { redirect_to("../"); }
+    if (!is_staff()) { redirect_to("../"); }
 
     $user_id = $_SESSION['id'];
     $existing = Vendor::get_by_user($user_id);

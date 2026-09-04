@@ -3,7 +3,7 @@
 <?php
 
     $booking = Booking::find_booking_all();
-    if (!isset($_SESSION['id'])) { redirect_to("../");}
+    if (!is_staff()) { redirect_to("../");}
     $bdd = new PDO('mysql:host=localhost;dbname=dbwedding', 'root', '');
     $sql = "SELECT id, title, location, start, end, color FROM events";
     $req = $bdd->prepare($sql);

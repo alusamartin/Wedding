@@ -1,6 +1,17 @@
 <?php include_once 'admin/include/init.php';?>
 <?php
  if (isset($_POST['login'])) {
+     if (!$session->verify_csrf()) {
+         redirect_to("login.php");
+         $session->message("
+            <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
+              <strong><i class='mdi mdi-alert'></i></strong>  Invalid security token. Please try again.
+              <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
+                <span aria-hidden=\"true\">&times;</span>
+              </button>
+            </div>");
+         die();
+     }
      $input_email = clean($_POST['input_email']);
      $input_password= clean($_POST['input_password']);
      $logged = Accounts::login_user($input_email, $input_password);
@@ -129,6 +140,7 @@
 
 <body class="text-center">
 <form class="form-signin" action="login.php" method="post">
+    <?= $session->csrf_field(); ?>
     <a href="index.php"><img class="mb-4" src="images/logo/everafter-crest.png" alt="Everafter Planner" style="height:104px;"></a>
     <h3 class="h3 mb-3 font-weight-normal">Login Your Account</h3>
     <p class="login-sub">Welcome back — sign in to access your account</p>

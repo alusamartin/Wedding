@@ -66,4 +66,30 @@ class Booking extends DB_Object
         $sql = "SELECT count(booking_id) FROM " . self::$db_table;
         return (int) $db->fetchValue($sql);
     }
+
+    /** Pending bookings owned by one client account (client portal scope). */
+    public static function getBookingForUser(int $userId): array
+    {
+        global $db;
+        $sql = "SELECT * FROM tblaccounts_detail INNER JOIN tblweddingbook ON tblweddingbook.user_id = tblaccounts_detail.user_id WHERE tblaccounts_detail.user_id = :uid AND tblaccounts_detail.status = 'pending' ORDER BY booking_id ASC";
+        $stmt = $db->execute($sql, [':uid' => $userId]);
+        $arr = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $arr[] = static::instantiation($row);
+        }
+        return $arr;
+    }
+
+    /** Confirmed bookings owned by one client account (client portal scope). */
+    public static function ConfirmedBookingForUser(int $userId): array
+    {
+        global $db;
+        $sql = "SELECT * FROM tblaccounts_detail INNER JOIN tblweddingbook ON tblweddingbook.user_id = tblaccounts_detail.user_id WHERE tblaccounts_detail.user_id = :uid AND tblaccounts_detail.status = 'confirm' ORDER BY booking_id ASC";
+        $stmt = $db->execute($sql, [':uid' => $userId]);
+        $arr = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $arr[] = static::instantiation($row);
+        }
+        return $arr;
+    }
 }

@@ -1,4 +1,4 @@
-<?php include("include/init.php"); ?>
+<?php include("include/init.php"); require_staff(); ?>
 
 <?php 
 

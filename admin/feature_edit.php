@@ -2,7 +2,7 @@
 <?php
 
 
-    if (!isset($_SESSION['id'])) { redirect_to("../"); }
+    if (!is_staff()) { redirect_to("../"); }
     $features = Features::find_by_feature_id($_GET['id']);
     $category = category::find_all();
 

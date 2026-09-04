@@ -8,9 +8,16 @@
     $status_filter = isset($_GET['status']) ? clean($_GET['status']) : 'all';
     $search = isset($_GET['search']) ? clean($_GET['search']) : '';
 
-    // Get bookings based on filter
-    $pending = Booking::getBooking();
-    $confirmed = Booking::ConfirmedBooking();
+    // Get bookings — staff see all; a client session is scoped to their own account
+    $is_staff_view = is_staff();
+    $current_user_id = (int) $_SESSION['id'];
+    if ($is_staff_view) {
+        $pending = Booking::getBooking();
+        $confirmed = Booking::ConfirmedBooking();
+    } else {
+        $pending = Booking::getBookingForUser($current_user_id);
+        $confirmed = Booking::ConfirmedBookingForUser($current_user_id);
+    }
 
     // Combine for "all" view
     $all_bookings = array_merge($pending, $confirmed);
@@ -286,11 +293,14 @@
     <div class="d-flex justify-content-between align-items-center mb-4" style="border-bottom: 2px solid #c0392b; padding-bottom: 15px;">
         <div>
             <h4 class="mb-1"><i class="mdi mdi-calendar-multiple-check text-danger"></i> Wedding Bookings</h4>
-            <p class="text-muted mb-0" style="font-size: 13px;">Manage all wedding bookings, track progress, and access planning tools</p>
+            <p class="text-muted mb-0" style="font-size: 13px;"><?= $is_staff_view ? 'Manage all wedding bookings, track progress, and access planning tools' : 'Track your wedding booking and planning progress'; ?></p>
         </div>
         <div class="table-actions">
-            <a href="client_add.php" class="btn btn-success"><i class="mdi mdi-plus"></i> New Booking</a>
-            <button class="btn btn-outline-secondary" onclick="window.print()"><i class="mdi mdi-printer"></i> Print</button>
+            <?php if ($is_staff_view) : ?>
+                <a href="client_add.php" class="btn btn-success"><i class="mdi mdi-plus"></i> New Booking</a>
+                <button class="btn btn-outline-secondary" onclick="window.print()"><i class="mdi mdi-printer"></i> Print</button>
+            <?php endif; ?>
+            <a href="logout.php" class="btn btn-outline-danger"><i class="mdi mdi-logout"></i> Sign Out</a>
         </div>
     </div>
 

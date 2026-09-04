@@ -19,9 +19,52 @@
                 <li class="nav-item"><a class="nav-link" href="contact.php">Contact</a></li>
             </ul>
             <div class="d-flex align-items-center" style="gap:.5rem;">
+                <a class="wpms-cta-ghost btn btn-sm" href="#" data-toggle="modal" data-target="#loginModal">Login</a>
                 <a class="wpms-cta-ghost btn btn-sm" href="admin/login.php"><i class="mdi mdi-shield-account-outline mr-1"></i> Admin</a>
                 <a class="wpms-cta btn btn-sm" href="sign_up.php">Join Now — Free</a>
             </div>
         </div>
     </div>
 </nav>
+
+<!-- Client Login Modal (shared by all public pages) -->
+<div class="modal fade" id="loginModal" tabindex="-1" role="dialog" aria-labelledby="loginModalTitle" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="loginModalTitle"><img src="images/logo/everafter-crest.png" alt="Everafter Planner" style="height:40px;"></h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form action="login.php" method="post">
+                    <div class="form-group row">
+                        <label for="inputEmail" class="col-sm-2 col-form-label">Email:</label>
+                        <div class="col-sm-10">
+                            <input type="text" class="form-control" id="inputEmail" name="input_email"
+                                   placeholder="Enter email">
+                        </div>
+                    </div>
+                    <div class="form-group row">
+                        <label for="inputPassword" class="col-sm-2 col-form-label">Password:</label>
+                        <div class="col-sm-10">
+                            <input type="password" class="form-control" id="inputPassword" name="input_password" placeholder="Enter password">
+                        </div>
+                    </div>
+                    <div class="form-group row">
+                        <label for="login" class="col-sm-2 col-form-label"></label>
+                        <div class="col-sm-10">
+                            <button type="submit" name="login" class="btn mr-2 custom-btn" style="font-size:14px; background:#065F46; color:#fff; border-radius:999px; padding:.45rem 1.3rem; font-weight:600; border:0;">
+                                Login
+                            </button>
+                            <a href="contact.php" style="color: #6B82A6;">Forgot your password?</a>
+                            <br/>
+                            <div class="mt-2">Not a member yet? <a href="sign_up.php" style="color: #6B82A6;">Join Now</a></div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

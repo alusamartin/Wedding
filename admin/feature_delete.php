@@ -2,7 +2,7 @@
 
 <?php 
 
-if (!isset($_SESSION['id'])) {
+if (!is_staff()) {
 	redirect_to("../login.php");
 }
 

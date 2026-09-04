@@ -2,7 +2,7 @@
 <?php
 
 
-    if (!isset($_SESSION['id'])) { redirect_to("../"); }
+    if (!is_staff()) { redirect_to("../"); }
     $gallery = new Gallery();
     $booking = Booking::find_booking_all();
     if (isset($_POST['submit']) || isset($_FILES['file'])) {

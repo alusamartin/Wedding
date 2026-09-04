@@ -1,9 +1,13 @@
 <?php include 'include/init.php'; ?>
 
 <?php
-     if (!isset($_SESSION['id'])) {
-         redirect_to("../");
-     }
+    if (!isset($_SESSION['id'])) {
+        redirect_to("../");
+    }
+    // Client sessions may only open their OWN account detail (staff see all).
+    if (!is_staff() && (int) ($_GET['user_id'] ?? 0) !== (int) $_SESSION['id']) {
+        redirect_to("client.php");
+    }
      $booking_id = $_GET['booking_id'];
      $user_id = $_GET['user_id'];
      $links='booking_id='.$booking_id.'&user_id='.$user_id;

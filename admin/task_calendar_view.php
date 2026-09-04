@@ -1,10 +1,8 @@
 <?php 
-    // require 'bdd.php';
-    $bdd = new PDO('mysql:host=localhost;dbname=dbwedding', 'root', '');
-    $sql = "SELECT id, title, location, start, end, color FROM events ";
-    $req = $bdd->prepare($sql);
-    $req->execute();
-    $events = $req->fetchAll();
+    require_once __DIR__ . '/include/init.php';
+    require_staff();
+    global $db;
+    $events = $db->fetchAll("SELECT id, title, location, start, end, color FROM events");
 ?>
 <!DOCTYPE html>
 <html>

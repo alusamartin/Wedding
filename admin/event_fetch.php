@@ -1,7 +1,8 @@
 <?php
-$username = 'root';
-$password = 'johnpaul';
-$connection = new PDO( 'mysql:host=localhost;dbname=dbwedding', $username, $password );
+require_once __DIR__ . '/include/init.php';
+require_staff();
+global $db;
+$connection = $db->pdo();
 
 function upload_image()
 {
