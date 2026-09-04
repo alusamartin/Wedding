@@ -79,11 +79,18 @@
         </td>';
         $html .= '<td><span class="status-badge ' . $status_class . '">' . $status_label . '</span></td>';
         $html .= '<td>
-            <div class="btn-group btn-group-sm">
-                <a href="client_assign.php?booking=' . $bookWedding->booking_id . '&user_id=' . $bookWedding->user_id . '" class="btn btn-outline-primary" title="Edit Assignment"><i class="mdi mdi-pencil"></i></a>';
+            <div class="btn-group btn-group-sm">';
 
-        if ($is_confirmed) {
-            $html .= '<a href="client_manage_account_details.php?booking_id=' . $bookWedding->booking_id . '&user_id=' . $bookWedding->user_id . '" class="btn btn-outline-info" title="Overview"><i class="mdi mdi-eye"></i></a>';
+        // Staff-only assignment tool
+        if (is_staff()) {
+            $html .= '<a href="client_assign.php?booking=' . $bookWedding->booking_id . '&user_id=' . $bookWedding->user_id . '" class="btn btn-outline-primary" title="Edit Assignment"><i class="mdi mdi-pencil"></i></a>';
+        }
+
+        // Overview is available to the couple on their own booking (pending or confirmed)
+        $html .= '<a href="client_manage_account_details.php?booking_id=' . $bookWedding->booking_id . '&user_id=' . $bookWedding->user_id . '" class="btn btn-outline-info" title="View Overview"><i class="mdi mdi-eye"></i></a>';
+
+        // Staff planning tools only appear on confirmed bookings, staff sessions only
+        if (is_staff() && $is_confirmed) {
             $html .= '<a href="guest_list.php?booking_id=' . $bookWedding->booking_id . '&user_id=' . $bookWedding->user_id . '" class="btn btn-outline-success" title="Guest List"><i class="mdi mdi-account-multiple"></i></a>';
             $html .= '<a href="budget.php?booking_id=' . $bookWedding->booking_id . '&user_id=' . $bookWedding->user_id . '" class="btn btn-outline-warning" title="Budget"><i class="mdi mdi-cash"></i></a>';
             $html .= '<a href="task_calendar.php?booking_id=' . $bookWedding->booking_id . '&user_id=' . $bookWedding->user_id . '" class="btn btn-outline-dark" title="Calendar"><i class="mdi mdi-calendar"></i></a>';
@@ -310,28 +317,28 @@
             <div class="stat-card">
                 <h6><i class="mdi mdi-clock-outline"></i> Pending</h6>
                 <div class="value"><?= $total_pending; ?></div>
-                <div class="trend">Awaiting assignment</div>
+                <div class="trend"><?= $is_staff_view ? 'Awaiting assignment' : 'Awaiting confirmation'; ?></div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="stat-card success">
                 <h6><i class="mdi mdi-check-circle"></i> Confirmed</h6>
                 <div class="value"><?= $total_confirmed; ?></div>
-                <div class="trend">Active weddings</div>
+                <div class="trend"><?= $is_staff_view ? 'Active weddings' : 'Your confirmed booking'; ?></div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="stat-card info">
-                <h6><i class="mdi mdi-account-multiple"></i> Total Guests</h6>
+                <h6><i class="mdi mdi-account-multiple"></i> <?= $is_staff_view ? 'Total Guests' : 'My Guests'; ?></h6>
                 <div class="value"><?= number_format($total_guests); ?></div>
-                <div class="trend">Across all weddings</div>
+                <div class="trend"><?= $is_staff_view ? 'Across all weddings' : 'On your confirmed booking'; ?></div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="stat-card warning">
-                <h6><i class="mdi mdi-cash-multiple"></i> Revenue Collected</h6>
+                <h6><i class="mdi mdi-cash-multiple"></i> <?= $is_staff_view ? 'Revenue Collected' : 'Amount Paid'; ?></h6>
                 <div class="value"><?= format_ksh($total_budget); ?></div>
-                <div class="trend">Total payments received</div>
+                <div class="trend"><?= $is_staff_view ? 'Total payments received' : 'Payments received on your booking'; ?></div>
             </div>
         </div>
     </div>
@@ -487,8 +494,8 @@
     </div>
     <?php endif; ?>
 
-    <!-- Upcoming Weddings Sidebar -->
-    <?php if (!empty($confirmed)): ?>
+    <!-- Upcoming Weddings Sidebar (staff workspace) -->
+    <?php if ($is_staff_view && !empty($confirmed)): ?>
     <div class="row">
         <div class="col-md-8">
             <div class="booking-table">

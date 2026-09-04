@@ -1,4 +1,11 @@
-
+<?php
+    // Public nav is session-aware: guests get Login/Join; a signed-in couple
+    // gets a direct link to their bookings and a working sign-out.
+    $nav_has_session = isset($_SESSION['id']) || isset($_SESSION['user_email']);
+    $nav_is_staff = function_exists('is_staff') && is_staff();
+    $nav_portal_url = $nav_is_staff ? 'admin/dashboard.php' : 'admin/client.php';
+    $nav_identity = $_SESSION['user_email'] ?? (isset($_SESSION['email']) ? $_SESSION['email'] : '');
+?>
 <nav class="navbar navbar-expand-xl wpms-nav fixed-top">
     <div class="container-fluid" style="max-width:1180px;">
         <a class="navbar-brand wpms-brand d-flex align-items-center" href="index.php">
@@ -19,14 +26,23 @@
                 <li class="nav-item"><a class="nav-link" href="contact.php">Contact</a></li>
             </ul>
             <div class="d-flex align-items-center" style="gap:.5rem;">
-                <a class="wpms-cta-ghost btn btn-sm" href="#" data-toggle="modal" data-target="#loginModal">Login</a>
-                <a class="wpms-cta-ghost btn btn-sm" href="admin/login.php"><i class="mdi mdi-shield-account-outline mr-1"></i> Admin</a>
-                <a class="wpms-cta btn btn-sm" href="sign_up.php">Join Now — Free</a>
+                <?php if ($nav_has_session): ?>
+                    <?php if ($nav_identity !== ''): ?>
+                        <span class="mr-1" style="font-size:12px; color:#57534E;"><?= htmlspecialchars($nav_identity); ?></span>
+                    <?php endif; ?>
+                    <a class="wpms-cta btn btn-sm" href="<?= $nav_portal_url; ?>"><i class="mdi mdi-calendar-heart mr-1"></i> <?= $nav_is_staff ? 'My Dashboard' : 'My Bookings'; ?></a>
+                    <a class="wpms-cta-ghost btn btn-sm" href="admin/logout.php"><i class="mdi mdi-logout mr-1"></i> Log Out</a>
+                <?php else: ?>
+                    <a class="wpms-cta-ghost btn btn-sm" href="#" data-toggle="modal" data-target="#loginModal">Login</a>
+                    <a class="wpms-cta-ghost btn btn-sm" href="admin/login.php"><i class="mdi mdi-shield-account-outline mr-1"></i> Admin</a>
+                    <a class="wpms-cta btn btn-sm" href="sign_up.php">Join Now — Free</a>
+                <?php endif; ?>
             </div>
         </div>
     </div>
 </nav>
 
+<?php if (!$nav_has_session): ?>
 <!-- Client Login Modal (shared by all public pages) -->
 <div class="modal fade" id="loginModal" tabindex="-1" role="dialog" aria-labelledby="loginModalTitle" aria-hidden="true">
     <div class="modal-dialog" role="document">
@@ -39,6 +55,12 @@
             </div>
             <div class="modal-body">
                 <form action="login.php" method="post">
+                    <?php if (function_exists('is_staff') && isset($session) && $session->message()): ?>
+                        <div class="mb-2"><?= $session->message(); ?></div>
+                    <?php endif; ?>
+                    <?php if (isset($session) && method_exists($session, 'csrf_field')): ?>
+                        <?= $session->csrf_field(); ?>
+                    <?php endif; ?>
                     <div class="form-group row">
                         <label for="inputEmail" class="col-sm-2 col-form-label">Email:</label>
                         <div class="col-sm-10">
@@ -68,3 +90,4 @@
         </div>
     </div>
 </div>
+<?php endif; ?>
