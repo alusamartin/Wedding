@@ -15,6 +15,10 @@ class Category extends DB_Object
     public $price;
     public $preview_image;
 
+    public $tmp_path;
+    public $type;
+    public $size;
+
     public $upload_directory = "upload/categories";
     public $image_placeholder = "http://placehold.it/300x300&text=images";
     public $errors = array();
@@ -123,5 +127,3 @@ class Category extends DB_Object
         return $the_object_array;
     }
 }
-
-?>

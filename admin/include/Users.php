@@ -32,6 +32,10 @@ class Users extends DB_Object
     public $profile_picture;
     public $date_created;
 
+    public $tmp_path;
+    public $type;
+    public $size;
+
     public $upload_directory = "upload/users";
     public $image_placeholder = "http://placehold.it/64x64&text=images";
     public $errors = array();

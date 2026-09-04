@@ -165,5 +165,3 @@ class Gallery extends DB_Object
         }
     }
 }
-
-?>

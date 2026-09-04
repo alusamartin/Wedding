@@ -27,6 +27,10 @@ class EventWedding extends DB_Object
     public $date_created;
     public $date_published;
 
+    public $tmp_path;
+    public $type;
+    public $size;
+
     public $upload_directory = "upload/events";
     public $image_placeholder = "http://placehold.it/64x64&text=images";
     public $errors = array();
@@ -140,6 +144,5 @@ class EventWedding extends DB_Object
 
 }
 
-?>
 
 
