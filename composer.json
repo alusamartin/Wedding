@@ -31,7 +31,8 @@
     "scripts": {
         "test": "phpunit --testdox",
         "migrate:db-compat": "php scripts/migrate_mysqli_to_pdo.php",
-        "lint": "@php scripts/lint.php admin"
+        "lint": "@php scripts/lint.php admin",
+        "smoke": "@php scripts/smoke.php"
     },
     "config": {
         "optimize-autoloader": true,
