@@ -48,10 +48,13 @@ a{ text-underline-offset:3px; }
   padding:10px 0 !important;
   text-transform:none !important;
   font-weight:500 !important;
+  z-index:1030;
 }
+/* Prevent content from hiding behind the fixed navbar */
+body{ padding-top:72px; }
 /* Brand: logo + wordmark sized to never crowd the first nav link */
 .navbar.wpms-nav .wpms-brand{ flex:0 0 auto; width:max-content; gap:.55rem; margin-right:.5rem; padding-top:0; padding-bottom:0; white-space:nowrap; font-family:'Plus Jakarta Sans','Inter',sans-serif; font-weight:800; letter-spacing:-.02em; color:var(--kenya-black) !important; }
-.navbar.wpms-nav .wpms-brand-logo{ height:30px; width:auto; }
+.navbar.wpms-nav .wpms-brand-logo{ height:30px; width:auto; display:inline-block; }
 .navbar.wpms-nav .wpms-brand-text{ font-size:1.05rem; line-height:1; }
 .navbar.wpms-nav .wpms-brand-text .text-kenya{ color:var(--kenya-green); }
 .navbar.wpms-nav .navbar-collapse{ min-width:0; }
@@ -98,7 +101,7 @@ a{ text-underline-offset:3px; }
   height:auto !important;
   background:linear-gradient(180deg, rgba(11,15,20,.18) 0%, rgba(11,15,20,.62) 100%), url(../images/carousel2.jpg) center/cover no-repeat !important;
   display:flex; align-items:center;
-  padding:108px 0 64px;
+  padding:60px 0 64px;
   border:none !important;
 }
 .hero::after{ content:none !important; }

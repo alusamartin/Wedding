@@ -84,7 +84,7 @@
                     <tr>
                         
                         <td class="special"><b><?= $category_row->wedding_type . ' Wedding Package';?></b></td>
-                        <td class="special">$ <b><?= number_format($category_row->price, 2);?></b></td>
+                        <td class="special">KSh <b><?= number_format($category_row->price, 2);?></b></td>
                         <td>
 
                             <a href="package_edit.php?id=<?= $category_row->id; ?>" class="btn btn-secondary btn-sm" data-toggle="tooltip" data-placement="top" title="Edit This Package">

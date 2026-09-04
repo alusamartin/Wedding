@@ -1,4 +1,4 @@
-# WPMS Kenya — Wedding Planning Management System
+# Everafter Planner — Wedding Planning Management System
 
 Kenyan-market edition of the Wedding Planner Management System (v2.1): package
 catalog + sign-up hero, client/couple portal, planner & vendor admin area,

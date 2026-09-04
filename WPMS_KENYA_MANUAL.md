@@ -1,4 +1,4 @@
-# WPMS KENYA — COMPLETE SYSTEM MANUAL
+# Everafter Planner — Complete System Manual
 ## Wedding Planning Management System v2.0 (Kenyan Market Edition)
 
 ---
@@ -24,9 +24,9 @@
 
 # 1. SYSTEM OVERVIEW
 
-## What is WPMS Kenya?
+## What is Everafter Planner?
 
-WPMS Kenya is a comprehensive wedding planning management system designed specifically for the Kenyan wedding industry. It serves three primary user types:
+Everafter Planner is a comprehensive wedding planning management system designed specifically for the Kenyan wedding industry. It serves three primary user types:
 
 - **Wedding Planners/Organizers** — Manage clients, events, guests, budgets
 - **Vendors** — List services, receive bookings, manage packages
@@ -75,7 +75,7 @@ WPMS Kenya is a comprehensive wedding planning management system designed specif
 
 ## Architecture Pattern
 
-WPMS uses a **custom MVC-lite pattern** with Active Record ORM:
+Everafter Planner uses a **custom MVC-lite pattern** with Active Record ORM:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -529,7 +529,7 @@ admin/upload/users/
 | package_id | INT FK | Package ID |
 | event_date | DATE | Event date |
 | amount | DECIMAL(10,2) | Booking amount |
-| commission | DECIMAL(10,2) | WPMS commission |
+| commission | DECIMAL(10,2) | Everafter Planner commission |
 | status | ENUM('pending','confirmed','completed','cancelled') | Status |
 | notes | TEXT | Notes |
 | created_at | TIMESTAMP | Creation time |
@@ -919,7 +919,7 @@ Subscription::get_all_plans()          // Get all active plans
 ```
 
 ### Commission Structure
-- **Standard**: 10% commission on bookings through WPMS
+- **Standard**: 10% commission on bookings through Everafter Planner
 - **Premium Vendors**: 15% commission (higher visibility)
 - Commission stored in `tblvendor_bookings.commission`
 
@@ -1172,7 +1172,7 @@ WeddingWebsite::increment_views($id)
 5. Vendor responds to confirm
 
 ### Commission
-- WPMS takes 10-15% commission
+- Everafter Planner takes 10-15% commission
 - Deducted automatically from booking amount
 - Vendor receives net payout
 
@@ -1583,5 +1583,5 @@ tblpostwedding (standalone blog)
 
 **Document Version**: 2.0
 **Last Updated**: September 2026
-**Author**: WPMS Kenya Development Team
+**Author**: Everafter Planner Development Team
 **License**: Proprietary — All rights reserved
