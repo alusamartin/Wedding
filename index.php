@@ -98,24 +98,24 @@
                     <p class="lead text-center">Create your booking in 60 seconds — M-Pesa ready</p>
                         <div class="form-row">
                             <div class="form-group col-md-6">
-                                <input type="text" class="form-control" name="user_firstname" placeholder="First Name" id="user_firstname">
+                                <input type="text" class="form-control" name="user_firstname" placeholder="First Name" id="user_firstname" required>
                             </div>
                             <div class="form-group col-md-6">
-                                <input type="text" id="user_lastname" class="form-control" name="user_lastname" placeholder="Last Name">
+                                <input type="text" id="user_lastname" class="form-control" name="user_lastname" placeholder="Last Name" required>
                             </div>
                         </div>
                         <div class="form-group">
-                            <input type="text" class="form-control" name="user_email" id="user_email" placeholder="youremailaddress@mail.com">
+                            <input type="email" class="form-control" name="user_email" id="user_email" placeholder="youremailaddress@mail.com" required>
                         </div>
                         <div class="form-group">
-                            <input type="text" aria-describedby="phoneHelpBlock" class="form-control" name="user_phone" id="user_phone" placeholder="Contact Number">
+                            <input type="tel" class="form-control" name="user_phone" id="user_phone" placeholder="Contact Number (e.g. 0712 345 678)" required>
                         </div>
                         <div class="form-group">
-                            <input type="password" class="form-control" name="user_password" id="user_password" placeholder="Create Password (min 8 chars)" autocomplete="new-password">
+                            <input type="password" class="form-control" name="user_password" id="user_password" placeholder="Create Password (min 8 chars)" autocomplete="new-password" minlength="8" required>
                         </div>
                         <div class="form-row">
                             <div class="input-group col-md-5">
-                                <input type="text" class="form-control" name="wedding_date" data-provide="datepicker" id="wedding_date"
+                                <input type="text" class="form-control" name="wedding_date" data-provide="datepicker" id="wedding_date" required
                                        placeholder="Wedding Date">
                                 <div class="input-group-append">
                                     <span class="input-group-text" style="background: white;"><i
@@ -314,6 +314,26 @@
         $('#user_phone').savy('destroy');
         $('#wedding_date').savy('destroy');
     <?php } ?>
+    });
+</script>
+<script>
+    // Client-side guards: never POST an obviously invalid sign-up form.
+    $(function () {
+        var $form = $('form.bgact');
+        if (!$form.length) {
+            return;
+        }
+        var $date = $('#wedding_date');
+        function dateIsValid(val) {
+            // Same formats the server accepts: MM/DD/YYYY (datepicker) or YYYY-MM-DD.
+            return /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(val) || /^\d{4}-\d{2}-\d{2}$/.test(val);
+        }
+        function guardDate() {
+            var val = $.trim($date.val());
+            $date[0].setCustomValidity(val === '' || dateIsValid(val) ? '' : 'Please pick your wedding date from the calendar (MM/DD/YYYY).');
+        }
+        $date.on('input change keyup blur', guardDate);
+        $form.on('submit', guardDate);
     });
 </script>
 </body>
