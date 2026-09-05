@@ -76,3 +76,24 @@ END //
 DELIMITER ;
 CALL wpms21_ensure_mpesa_unique();
 DROP PROCEDURE IF EXISTS wpms21_ensure_mpesa_unique;
+
+-- 6. tbl_mail_logs - outbound email leg for staff notifications
+--    Mirrors tblsms_logs: every Notification::create() writes one row here so
+--    the push is never lost, and a transport (PHP mail(), opt-in via
+--    WPMS_MAIL_ENABLED=1) flips it pending -> sent/failed. Without a
+--    transport (dev/demo default) the row stays 'pending' with the reason.
+CREATE TABLE IF NOT EXISTS `tbl_mail_logs` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `notification_id` INT UNSIGNED DEFAULT NULL,
+  `user_id` INT NOT NULL,
+  `booking_id` INT NOT NULL DEFAULT 0,
+  `to_email` VARCHAR(100) NOT NULL,
+  `subject` VARCHAR(255) NOT NULL,
+  `body` TEXT NOT NULL,
+  `status` ENUM('pending','sent','failed') NOT NULL DEFAULT 'pending',
+  `note` VARCHAR(255) DEFAULT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_mail_user_status` (`user_id`, `status`),
+  KEY `idx_mail_notification` (`notification_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

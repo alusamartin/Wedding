@@ -14,6 +14,7 @@ declare(strict_types=1);
  *   SMOKE_STAFF_EMAIL  / SMOKE_STAFF_PASS     seeded admin (wafula@wpms.co.ke / Admin@2024!)
  *   SMOKE_CLIENT_EMAIL / SMOKE_CLIENT_PASS    seeded client (brian.wafula@gmail.com / Test@1234)
  *   SMOKE_COUPLE_EMAIL / SMOKE_COUPLE_PASS    seeded client owning a booking (chebet.eldoret@gmail.com)
+ *   SMOKE_PLANNER_EMAIL / SMOKE_PLANNER_PASS  assigned planner for the bell check (amina@wpms.co.ke / Test@1234)
  *
  * Exit codes: 0 = all green, 1 = failed checks, 2 = server unreachable.
  */
@@ -26,6 +27,9 @@ const CLIENT_PASS   = 'Test@1234';
 // couple-only pages can be walked end-to-end.
 const COUPLE_EMAIL  = 'chebet.eldoret@gmail.com';
 const COUPLE_PASS   = 'Test@1234';
+// The planner whose bell badge must light up when the couple deposits.
+const PLANNER_EMAIL = 'amina@wpms.co.ke';
+const PLANNER_PASS  = 'Test@1234';
 
 const PUBLIC_PAGES = [
     '/index.php',
@@ -176,6 +180,94 @@ final class Smoke
         return [201, 201]; // seeded Kenyan booking (faith.njeri) — adjust if your DB differs
     }
 
+    /** Lazy PDO-backed handle for deposit/alert assertions (dev DB via config). */
+    private function db(): ?Database
+    {
+        try {
+            if (!class_exists('Database', false)) {
+                require_once __DIR__ . '/../admin/include/config.php';
+                require_once __DIR__ . '/../admin/include/Database.php';
+            }
+            global $db;
+            if (!isset($db) || !($db instanceof Database)) {
+                $db = new Database();
+            }
+            return $db;
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    private function dbBookingOrganizer(int $bookingId): int
+    {
+        $db = $this->db();
+        if ($db === null) {
+            return 0;
+        }
+        return (int) ($db->fetchValue('SELECT organizer_id FROM tblweddingbook WHERE booking_id = :b LIMIT 1', [':b' => $bookingId]) ?? 0);
+    }
+
+    private function dbNotifCount(int $bookingId, int $plannerId): int
+    {
+        $db = $this->db();
+        if ($db === null) {
+            return 0;
+        }
+        return (int) $db->fetchValue(
+            'SELECT COUNT(*) FROM tblnotifications WHERE booking_id = :b AND user_id = :u',
+            [':b' => $bookingId, ':u' => $plannerId]
+        );
+    }
+
+    private function dbUnreadCount(int $plannerId): int
+    {
+        $db = $this->db();
+        if ($db === null) {
+            return 0;
+        }
+        return (int) $db->fetchValue(
+            'SELECT COUNT(*) FROM tblnotifications WHERE user_id = :u AND is_read = 0',
+            [':u' => $plannerId]
+        );
+    }
+
+    /** @return object|null {id, mpesa_code} of the latest ledger row for this booking+amount */
+    private function dbDepositRow(int $bookingId, float $amount): ?object
+    {
+        $db = $this->db();
+        if ($db === null) {
+            return null;
+        }
+        return $db->fetchOne(
+            'SELECT id, mpesa_code FROM tbl_liquidation WHERE booking_id = :b AND payment = :p ORDER BY id DESC LIMIT 1',
+            [':b' => $bookingId, ':p' => $amount]
+        );
+    }
+
+    /** Restore seed state: the smoke deposit row + its notification + mail log. */
+    private function dbCleanupDeposit(int $bookingId, float $amount): void
+    {
+        $db = $this->db();
+        if ($db === null) {
+            return;
+        }
+        $organizer = $this->dbBookingOrganizer($bookingId);
+        if ($organizer > 0) {
+            $notif = $db->fetchOne(
+                'SELECT id FROM tblnotifications WHERE booking_id = :b AND user_id = :u ORDER BY id DESC LIMIT 1',
+                [':b' => $bookingId, ':u' => $organizer]
+            );
+            if ($notif) {
+                $db->execute('DELETE FROM tbl_mail_logs WHERE notification_id = :id', [':id' => (int) $notif->id]);
+                $db->execute('DELETE FROM tblnotifications WHERE id = :id', [':id' => (int) $notif->id]);
+            }
+        }
+        $ledger = $this->dbDepositRow($bookingId, $amount);
+        if ($ledger) {
+            $db->execute('DELETE FROM tbl_liquidation WHERE id = :id', [':id' => (int) $ledger->id]);
+        }
+    }
+
     /** Assert a page renders 200 with no PHP issues leaking into the body. */
     private function expectPage(string $label, string $path, bool $authed, bool $scanBody = true): void
     {
@@ -299,6 +391,78 @@ final class Smoke
                 }
             } else {
                 $this->note('couple account has no booking link on the dashboard — couple pages walk skipped');
+            }
+        }
+
+        // --- 5. deposit -> planner alert (couple POST + staff bell badge) ---
+        // Uses the client crededentials (SMOKE_CLIENT_EMAIL): the seeded Brian
+        // account owns booking 200 with ceremonies and a non-zero balance, so
+        // the full POST -> ledger -> notification -> bell-badge chain can run.
+        echo "\nDeposit -> planner alert\n";
+        if ($this->login('/login.php', $clientEmail, $clientPass, 'client')) {
+            $dash = $this->http('GET', '/admin/client.php', [], true);
+            if (preg_match('~booking_id=(\d+)&user_id=(\d+)~', $dash['body'], $m)) {
+                $bid = (int) $m[1];
+                $uid = (int) $m[2];
+                $ids = 'booking_id=' . $bid . '&user_id=' . $uid;
+                $dep = $this->http('GET', '/admin/client_deposit.php?' . $ids, [], true);
+                $hasForm = $dep['status'] === 200
+                    && preg_match('~name="event_id"[^>]*>\s*<option value="(\d+)"~s', $dep['body'], $ev)
+                    && preg_match('~name="_token" value="([^"]+)"~', $dep['body'], $tk)
+                    && preg_match('~Balance Due</h6>\s*<div class="value due">([^<]+)</div>~', $dep['body'], $due);
+                if (!$hasForm) {
+                    $this->note('deposit form unavailable (no ceremonies yet) — deposit POST skipped');
+                } else {
+                    $this->check('deposit form exposes CSRF token, ceremony and balance', true);
+                    $balance = (float) preg_replace('/[^0-9.]/', '', $due[1]);
+                    if ($balance < 50.0) {
+                        $this->note('balance is ' . trim($due[1]) . ' — below the KSh 50 floor, live POST skipped');
+                    } else {
+                        $amount       = min(100.0, $balance);
+                        $organizer    = $this->dbBookingOrganizer($bid);
+                        $notifsBefore = $organizer > 0 ? $this->dbNotifCount($bid, $organizer) : 0;
+
+                        $post = $this->http('POST', '/admin/client_deposit.php?' . $ids, [
+                            '_token'   => html_entity_decode($tk[1], ENT_QUOTES),
+                            'amount'   => (string) $amount,
+                            'event_id' => $ev[1],
+                            'phone'    => '0712345678',
+                            'submit'   => '1',
+                        ], true);
+                        $this->check('couple deposit POST accepted',
+                            $post['status'] === 302 && stripos((string) $post['location'], 'client_budget.php') !== false,
+                            'HTTP ' . $post['status'] . ' -> ' . ($post['location'] ?: '(no location)'));
+
+                        $ledger = $this->dbDepositRow($bid, $amount);
+                        $this->check('ledger row recorded with STK-style reference',
+                            $ledger !== null && preg_match('/^QDL[A-Z0-9]{7}$/', (string) ($ledger->mpesa_code ?? '')),
+                            "no tbl_liquidation row for booking {$bid} payment={$amount}");
+
+                        $notifsAfter = $organizer > 0 ? $this->dbNotifCount($bid, $organizer) : 0;
+                        $this->check('planner notification created',
+                            $organizer > 0 && $notifsAfter === $notifsBefore + 1,
+                            "booking {$bid} organizer={$organizer}: before={$notifsBefore}, after={$notifsAfter}");
+
+                        // Staff side: the assigned planner's bell badge on the dashboard.
+                        $plannerEmail = getenv('SMOKE_PLANNER_EMAIL') ?: PLANNER_EMAIL;
+                        $plannerPass  = getenv('SMOKE_PLANNER_PASS') ?: PLANNER_PASS;
+                        if ($this->login('/admin/login.php', $plannerEmail, $plannerPass, 'dashboard')) {
+                            $dash2 = $this->http('GET', '/admin/dashboard.php', [], true);
+                            preg_match('~badge-pill badge-danger[^>]*>\s*(\d+)~', $dash2['body'], $bm);
+                            $badgeCount = (int) ($bm[1] ?? 0);
+                            $unread     = $organizer > 0 ? $this->dbUnreadCount($organizer) : 0;
+                            $this->check('planner bell badge reflects the deposit alert',
+                                $unread >= 1 && $badgeCount === $unread && stripos($dash2['body'], 'M-Pesa deposit of') !== false,
+                                "badge={$badgeCount}, db unread={$unread}");
+                        } else {
+                            $this->note('planner login unavailable — bell badge check skipped');
+                        }
+
+                        $this->dbCleanupDeposit($bid, $amount);
+                    }
+                }
+            } else {
+                $this->note('couple account has no booking — deposit walk skipped');
             }
         }
 

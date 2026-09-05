@@ -85,6 +85,19 @@ For staging/production set these in the server environment (Apache `SetEnv`,
 CLI `export`, Docker `environment:`). Never commit real credentials — see
 section 12.1 of the manual for full examples.
 
+Staff notification emails (the planner deposit alert) use the same pattern:
+
+| Env var | Default | Effect |
+|---|---|---|
+| `WPMS_MAIL_ENABLED` | *(off)* | Set to `1` to actually deliver via PHP `mail()` — off, every alert is only logged |
+| `WPMS_MAIL_FROM` | `no-reply@everafterplanner.co.ke` | From header on notification emails |
+| `WPMS_SITE_URL` | *(empty)* | Base URL used to build absolute deep links in email bodies |
+
+With the transport off (dev/demo default), every `Notification::create()` still
+writes an audit row to the `tbl_mail_logs` outbox (`status = 'pending'` with the
+reason), mirroring how `tblsms_logs` records SMS sends — nothing is silently
+lost when you later flip `WPMS_MAIL_ENABLED=1` on a host with an MTA.
+
 ### 5. Access the system
 
 | Entry | URL |

@@ -74,7 +74,13 @@
                             $result['mpesa_code'],
                             format_ksh($newBalance, 2)
                         );
-                        Notification::create($plannerId, $booking_id, $plannerMessage, 'budget.php?' . $links);
+                        Notification::create(
+                            $plannerId,
+                            $booking_id,
+                            $plannerMessage,
+                            'budget.php?' . $links,
+                            'New M-Pesa deposit — booking #' . $booking_id
+                        );
                     }
 
                     $session->message(

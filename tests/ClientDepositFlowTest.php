@@ -55,6 +55,13 @@ final class ClientDepositFlowTest extends TestCase
             self::$db = null;
         }
 
+        // Hermetic mail: force the notification email push into log-only mode
+        // BEFORE the php -S child inherits this environment, so tests never
+        // attempt a real send regardless of the developer's shell env.
+        putenv('WPMS_MAIL_ENABLED=');
+        putenv('WPMS_SITE_URL=');
+        putenv('WPMS_MAIL_FROM=');
+
         self::bootServer();
         if (self::$base === null || self::$db === null) {
             return; // tests will skip
@@ -334,9 +341,51 @@ final class ClientDepositFlowTest extends TestCase
         $check = self::$db->fetchValue('SELECT is_read FROM tblnotifications WHERE id = :id', [':id' => (int) $notif->id]);
         self::assertSame('1', (string) $check, 'mark_read must persist is_read = 1');
 
-        // Cleanup — restore the seed state (ledger row + notification).
+        // The email push leg must have written exactly one outbox row.
+        $mail = self::$db->fetchOne(
+            'SELECT * FROM tbl_mail_logs WHERE notification_id = :nid ORDER BY id DESC LIMIT 1',
+            [':nid' => (int) $notif->id]
+        );
+        self::assertNotNull($mail, 'Notification::create must record an email outbox row');
+        self::assertSame('amina@wpms.co.ke', (string) $mail->to_email, 'The outbox row must address the assigned planner');
+        self::assertSame('New M-Pesa deposit — booking #' . self::OWN_BOOKING, (string) $mail->subject, 'The outbox row must carry the deposit subject');
+        self::assertStringContainsString((string) $row->mpesa_code, (string) $mail->body, 'The email body must carry the M-Pesa reference');
+        self::assertStringContainsString('budget.php?booking_id=' . self::OWN_BOOKING, (string) $mail->body, 'The email body must carry the deep link');
+        self::assertSame('pending', (string) $mail->status, 'Without WPMS_MAIL_ENABLED the row stays pending (logged, not sent)');
+        self::assertStringContainsString('WPMS_MAIL_ENABLED', (string) $mail->note, 'The pending note must explain how to enable delivery');
+
+        // Cleanup — restore the seed state (ledger row + notification + outbox row).
+        self::$db->execute('DELETE FROM tbl_mail_logs WHERE id = :id', [':id' => (int) $mail->id]);
         self::$db->execute('DELETE FROM tblnotifications WHERE id = :id', [':id' => (int) $notif->id]);
         self::$db->execute('DELETE FROM tbl_liquidation WHERE id = :id', [':id' => (int) $row->id]);
+    }
+
+    #[Group('integration')]
+    public function testNotificationWithoutPlannerEmailWritesNoOutboxRow(): void
+    {
+        $this->requireHttp();
+
+        // A staff user with no email on file must not crash create() and must
+        // not produce an outbox row (the in-app alert is the only channel).
+        self::$db->execute(
+            'INSERT INTO tblusers (firstname, lastname, gender, username, password, email, designation, address, access_level, profile_picture, date_created) '
+            . "VALUES ('Probe', 'Noemail', 'f', 'probe_noemail', 'x', '', 'Planner', 'Nairobi', '1', '', NOW())"
+        );
+        $probeId = (int) self::$db->fetchValue(
+            'SELECT id FROM tblusers WHERE username = :u ORDER BY id DESC LIMIT 1',
+            [':u' => 'probe_noemail']
+        );
+        try {
+            $id = Notification::create($probeId, self::OWN_BOOKING, 'Probe notification without email', '');
+            self::assertGreaterThan(0, $id, 'create() must still succeed for a planner without an email');
+            self::assertSame(0, (int) self::$db->fetchValue(
+                'SELECT COUNT(*) FROM tbl_mail_logs WHERE user_id = :uid',
+                [':uid' => $probeId]
+            ), 'No outbox row may be written when the planner has no email on file');
+            self::$db->execute('DELETE FROM tblnotifications WHERE id = :id', [':id' => $id]);
+        } finally {
+            self::$db->execute('DELETE FROM tblusers WHERE id = :id', [':id' => $probeId]);
+        }
     }
 
     private function baselineCount(int $bookingId): int
