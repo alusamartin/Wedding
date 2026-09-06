@@ -88,14 +88,14 @@ final class DeleteEndpointGuardTest extends TestCase
             return; // tests will skip
         }
 
-        // 1) Staff login via the real admin login flow (CSRF + cookie jar).
-        $login = self::http('GET', '/admin/login.php');
+        // 1) Staff login via the real unified login flow (CSRF + cookie jar).
+        $login = self::http('GET', '/login.php');
         if ($login['status'] !== 200 || !preg_match('/name="_token" value="([^"]+)"/', $login['body'], $m)) {
             self::$base = null;
             return;
         }
         $token = html_entity_decode($m[1], ENT_QUOTES);
-        $post = self::http('POST', '/admin/login.php', [
+        $post = self::http('POST', '/login.php', [
             'input_email'    => 'wafula@wpms.co.ke',
             'input_password' => 'Admin@2024!',
             'login'          => '1',

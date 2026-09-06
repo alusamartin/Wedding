@@ -34,7 +34,7 @@
                     <a class="wpms-cta-ghost btn btn-sm" href="admin/logout.php"><i class="mdi mdi-logout mr-1"></i> Log Out</a>
                 <?php else: ?>
                     <a class="wpms-cta-ghost btn btn-sm" href="#" data-toggle="modal" data-target="#loginModal">Login</a>
-                    <a class="wpms-cta-ghost btn btn-sm" href="admin/login.php"><i class="mdi mdi-shield-account-outline mr-1"></i> Admin</a>
+                    <a class="wpms-cta-ghost btn btn-sm" href="login.php"><i class="mdi mdi-shield-account-outline mr-1"></i> Admin</a>
                     <a class="wpms-cta btn btn-sm" href="index.php#sign-up">Join Now — Free</a>
                 <?php endif; ?>
             </div>

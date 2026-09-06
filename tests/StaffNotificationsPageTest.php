@@ -446,12 +446,12 @@ final class StaffNotificationsPageTest extends TestCase
     private static function loginStaff(): void
     {
         self::$jar = [];
-        $page = self::http('GET', '/admin/login.php');
+        $page = self::http('GET', '/login.php');
         if ($page['status'] !== 200 || !preg_match('/name="_token" value="([^"]+)"/', $page['body'], $m)) {
             self::$base = null;
             return;
         }
-        self::http('POST', '/admin/login.php', [
+        self::http('POST', '/login.php', [
             'input_email'    => self::STAFF_EMAIL,
             'input_password' => self::STAFF_PASS,
             '_token'         => html_entity_decode($m[1], ENT_QUOTES),

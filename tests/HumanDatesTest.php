@@ -229,7 +229,7 @@ final class HumanDatesTest extends TestCase
 
     private static function loginStaff(): void
     {
-        self::login(self::STAFF_EMAIL, self::STAFF_PASS, '/admin/login.php');
+        self::login(self::STAFF_EMAIL, self::STAFF_PASS, '/login.php');
     }
 
     private static function login(string $email, string $pass, string $page): void

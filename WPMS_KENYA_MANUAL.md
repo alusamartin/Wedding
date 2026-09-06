@@ -121,7 +121,7 @@ Wedding/
 ├── index.php                     ← Frontend landing + registration
 ├── site.php                      ← Public wedding website viewer
 ├── thankyou.php                  ← Post-registration confirmation
-├── login.php                     ← Client login
+├── login.php                     ← Single login door (all roles)
 ├── register.php                  ← Client registration
 ├── pricing.php                   ← Package pricing page
 ├── gallery.php                   ← Public gallery
@@ -131,7 +131,7 @@ Wedding/
 │   └── nav.php                   ← Frontend navigation
 ├── admin/
 │   ├── index.php                 ← Admin landing
-│   ├── login.php                 ← Admin login
+│   ├── login.php                 ← Retired (301 → ../login.php)
 │   ├── logout.php                ← Admin logout
 │   ├── dashboard.php             ← Admin dashboard with stats
 │   ├── subscription.php          ← SaaS subscription management
@@ -271,15 +271,40 @@ $webroot = "C:/xampp/htdocs/";
 
 ### 8. Access the System
 ```
-Frontend: http://localhost/Wedding/
-Admin:    http://localhost/Wedding/admin/login.php
+Public site:  http://localhost/Wedding/
+Single login: http://localhost/Wedding/login.php   ← every role signs in here
 ```
 
-### 9. Default Admin Login
-```
-Email:    admin@wpms.co.ke
-Password: Admin@2024!
-```
+The old `admin/login.php` is **retired**: it issues a permanent `301` redirect
+to the single door, so old bookmarks still work. A visitor who is already
+signed in never sees the form — login.php redirects straight to their role's
+landing page.
+
+### 9. Default Logins (all roles, one door)
+
+Sign in at `login.php` with any of the seeded accounts; the system lands you on
+the page your role needs automatically:
+
+| Role | Email | Password | Lands on |
+|---|---|---|---|
+| Super Admin | `wafula@wpms.co.ke` | `Admin@2024!` | `admin/dashboard.php` |
+| Wedding Planner | `amina@wpms.co.ke` | `Test@1234` | `admin/dashboard.php` |
+| Couple (client) | `brian.wafula@gmail.com` | `Test@1234` | `admin/client.php` |
+| Couple (client) | `faith.njeri@yahoo.com` | `Test@1234` | `admin/client.php` |
+
+Routing rules:
+
+- **Clients** (`tblaccounts`) always land on `admin/client.php` — their
+  bookings dashboard.
+- **Staff** (`tblusers`) land on `admin/dashboard.php`, except on a first
+  login or after a subscription lapses, when they are routed to
+  `admin/subscription.php` to activate before anything else.
+- Vendor accounts (`access_level 0`) currently land on a client-scoped
+  dashboard with no data — vendor self-service is a roadmap gap; manage
+  vendor records from an admin login.
+
+> The legacy template login (`admin@mail.com` / `Password@123`, from the
+> original pre-bcrypt dump) **will not authenticate** on v2.1.
 
 ## Directory Permissions
 
@@ -631,24 +656,35 @@ admin/upload/users/
 
 ## 6.1 Authentication Module
 
-### Login Flow
+### Login Flow (unified)
 ```
-1. User visits /admin/login.php
-2. Submits email + password + CSRF token
-3. System validates CSRF token
-4. Users::user_account_login() queries with prepared statement
-5. password_verify() checks bcrypt hash
-6. On success: Session sets $_SESSION['id']
-7. System checks Subscription::get_active()
-8. If active → dashboard.php
-9. If expired → subscription.php
+1. User visits /login.php (the retired /admin/login.php 301-redirects here)
+2. Already signed in? → redirect to role home, form never renders
+3. Submits email + password + CSRF token
+4. System validates CSRF token
+5. Accounts::login_user()     → client table (tblaccounts) first
+6. Users::user_account_login() → staff table  (tblusers) next
+   (both use prepared statements + password_verify on bcrypt hashes)
+7. On success: Session::login() sets $_SESSION['id'] + privilege_level,
+   regenerates the session ID, and binds the fingerprint
+8. Landing resolved by login_redirect_target() in admin/include/init.php:
+     client (tblaccounts)          → admin/client.php
+     staff with active sub         → admin/dashboard.php
+     staff without active sub      → admin/subscription.php
+9. Wrong credentials → back to login.php with an error alert
 ```
+
+Role gating after login: staff pages call `require_staff()` (planner/admin
+only); client pages check `$_SESSION['id']` ownership and scope every query
+to the signed-in account. A planner who opens the couple view of their own
+booking sees the couple dashboard chrome via `is_staff()` checks in each
+page.
 
 ### Password Security
 - All passwords stored as bcrypt hashes (password_hash)
 - Verification via password_verify()
 - Legacy MD5 support removed
-- Session regeneration every 30 minutes
+- Session regeneration every 15 minutes (plus on every login/privilege change)
 
 ### CSRF Protection
 - Token generated per session via random_bytes(32)
@@ -867,13 +903,17 @@ Liquidation::getTotalsByMethod($booking_id)
 6. Admin verifies payment (manual for now, Daraja API ready)
 
 ### Subscription Check on Login
+Staff landings resolve through the shared helper in `admin/include/init.php`,
+which both login pages use for the POST redirect and the signed-in GET guard:
 ```php
-// After successful login
-$sub = Subscription::get_active($logged->id);
-if (!$sub) {
-    redirect_to("subscription.php");  // Force subscription
-} else {
-    redirect_to("dashboard.php");
+// admin/include/init.php
+function login_redirect_target(bool $staff, int $user_id, bool $from_admin_dir = false): string
+{
+    if ($staff) {
+        $page = Subscription::get_active($user_id) ? 'dashboard.php' : 'subscription.php';
+        return $from_admin_dir ? $page : 'admin/' . $page;
+    }
+    return $from_admin_dir ? 'client.php' : 'admin/client.php';
 }
 ```
 

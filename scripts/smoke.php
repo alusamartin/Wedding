@@ -349,7 +349,7 @@ final class Smoke
 
         // --- 2. staff session ---
         echo "\nStaff flow\n";
-        if ($this->login('/admin/login.php', $staffEmail, $staffPass, 'dashboard')) {
+        if ($this->login('/login.php', $staffEmail, $staffPass, 'dashboard')) {
             foreach (STAFF_PAGES as $page) {
                 $this->expectPage($page, $page, true);
             }
@@ -447,7 +447,7 @@ final class Smoke
                         // Staff side: the assigned planner's bell badge on the dashboard.
                         $plannerEmail = getenv('SMOKE_PLANNER_EMAIL') ?: PLANNER_EMAIL;
                         $plannerPass  = getenv('SMOKE_PLANNER_PASS') ?: PLANNER_PASS;
-                        if ($this->login('/admin/login.php', $plannerEmail, $plannerPass, 'dashboard')) {
+                        if ($this->login('/login.php', $plannerEmail, $plannerPass, 'dashboard')) {
                             $dash2 = $this->http('GET', '/admin/dashboard.php', [], true);
                             preg_match('~badge-pill badge-danger[^>]*>\s*(\d+)~', $dash2['body'], $bm);
                             $badgeCount = (int) ($bm[1] ?? 0);

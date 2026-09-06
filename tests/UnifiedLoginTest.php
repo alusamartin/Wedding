@@ -14,7 +14,7 @@ use PHPUnit\Framework\TestCase;
  *  3. A planner (access_level 1) with an active subscription lands on
  *     admin/dashboard.php.
  *  4. Bad credentials bounce back to login.php — never a dashboard.
- *  5. The admin login page still works for staff (kept for bookmarks).
+ *  5. admin/login.php is retired: a permanent 301 to the unified door.
  *
  * Uses the curl HTTP client (stream contexts stall on Windows php -S).
  */
@@ -96,42 +96,39 @@ final class UnifiedLoginTest extends TestCase
     public function testSignedInClientBypassesBothLoginForms(): void
     {
         self::login(self::CLIENT_EMAIL, self::CLIENT_PASS);
-        foreach (['/login.php', '/admin/login.php'] as $page) {
-            $res = self::http('GET', $page);
-            self::assertSame(302, $res['status'], "signed-in client must not see {$page}");
-            self::assertStringContainsString('client.php', $res['location']);
-            self::assertStringNotContainsString('dashboard.php', $res['location']);
-        }
+        // Unified door: straight to the role home.
+        $res = self::http('GET', '/login.php');
+        self::assertSame(302, $res['status'], 'signed-in client must not see the login form');
+        self::assertStringContainsString('client.php', $res['location']);
+        self::assertStringNotContainsString('dashboard.php', $res['location']);
+        // Retired alias: 301 to the unified door — a form still never renders.
+        $alias = self::http('GET', '/admin/login.php');
+        self::assertSame(301, $alias['status']);
+        self::assertSame('../login.php', $alias['location']);
     }
 
     #[Group('integration')]
     public function testSignedInStaffBypassesBothLoginForms(): void
     {
         self::login(self::ADMIN_EMAIL, self::ADMIN_PASS);
-        foreach (['/login.php', '/admin/login.php'] as $page) {
-            $res = self::http('GET', $page);
-            self::assertSame(302, $res['status'], "signed-in staff must not see {$page}");
-            self::assertMatchesRegularExpression('#(admin/)?dashboard\.php#', $res['location']);
-            self::assertStringNotContainsString('client.php', $res['location']);
-        }
+        // Unified door: straight to the role home.
+        $res = self::http('GET', '/login.php');
+        self::assertSame(302, $res['status'], 'signed-in staff must not see the login form');
+        self::assertMatchesRegularExpression('#(admin/)?dashboard\.php#', $res['location']);
+        self::assertStringNotContainsString('client.php', $res['location']);
+        // Retired alias: 301 to the unified door — a form still never renders.
+        $alias = self::http('GET', '/admin/login.php');
+        self::assertSame(301, $alias['status']);
+        self::assertSame('../login.php', $alias['location']);
     }
 
     #[Group('integration')]
-    public function testAdminLoginPageStillWorksForStaff(): void
+    public function testAdminLoginPageIsRetiredToPermanentRedirect(): void
     {
-        // The dedicated admin door stays alive for bookmarks/smoke flows.
-        self::$jar = []; // anonymous visitor — an active session now redirects instead of rendering
-        $page = self::http('GET', '/admin/login.php');
-        self::assertSame(200, $page['status']);
-        preg_match('/name="_token" value="([^"]+)"/', $page['body'], $m);
-        $res = self::http('POST', '/admin/login.php', [
-            'input_email'    => self::ADMIN_EMAIL,
-            'input_password' => self::ADMIN_PASS,
-            '_token'         => html_entity_decode($m[1], ENT_QUOTES),
-            'login'          => '1',
-        ]);
-        self::assertSame(302, $res['status']);
-        self::assertStringContainsString('dashboard.php', $res['location']);
+        self::$jar = []; // anonymous visitor
+        $res = self::http('GET', '/admin/login.php');
+        self::assertSame(301, $res['status'], 'admin/login.php must be a 301 stub');
+        self::assertSame('../login.php', $res['location']);
     }
 
     // ------------------------------------------------------------------
