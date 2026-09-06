@@ -1,5 +1,15 @@
 <?php include_once 'admin/include/init.php';?>
 <?php
+/**
+ * One login for everyone. Credentials are tried against the client table
+ * (tblaccounts) and the staff table (tblusers); on success the session is
+ * bound and the user lands on the exact page their role needs:
+ *
+ *   access_level 2  -> admin/dashboard.php        (Super Admin)
+ *   access_level 1  -> admin/dashboard.php        (Planner — also via
+ *                      subscription.php first when no active subscription)
+ *   client (tblaccounts) -> admin/client.php      (the couple's bookings page)
+ */
  if (isset($_POST['login'])) {
      if (!$session->verify_csrf()) {
          redirect_to("login.php");
@@ -14,21 +24,37 @@
      }
      $input_email = clean($_POST['input_email']);
      $input_password= clean($_POST['input_password']);
-     $logged = Accounts::login_user($input_email, $input_password);
 
-     if($logged) {
+     $redirect_after_login = 'admin/client.php'; // sensible default: a couple
+
+     if ($logged = Accounts::login_user($input_email, $input_password)) {
+         // Client account (tblaccounts).
          $session->login($logged);
-         redirect_to("admin/client.php");
-     } else {
-         redirect_to("login.php");
-         $session->message("
-            <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
-              <strong><i class='mdi mdi-alert'></i></strong>  Invalid email and password. Please try again
-              <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
-                <span aria-hidden=\"true\">&times;</span>
-              </button>
-            </div>");
+     } elseif ($logged = Users::user_account_login($input_email, $input_password)) {
+         // Staff account (tblusers): admin (2) or planner (1).
+         $session->login($logged);
+         $level = (int) ($logged->access_level ?? 1);
+         if (!Subscription::get_active((int) $logged->id)) {
+             $redirect_after_login = 'admin/subscription.php'; // first login / expired
+         } else {
+             $redirect_after_login = 'admin/dashboard.php';    // both admin + planner
+         }
      }
+
+     if ($logged) {
+         session_regenerate_id(true); // fresh ID at the privilege boundary
+         redirect_to($redirect_after_login);
+         die();
+     }
+
+     redirect_to("login.php");
+     $session->message("
+        <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
+          <strong><i class='mdi mdi-alert'></i></strong>  Invalid email and password. Please try again
+          <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
+            <span aria-hidden=\"true\">&times;</span>
+          </button>
+        </div>");
  }
 ?>
 <!doctype html>
@@ -44,6 +70,7 @@
     <!-- Bootstrap core CSS -->
     <link href="css/bootstrap.min.css" rel="stylesheet">
     <link href="css/modern.css" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@700&display=swap" rel="stylesheet">
     <!-- Custom styles for this template -->
     <link href="css/signin.css" rel="stylesheet">
@@ -135,6 +162,26 @@
                 padding: 30px 22px 26px !important;
             }
         }
+        /* Neat pill login button — Everafter palette, gentle hover lift */
+        .form-signin .btn-login {
+            background: linear-gradient(135deg, #065F46 0%, #059669 100%);
+            border: 0;
+            color: #fff;
+            border-radius: 999px;
+            padding: .8rem 1.4rem;
+            font-weight: 600;
+            font-size: 15.5px;
+            letter-spacing: .01em;
+            box-shadow: 0 8px 20px rgba(6, 95, 70, .28);
+            transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+        }
+        .form-signin .btn-login:hover, .form-signin .btn-login:focus {
+            transform: translateY(-1px);
+            box-shadow: 0 12px 26px rgba(6, 95, 70, .34);
+            filter: brightness(1.04);
+            color: #fff;
+        }
+        .form-signin .btn-login:active { transform: translateY(0); }
     </style>
 </head>
 
@@ -160,7 +207,9 @@
             <input type="checkbox" value="remember-me" name="remember"> Remember me
         </label>
     </div>
-    <button class="btn btn-lg btn-success btn-block" type="submit" name="login">Login</button>
+    <button class="btn btn-lg btn-block btn-login" type="submit" name="login">
+        <i class="mdi mdi-login-variant mr-1"></i> Login
+    </button>
     <p class="mt-3 mb-0" style="font-size:13px;"><a href="forgot_password.php">Forgot your password?</a></p>
     <p class="mt-4 mb-0 text-muted">&copy; <?php echo date('Y')?> Everafter Planner</p>
 </form>
