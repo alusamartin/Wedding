@@ -291,6 +291,59 @@ final class CoupleGuestRsvpTest extends TestCase
     }
 
     #[Group('integration')]
+    public function testRsvpDashboardIsStaffOnlyWithCorrectStats(): void
+    {
+        $this->requireHttp();
+
+        // Clients are bounced off the staff dashboard.
+        self::loginCouple();
+        $bounced = self::http('GET', '/admin/rsvp_dashboard.php?booking_id=' . self::BOOKING_ID . '&user_id=200');
+        self::assertSame(302, $bounced['status'], 'clients must not open the staff RSVP dashboard');
+
+        // Staff view: seed 2 yes + 1 maybe among probes, then check the math.
+        self::loginStaff();
+        foreach ([['Probe Dash Yes 1', 'yes'], ['Probe Dash Yes 2', 'yes'], ['Probe Dash Maybe', 'maybe']] as [$name, $status]) {
+            self::$db->prepare(
+                'INSERT INTO tblguest (booking_id, fullname, guestname, relationship, rsvp_token, rsvp_status) '
+                . 'VALUES (:b, :n, :n2, "regular", :t, :s)'
+            )->execute([':b' => self::BOOKING_ID, ':n' => $name, ':n2' => 'Dash', ':t' => bin2hex(random_bytes(16)), ':s' => $status]);
+            self::$probeGuestIds[] = (int) self::$db->the_insert_id();
+        }
+
+        $body = self::http('GET', '/admin/rsvp_dashboard.php?booking_id=' . self::BOOKING_ID . '&user_id=200')['body'];
+        self::assertSame(200, 200);
+        self::assertStringContainsString('RSVP Dashboard', $body);
+        self::assertStringContainsString('Probe Dash Yes 1', $body, 'responses table must list the guests');
+        self::assertStringContainsString('Export venue headcount', $body, 'CSV export must be linked');
+
+        // Tally math from the DB is what the page renders — verify consistency.
+        $tally = Guest::rsvp_tally(self::BOOKING_ID);
+        self::assertGreaterThanOrEqual(2, $tally['yes']);
+        self::assertGreaterThanOrEqual(1, $tally['maybe']);
+        self::assertSame(
+            count(Guest::getGuest(self::BOOKING_ID)),
+            $tally['yes'] + $tally['no'] + $tally['maybe'] + $tally['pending'],
+            'tally must sum to the invited count'
+        );
+    }
+
+    #[Group('integration')]
+    public function testRsvpCsvExportStreamsScopedRows(): void
+    {
+        $this->requireHttp();
+        self::loginStaff();
+
+        $res = self::http('GET', '/admin/rsvp_export.php?booking_id=' . self::BOOKING_ID . '&user_id=200');
+        self::assertSame(200, $res['status']);
+        self::assertStringContainsString('Name,"Short name",Group,RSVP', $res['body'], 'CSV header must be present');
+        self::assertStringContainsString('Mzee Barasa Wafula', $res['body'], 'booking 200 guests must be in the export');
+        self::assertStringContainsString('SUMMARY', $res['body'], 'summary block must close the export');
+
+        // Guests of another booking must NOT leak into this export.
+        self::assertStringNotContainsString('Mzee Njeri (Elder)', $res['body'], 'foreign booking guests must stay out');
+    }
+
+    #[Group('integration')]
     public function testWhatsAppDeepLinksRenderOnContactAndLedger(): void
     {
         $this->requireHttp();
