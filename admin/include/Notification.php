@@ -56,6 +56,9 @@ class Notification
      *   WPMS_MAIL_ENABLED=1        actually call mail() (default: off)
      *   WPMS_MAIL_FROM=addr@x.com  From header (default no-reply@everafterplanner.co.ke)
      *   WPMS_SITE_URL=https://…    base for the absolute deep link in the body
+     *
+     * Rows logged while the transport is off stay 'pending'; the cron-safe
+     * scripts/mail_retry.php (via retry_pending()) re-attempts them later.
      */
     private static function email(int $notificationId, int $userId, int $bookingId, string $message, string $link = '', ?string $subject = null): void
     {
@@ -81,38 +84,97 @@ class Notification
         }
         $body .= "\n— Everafter Planner";
 
-        $status = 'pending';
-        $note   = 'Transport disabled (set WPMS_MAIL_ENABLED=1 to send via mail()). Logged, not delivered.';
-        if (getenv('WPMS_MAIL_ENABLED') === '1') {
-            if (!function_exists('mail')) {
-                $status = 'failed';
-                $note   = 'mail() is disabled on this server.';
-            } else {
-                $from    = getenv('WPMS_MAIL_FROM');
-                $from    = is_string($from) && trim($from) !== '' ? trim($from) : 'no-reply@everafterplanner.co.ke';
-                $headers = 'From: ' . $from . "\r\n"
-                    . "MIME-Version: 1.0\r\n"
-                    . "Content-Type: text/plain; charset=utf-8";
-                $ok      = @mail($to, $subject, $body, $headers);
-                $status  = $ok ? 'sent' : 'failed';
-                $note    = $ok ? null : 'mail() returned false — is an MTA configured on the host?';
-            }
-        }
+        [$status, $note] = self::attempt_send($to, $subject, $body);
 
         $ins = $db->prepare(
-            'INSERT INTO tbl_mail_logs (notification_id, user_id, booking_id, to_email, subject, body, status, note) '
-            . 'VALUES (:nid, :uid, :bid, :to, :subj, :body, :status, :note)'
+            'INSERT INTO tbl_mail_logs (notification_id, user_id, booking_id, to_email, subject, body, status, note, attempts, last_attempt_at) '
+            . 'VALUES (:nid, :uid, :bid, :to, :subj, :body, :status, :note, :attempts, :last_attempt)'
         );
         $ins->execute([
-            ':nid'    => $notificationId,
-            ':uid'    => $userId,
-            ':bid'    => $bookingId,
-            ':to'     => $to,
-            ':subj'   => mb_substr($subject, 0, 255),
-            ':body'   => $body,
-            ':status' => $status,
-            ':note'   => $note,
+            ':nid'          => $notificationId,
+            ':uid'          => $userId,
+            ':bid'          => $bookingId,
+            ':to'           => $to,
+            ':subj'         => mb_substr($subject, 0, 255),
+            ':body'         => $body,
+            ':status'       => $status,
+            ':note'         => $note,
+            ':attempts'     => $status === 'pending' ? 0 : 1,
+            ':last_attempt' => $status === 'pending' ? null : date('Y-m-d H:i:s'),
         ]);
+    }
+
+    /**
+     * One delivery attempt through the opt-in mail() transport.
+     *
+     * @return array{0: string, 1: ?string} [status, note] — status is
+     *         'sent', 'failed', or 'pending' (transport disabled; the row
+     *         waits for scripts/mail_retry.php to pick it up later).
+     */
+    private static function attempt_send(string $to, string $subject, string $body): array
+    {
+        if (getenv('WPMS_MAIL_ENABLED') !== '1') {
+            return ['pending', 'Transport disabled (set WPMS_MAIL_ENABLED=1 to send via mail()). Logged, not delivered.'];
+        }
+        if (!function_exists('mail')) {
+            return ['failed', 'mail() is disabled on this server.'];
+        }
+        $from    = getenv('WPMS_MAIL_FROM');
+        $from    = is_string($from) && trim($from) !== '' ? trim($from) : 'no-reply@everafterplanner.co.ke';
+        $headers = 'From: ' . $from . "\r\n"
+            . "MIME-Version: 1.0\r\n"
+            . "Content-Type: text/plain; charset=utf-8";
+        $ok      = @mail($to, $subject, $body, $headers);
+        return $ok
+            ? ['sent', null]
+            : ['failed', 'mail() returned false — is an MTA configured on the host?'];
+    }
+
+    /**
+     * Re-attempt delivery of pending outbox rows (scripts/mail_retry.php).
+     * Only rows below the attempt cap are tried; a row that fails on its
+     * final attempt is marked 'abandoned' so it cannot loop forever.
+     * No-op (empty result) unless WPMS_MAIL_ENABLED=1, so accidental cron
+     * runs with the transport off change nothing.
+     *
+     * @return array{attempted:int, sent:int, failed:int, abandoned:int}
+     */
+    public static function retry_pending(int $limit = 50, int $maxAttempts = 5): array
+    {
+        global $db;
+        $result = ['attempted' => 0, 'sent' => 0, 'failed' => 0, 'abandoned' => 0];
+        if (getenv('WPMS_MAIL_ENABLED') !== '1') {
+            return $result; // transport off — leave every row untouched
+        }
+
+        $stmt = $db->prepare(
+            'SELECT id, to_email, subject, body, attempts FROM tbl_mail_logs '
+            . "WHERE status = 'pending' AND attempts < :cap ORDER BY id ASC LIMIT :lim"
+        );
+        $stmt->bindValue(':cap', max(1, $maxAttempts), PDO::PARAM_INT);
+        $stmt->bindValue(':lim', max(1, $limit), PDO::PARAM_INT);
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_OBJ);
+
+        $upd = $db->prepare(
+            'UPDATE tbl_mail_logs SET status = :status, note = :note, attempts = attempts + 1, last_attempt_at = NOW() WHERE id = :id'
+        );
+        foreach ($rows as $row) {
+            $result['attempted']++;
+            [$status, $note] = self::attempt_send((string) $row->to_email, (string) $row->subject, (string) $row->body);
+            $attemptsUsed = (int) $row->attempts + 1;
+            if ($status === 'failed' && $attemptsUsed >= max(1, $maxAttempts)) {
+                $status = 'abandoned';
+                $note   = trim((string) $note . ' — abandoned after ' . $attemptsUsed . ' attempts.');
+                $result['abandoned']++;
+            } elseif ($status === 'sent') {
+                $result['sent']++;
+            } else {
+                $result['failed']++;
+            }
+            $upd->execute([':status' => $status, ':note' => $note, ':id' => (int) $row->id]);
+        }
+        return $result;
     }
 
     public static function unread_count(int $userId): int

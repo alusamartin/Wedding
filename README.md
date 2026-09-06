@@ -98,6 +98,28 @@ writes an audit row to the `tbl_mail_logs` outbox (`status = 'pending'` with the
 reason), mirroring how `tblsms_logs` records SMS sends — nothing is silently
 lost when you later flip `WPMS_MAIL_ENABLED=1` on a host with an MTA.
 
+**Delivering the backlog:** rows logged while the transport was off stay
+`pending` forever unless retried. Run the cron-safe sweeper on a host with the
+flag enabled:
+
+```bash
+php scripts/mail_retry.php            # one pass: sends up to 50 pending rows
+php scripts/mail_retry.php --quiet    # cron-friendly output
+php scripts/mail_retry.php --limit=100 --max-attempts=5
+```
+
+- Each retry increments the row's `attempts`; a row that fails on its final
+  allowed attempt is marked `abandoned` so it can never loop forever.
+- With `WPMS_MAIL_ENABLED` off the script is a deliberate no-op (exit 0), so it
+  is safe to leave in the crontab across environments.
+- A single-flight file lock prevents overlapping cron runs from double-sending.
+
+Cron example (every 15 minutes):
+
+```cron
+*/15 * * * * php /path/to/Wedding/scripts/mail_retry.php --quiet
+```
+
 ### 5. Access the system
 
 | Entry | URL |

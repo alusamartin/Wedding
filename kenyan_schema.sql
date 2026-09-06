@@ -90,10 +90,13 @@ CREATE TABLE IF NOT EXISTS `tbl_mail_logs` (
   `to_email` VARCHAR(100) NOT NULL,
   `subject` VARCHAR(255) NOT NULL,
   `body` TEXT NOT NULL,
-  `status` ENUM('pending','sent','failed') NOT NULL DEFAULT 'pending',
+  `status` ENUM('pending','sent','failed','abandoned') NOT NULL DEFAULT 'pending',
   `note` VARCHAR(255) DEFAULT NULL,
+  `attempts` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  `last_attempt_at` DATETIME DEFAULT NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_mail_user_status` (`user_id`, `status`),
-  KEY `idx_mail_notification` (`notification_id`)
+  KEY `idx_mail_notification` (`notification_id`),
+  KEY `idx_mail_retry` (`status`, `attempts`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
