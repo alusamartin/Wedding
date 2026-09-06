@@ -70,7 +70,7 @@
             <br><i class="mdi mdi-map-marker text-muted"></i> ' . htmlspecialchars($bookWedding->city ?: 'TBD') . '
         </td>';
         $html .= '<td>
-            <strong>' . htmlspecialchars($bookWedding->wedding_date ?: 'TBD') . '</strong>
+            <strong>' . ($bookWedding->wedding_date ? format_date_kd($bookWedding->wedding_date) : 'TBD') . '</strong>
             <br><small class="text-muted">' . ($bookWedding->wedding_date ? date('l', strtotime($bookWedding->wedding_date)) : '') . '</small>
         </td>';
         $html .= '<td>
@@ -522,7 +522,7 @@
                                         <div class="d-flex justify-content-between">
                                             <div>
                                                 <h6 class="mb-1"><?= htmlspecialchars($w->bride . ' & ' . $w->groom); ?></h6>
-                                                <small class="text-muted"><i class="mdi mdi-calendar"></i> <?= htmlspecialchars($w->wedding_date); ?></small>
+                                                <small class="text-muted"><i class="mdi mdi-calendar"></i> <?= format_date_kd($w->wedding_date); ?></small>
                                             </div>
                                             <span class="badge badge-primary"><?= Guest::count_guest($w->booking_id); ?> guests</span>
                                         </div>

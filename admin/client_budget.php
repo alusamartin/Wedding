@@ -104,8 +104,8 @@
                 ?>
                     <tr>
                         <td><?= $i + 1; ?></td>
-                        <td><?= htmlspecialchars($item->date_issue); ?></td>
-                        <td>Event #<?= (int) $item->event_id; ?></td>
+                        <td><?= format_date_kd($item->date_issue, true); ?></td>
+                        <td><?= htmlspecialchars(event_label($item->event_id)); ?></td>
                         <td><?= $method_label; ?></td>
                         <td><?= htmlspecialchars($item->mpesa_code ?? ''); ?></td>
                         <td class="text-right font-weight-bold"><?= format_ksh($item->payment, 2); ?></td>

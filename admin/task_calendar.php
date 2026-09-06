@@ -18,6 +18,13 @@
         ['title' => 'After-Party Celebration', 'color' => '#f39c12'],
         ['title' => 'VC Meeting (Wedding Committee)', 'color' => '#3498db'],
     ];
+
+    // Open the calendar on the couple's wedding month, not today.
+    $wedding_default = null;
+    $booking = $booking_id > 0 ? Booking::find_by_booking_id($booking_id) : false;
+    if ($booking && !empty($booking->wedding_date) && strtotime($booking->wedding_date) !== false) {
+        $wedding_default = date('Y-m-d', strtotime($booking->wedding_date));
+    }
 ?>
 <?php $users_profile = Users::find_by_id($_SESSION['id']); ?>
 <!doctype html>
@@ -64,7 +71,8 @@
 <?php endif; ?>
 
 <!-- Event Type Legend -->
-<div class="ml-3 mb-3">
+<div class="ml-3 mb-3 d-flex justify-content-between flex-wrap">
+    <div>
     <strong style="font-size: 12px; text-transform: uppercase; color: #888;">Event Types:</strong><br>
     <span class="legend-item"><span class="legend-color" style="background:#c0392b;"></span>Ruracio / Dowry</span>
     <span class="legend-item"><span class="legend-color" style="background:#8e44ad;"></span>Church Wedding</span>
@@ -72,7 +80,20 @@
     <span class="legend-item"><span class="legend-color" style="background:#f39c12;"></span>After-Party</span>
     <span class="legend-item"><span class="legend-color" style="background:#3498db;"></span>VC Meeting</span>
     <span class="legend-item"><span class="legend-color" style="background:#00897b;"></span>Send-off / Disco Matanga</span>
+    </div>
+    <?php if ($wedding_default !== null): ?>
+    <button type="button" class="btn btn-sm btn-outline-primary" id="jumpToWedding" data-date="<?= $wedding_default; ?>">
+        <i class="mdi mdi-calendar-heart mr-1"></i> Jump to Wedding Day
+    </button>
+    <?php endif; ?>
 </div>
+<script>
+    $(function () {
+        $('#jumpToWedding').on('click', function () {
+            $('#calendar').fullCalendar('gotoDate', $(this).data('date'));
+        });
+    });
+</script>
 
 <div id='calendar'></div>
 
@@ -179,6 +200,7 @@
                 center: 'title',
                 right: 'month,agendaWeek,agendaDay'
             },
+            defaultDate: <?= json_encode($wedding_default); ?>,
             editable: true,
             eventLimit: true,
             events: events,

@@ -105,7 +105,7 @@
         <?php foreach($luquidate as $luquidate_item) : ?>
         <tr>
             <td class="special-budget">
-                <?php echo $luquidate_item->title; ?> <?php echo $luquidate_item->booking_id; ?>
+                <?php echo htmlspecialchars($luquidate_item->title ?? event_label($luquidate_item->event_id)); ?>
             </td>
             <td class="special-budget">
                 <?= format_ksh($luquidate_item->payment, 2); ?>
@@ -117,7 +117,7 @@
                 <?= format_ksh($luquidate_item->credit, 2); ?>
             </td>
             <td class="special-budget">
-                <?= $luquidate_item->date_issue; ?>
+                <?= format_date_kd($luquidate_item->date_issue, true); ?>
             </td>
             <td>
                 <a href="budget_edit.php?<?= $links; ?>&budget_id=<?= (int) $luquidate_item->id; ?>" class="btn btn-warning btn-sm" style="font-size: 12px;">Change</a>

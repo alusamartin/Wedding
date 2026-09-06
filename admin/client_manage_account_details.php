@@ -34,6 +34,23 @@
     $req->execute([':bid' => $booking_id]);
 
     $events = $req->fetchAll(PDO::FETCH_ASSOC);
+
+    // Open the calendar on the wedding month (or the next scheduled ceremony),
+    // not today — couples book 12-18 months out and today is usually empty.
+    $wedding_default = null;
+    if (!empty($booking->wedding_date) && strtotime($booking->wedding_date) !== false) {
+        $wedding_default = date('Y-m-d', strtotime($booking->wedding_date));
+    } elseif (!empty($events)) {
+        foreach ($events as $ev) {
+            if (!empty($ev['start']) && strtotime($ev['start']) >= time()) {
+                $wedding_default = date('Y-m-d', strtotime($ev['start']));
+                break;
+            }
+        }
+        if ($wedding_default === null && !empty($events[0]['start'])) {
+            $wedding_default = date('Y-m-d', strtotime($events[0]['start']));
+        }
+    }
 ?>
 <?php $users_profile = Users::find_by_id($_SESSION['id']); ?>
 <!doctype html>
@@ -192,9 +209,21 @@
 </div>
 <div class="row">
     <div class="col-md-12">
+        <?php if ($wedding_default !== null): ?>
+        <button type="button" class="btn btn-sm btn-outline-primary mb-2" id="jumpToWedding" data-date="<?= $wedding_default; ?>">
+            <i class="mdi mdi-calendar-heart mr-1"></i> Jump to Wedding Day
+        </button>
+        <?php endif; ?>
         <div id="calendar"></div>
     </div>
 </div>
+<script>
+    $(function () {
+        $('#jumpToWedding').on('click', function () {
+            $('#calendar').fullCalendar('gotoDate', $(this).data('date'));
+        });
+    });
+</script>
 </main>
 </div>
 </div>
@@ -232,6 +261,7 @@
         
         $('#calendar').fullCalendar({
             themeSystem: 'bootstrap4',
+            defaultDate: <?= json_encode($wedding_default); ?>,
             header: {
                 left: 'prev,next today',
                 center: 'title',

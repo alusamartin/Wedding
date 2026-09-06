@@ -11,6 +11,22 @@
     $req->execute();
     $events = $req->fetchAll(PDO::FETCH_ASSOC);
     $events_json = json_encode($events, JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES);
+
+    // Open on the nearest upcoming event across all bookings (else the latest past one).
+    $nearest = null;
+    $now = time();
+    foreach ($events as $ev) {
+        $ts = strtotime((string) ($ev['start'] ?? ''));
+        if ($ts === false) { continue; }
+        if ($ts >= $now && ($nearest === null || $ts < $nearest)) { $nearest = $ts; }
+    }
+    if ($nearest === null) {
+        foreach ($events as $ev) {
+            $ts = strtotime((string) ($ev['start'] ?? ''));
+            if ($ts !== false && ($nearest === null || $ts > $nearest)) { $nearest = $ts; }
+        }
+    }
+    $calendar_default = $nearest !== null ? date('Y-m-d', $nearest) : null;
 ?>
 
 <?php $users_profile = Users::find_by_id($_SESSION['id']); ?>
@@ -224,6 +240,7 @@
                 center: 'title',
                 right: 'month,agendaWeek,agendaDay,listMonth'
             },
+            defaultDate: <?= json_encode($calendar_default); ?>,
             // defaultDate: '2016-01-12',
             editable: true,
             navLinks: true, // can click day/week names to navigate views

@@ -88,6 +88,60 @@ function format_ksh($amount, $decimals = 0)
 }
 
 /**
+ * Human, Kenyan-style date: "Sat 20 Dec 2025" (optionally ", 6:00 PM").
+ *
+ * Every user-facing date should go through this so raw DB values
+ * ("2025-12-20 18:00:00") never reach a couple's screen. Non-parseable
+ * input is returned unchanged (callers escape it like any string), and
+ * empty input returns an empty string.
+ */
+function format_date_kd($value, bool $withTime = false): string
+{
+    $value = trim((string) $value);
+    if ($value === '' || $value === '0000-00-00' || $value === '0000-00-00 00:00:00') {
+        return '';
+    }
+    $ts = strtotime($value);
+    if ($ts === false) {
+        return $value; // garbage in, same garbage out — caller escapes it
+    }
+    return date('D j M Y', $ts) . ($withTime ? ', ' . date('g:i A', $ts) : '');
+}
+
+/**
+ * Human label for a scheduled ceremony/event row: "Church Blessing — Sat 20 Dec 2025".
+ *
+ * Replaces every "Event #202"-style machine label in ledgers and dropdowns.
+ * Falls back to "Unassigned" for orphaned ids (e.g. the event was deleted),
+ * so ledgers never render a bare number. Results are cached per request.
+ */
+function event_label($eventId): string
+{
+    static $cache = [];
+    $id = (int) $eventId;
+    if ($id <= 0) {
+        return 'Unassigned';
+    }
+    if (!array_key_exists($id, $cache)) {
+        global $db;
+        $label = 'Unassigned';
+        try {
+            $stmt = $db->prepare('SELECT title, start FROM events WHERE id = :id LIMIT 1');
+            $stmt->execute([':id' => $id]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row) {
+                $title = trim((string) $row['title']);
+                $label = ($title !== '' ? $title : 'Ceremony') . ' — ' . format_date_kd($row['start']);
+            }
+        } catch (Throwable $e) {
+            $label = 'Unassigned';
+        }
+        $cache[$id] = $label;
+    }
+    return $cache[$id];
+}
+
+/**
  * Shared empty-state block: icon circle + title + muted text + optional CTA.
  * Used by every list page so empty states look identical across the admin.
  */

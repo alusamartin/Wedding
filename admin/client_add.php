@@ -65,7 +65,7 @@
                 $account_detail->phone = $phone;
                 $account_detail->city = $city;
                 $account_detail->status =  'pending';
-                $account_detail->datetime_created  = date("y-m-d h:m:i");
+                $account_detail->datetime_created  = date("Y-m-d H:i:s");
             
                 if ($account_detail->save()) {
                     $account_detail->user_id = $db->the_insert_id();

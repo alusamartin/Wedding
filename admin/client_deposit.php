@@ -196,7 +196,7 @@
                                 <?php $first = true; foreach ($events as $event): ?>
                                     <option value="<?= (int) $event->id; ?>" <?= $first ? 'selected' : ''; ?>>
                                         <?= htmlspecialchars(ucfirst($event->title)); ?> —
-                                        <?= htmlspecialchars($event->start); ?>
+                                        <?= format_date_kd($event->start, true); ?>
                                     </option>
                                 <?php $first = false; endforeach; ?>
                             </select>

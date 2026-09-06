@@ -107,7 +107,7 @@
             <td class="special"> <?= $user->username; ?></td>
             <td class="special"> <?php if($user->designation  == '1') { echo 'Moderator';} else { echo 'admin';} ?></td>
             <td class="special"> <?= trim_body($user->address, 50); ?></td>
-            <td class="special"> <?= $user->date_created; ?></td>
+            <td class="special"> <?= format_date_kd($user->date_created, true); ?></td>
             <td>
                 <a href="users_edit.php?id=<?= $user->id; ?>" class="btn btn-info btn-sm" data-toggle="tooltip" data-placement="top" title="
                     Edit This User"><i class="mdi mdi-pencil"></i></a>

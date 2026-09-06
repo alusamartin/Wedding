@@ -99,10 +99,10 @@
             
             <td class="special"><?= ($events->status == 0) ? 'Drafted' : 'Published'; ?></td>
             
-            <td class="special"> <?= $events->wedding_date; ?></td>
+            <td class="special"> <?= format_date_kd($events->wedding_date); ?></td>
             
-            <td class="special"><?= $events->date_created; ?></td>
-            <td class="special"><?= empty($events->date_published) ? 'Unpublished' : $events->date_published; ?></td>
+            <td class="special"><?= format_date_kd($events->date_created, true); ?></td>
+            <td class="special"><?= empty($events->date_published) ? 'Unpublished' : format_date_kd($events->date_published, true); ?></td>
             
             <td>
                 <a href="blog_events_edit.php?id=<?= $events->id; ?>" class="btn btn-info btn-sm active"><i class="mdi mdi-account-edit"></i></a>
