@@ -33,9 +33,8 @@
                     <a class="wpms-cta btn btn-sm" href="<?= $nav_portal_url; ?>"><i class="mdi mdi-calendar-heart mr-1"></i> <?= $nav_is_staff ? 'My Dashboard' : 'My Bookings'; ?></a>
                     <a class="wpms-cta-ghost btn btn-sm" href="admin/logout.php"><i class="mdi mdi-logout mr-1"></i> Log Out</a>
                 <?php else: ?>
-                    <a class="wpms-cta-ghost btn btn-sm" href="#" data-toggle="modal" data-target="#loginModal">Login</a>
-                    <a class="wpms-cta-ghost btn btn-sm" href="login.php"><i class="mdi mdi-shield-account-outline mr-1"></i> Admin</a>
-                    <a class="wpms-cta btn btn-sm" href="index.php#sign-up">Join Now — Free</a>
+                    <a class="wpms-cta btn btn-sm" href="#" data-toggle="modal" data-target="#loginModal"><i class="mdi mdi-login-variant mr-1"></i> Login</a>
+                    <a class="wpms-cta-ghost btn btn-sm" href="index.php#sign-up">Join Now — Free</a>
                 <?php endif; ?>
             </div>
         </div>
@@ -54,6 +53,7 @@
                 </button>
             </div>
             <div class="modal-body">
+                <p class="text-center mb-3" style="font-size:13px; color:#64748B; margin-top:-6px;">One login for everyone — clients and staff. Your account takes you to the right place.</p>
                 <form action="login.php" method="post">
                     <?php if (function_exists('is_staff') && isset($session) && $session->message()): ?>
                         <div class="mb-2"><?= $session->message(); ?></div>
