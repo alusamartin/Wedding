@@ -8,6 +8,9 @@
     $booking_count =  Booking::count_booking();
     $gallery_count =  Gallery::count_all();
     $event_post =  EventWedding::count_all();
+    // Unread alerts for THIS staff user — surfaces deposits recorded by
+    // couples while the planner was away. Links to the full archive.
+    $notif_unread = Notification::unread_count((int) $_SESSION['id']);
 ?>
 <?php $users_profile = Users::find_by_id($_SESSION['id']); ?>
 <!doctype html>
@@ -203,6 +206,15 @@
         <span class="count-numbers"><?=  $event_post; ?></span>
         <span class="count-name">Blogs</span>
       </div>
+    </div>
+
+    <div class="col-lg-3">
+      <a href="notifications.php" class="card-counter warning" style="display:block; text-decoration:none; color:#FFF;"
+         title="Unread alerts — deposits recorded by your couples">
+        <i class="mdi mdi-bell-ring"></i>
+        <span class="count-numbers"><?=  $notif_unread; ?></span>
+        <span class="count-name">Unread Alerts</span>
+      </a>
     </div>
   </div>
 

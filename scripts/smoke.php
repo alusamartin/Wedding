@@ -55,6 +55,7 @@ const STAFF_PAGES = [
     '/admin/photos_add.php',
     '/admin/blog_events_add.php',
     '/admin/users_add.php',
+    '/admin/notifications.php',
 ];
 
 /** @var string[] Pages that take a booking context; {b} and {u} are filled in. */

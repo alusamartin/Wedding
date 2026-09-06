@@ -137,6 +137,35 @@ class Notification
         return $stmt->fetchAll(PDO::FETCH_OBJ);
     }
 
+    /**
+     * Total notifications for a staff user (pagination).
+     */
+    public static function count_for(int $userId): int
+    {
+        global $db;
+        $stmt = $db->prepare('SELECT COUNT(*) FROM ' . self::$db_table . ' WHERE user_id = :uid');
+        $stmt->execute([':uid' => $userId]);
+        return (int) $stmt->fetchColumn();
+    }
+
+    /**
+     * One page of a staff user's notifications, newest first (full archive).
+     *
+     * @return object[]
+     */
+    public static function page(int $userId, int $offset, int $limit): array
+    {
+        global $db;
+        $stmt = $db->prepare(
+            'SELECT * FROM ' . self::$db_table . ' WHERE user_id = :uid ORDER BY id DESC LIMIT :offset, :limit'
+        );
+        $stmt->bindValue(':uid', $userId, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', max(0, $offset), PDO::PARAM_INT);
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
     public static function mark_read(int $id, int $userId): bool
     {
         global $db;

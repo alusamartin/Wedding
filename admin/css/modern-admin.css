@@ -46,6 +46,7 @@ main .navbar .nav-link{ color:var(--admin-text) !important; font-weight:600; }
 .card-counter.primary{ background:linear-gradient(135deg,#0EA5A0 0%, #065F46 100%) !important; }
 .card-counter.success{ background:linear-gradient(135deg,#10B981 0%, #047857 100%) !important; }
 .card-counter.danger{ background:linear-gradient(135deg,#F59E0B 0%, #D97706 100%) !important; }
+.card-counter.warning{ background:linear-gradient(135deg,#FB7185 0%, #BE123C 100%) !important; }
 .card-counter.info{ background:linear-gradient(135deg,#38BDF8 0%, #0EA5A0 100%) !important; }
 .card-counter i{ font-size:2.6rem !important; opacity:.22 !important; position:absolute; left:16px; top:50%; transform:translateY(-50%); }
 .card-counter .count-numbers{ right:18px !important; top:18px !important; font-weight:800 !important; font-size:28px !important; letter-spacing:-.02em; }
