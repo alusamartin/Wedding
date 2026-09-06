@@ -93,9 +93,34 @@ final class UnifiedLoginTest extends TestCase
     }
 
     #[Group('integration')]
+    public function testSignedInClientBypassesBothLoginForms(): void
+    {
+        self::login(self::CLIENT_EMAIL, self::CLIENT_PASS);
+        foreach (['/login.php', '/admin/login.php'] as $page) {
+            $res = self::http('GET', $page);
+            self::assertSame(302, $res['status'], "signed-in client must not see {$page}");
+            self::assertStringContainsString('client.php', $res['location']);
+            self::assertStringNotContainsString('dashboard.php', $res['location']);
+        }
+    }
+
+    #[Group('integration')]
+    public function testSignedInStaffBypassesBothLoginForms(): void
+    {
+        self::login(self::ADMIN_EMAIL, self::ADMIN_PASS);
+        foreach (['/login.php', '/admin/login.php'] as $page) {
+            $res = self::http('GET', $page);
+            self::assertSame(302, $res['status'], "signed-in staff must not see {$page}");
+            self::assertMatchesRegularExpression('#(admin/)?dashboard\.php#', $res['location']);
+            self::assertStringNotContainsString('client.php', $res['location']);
+        }
+    }
+
+    #[Group('integration')]
     public function testAdminLoginPageStillWorksForStaff(): void
     {
         // The dedicated admin door stays alive for bookmarks/smoke flows.
+        self::$jar = []; // anonymous visitor — an active session now redirects instead of rendering
         $page = self::http('GET', '/admin/login.php');
         self::assertSame(200, $page['status']);
         preg_match('/name="_token" value="([^"]+)"/', $page['body'], $m);

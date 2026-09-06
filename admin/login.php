@@ -35,6 +35,14 @@
             </div>");
      }
  }
+
+// Already signed in? Straight to this user's role home — never show the
+// form to someone holding an active session (POST logins above still run
+// first so switching accounts keeps working).
+if ($session->is_signed_in() && isset($_SESSION['id'])) {
+    redirect_to(login_redirect_target(is_staff(), (int) $_SESSION['id'], true));
+    die();
+}
 ?>
 <!doctype html>
 <html lang="en">

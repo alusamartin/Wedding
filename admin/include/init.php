@@ -58,4 +58,22 @@ function require_staff(): void
         exit;
     }
 }
+
+/**
+ * Where should this authenticated user land? One answer for every caller —
+ * the unified login POST and the already-signed-in GET guard on both login
+ * pages. Staff without an active subscription are routed to the subscription
+ * page first (first login or expired); everyone else to their role's home.
+ *
+ * $from_admin_dir: caller lives under /admin/ so Location paths resolve
+ * against that directory (redirect_to() emits them verbatim).
+ */
+function login_redirect_target(bool $staff, int $user_id, bool $from_admin_dir = false): string
+{
+    if ($staff) {
+        $page = Subscription::get_active($user_id) ? 'dashboard.php' : 'subscription.php';
+        return $from_admin_dir ? $page : 'admin/' . $page;
+    }
+    return $from_admin_dir ? 'client.php' : 'admin/client.php';
+}
 ?>
