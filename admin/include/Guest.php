@@ -25,7 +25,9 @@ class Guest extends DB_Object
         'rsvp_token',
         'rsvp_status',
         'rsvp_at',
-        'rsvp_note'
+        'rsvp_note',
+        'rsvp_reminded_at',
+        'rsvp_reminders'
     );
 
     public $id;
@@ -49,6 +51,9 @@ class Guest extends DB_Object
     public $rsvp_status;
     public $rsvp_at;
     public $rsvp_note;
+    /** Defaults matter: the ORM binds every declared property on create(). */
+    public $rsvp_reminded_at = null;
+    public $rsvp_reminders = 0;
 
     public static function getGuest(mixed $booking_id): array
     {
@@ -167,5 +172,60 @@ class Guest extends DB_Object
             $n++;
         }
         return $n;
+    }
+
+    /**
+     * Pending guests whose reminder window has arrived.
+     *
+     * A reminder is due when the guest:
+     *  - belongs to a CONFIRMED booking whose wedding is within the window
+     *    (today..$min_days_before days out — never for pending/cancelled
+     *    bookings or past weddings),
+     *  - has not replied (rsvp_status still 'pending'), and
+     *  - was never reminded, or was last reminded $resend_days+ days ago,
+     *    with a lifetime cap of $max_reminders per guest.
+     *
+     * @return array<int, object> rows with booking + couple context attached
+     */
+    public static function find_reminder_due(
+        int $min_days_before = 30,
+        int $resend_days = 7,
+        int $max_reminders = 3
+    ): array {
+        global $db;
+        $sql = "SELECT g.id, g.booking_id, g.fullname, g.phone, g.rsvp_token,
+                       g.rsvp_status, g.rsvp_reminded_at, g.rsvp_reminders,
+                       b.wedding_date, b.bride, b.groom, b.organizer_id,
+                       d.firstname, d.lastname, d.user_id AS couple_user_id
+                FROM tblguest g
+                INNER JOIN tblweddingbook b ON b.booking_id = g.booking_id
+                INNER JOIN tblaccounts_detail d ON d.user_id = b.user_id
+                INNER JOIN tblaccounts a ON a.user_id = b.user_id
+                WHERE g.rsvp_status = 'pending'
+                  AND d.status = 'confirm'
+                  AND g.rsvp_reminders < :maxr
+                  AND g.rsvp_token IS NOT NULL
+                  AND (g.rsvp_reminded_at IS NULL
+                       OR g.rsvp_reminded_at <= DATE_SUB(NOW(), INTERVAL :resend DAY))
+                  AND b.wedding_date >= CURDATE()
+                  AND b.wedding_date <= DATE_ADD(CURDATE(), INTERVAL :mindays DAY)
+                ORDER BY b.wedding_date ASC, g.id ASC";
+        $stmt = $db->prepare($sql);
+        $stmt->execute([
+            ':maxr'    => $max_reminders,
+            ':resend'  => $resend_days,
+            ':mindays' => $min_days_before,
+        ]);
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
+    /** Record that a reminder went out (timestamp + count bump). */
+    public static function mark_reminded(int $guest_id): bool
+    {
+        global $db;
+        $stmt = $db->prepare(
+            'UPDATE tblguest SET rsvp_reminded_at = NOW(), rsvp_reminders = rsvp_reminders + 1 WHERE id = :id'
+        );
+        return $stmt->execute([':id' => $guest_id]);
     }
 }

@@ -56,9 +56,7 @@
     // RSVP link reminder texts (planner copies these into WhatsApp).
     function rsvp_whatsapp_reminder(string $guestName, string $couple, string $weddingHuman, string $rsvpUrl): string
     {
-        $msg = 'Habari ' . $guestName . '! Gentle reminder from ' . $couple
-            . ($weddingHuman !== '' ? ' — our wedding is on ' . $weddingHuman : '')
-            . '. Kindly confirm your attendance here: ' . $rsvpUrl . ' — Asante!';
+        $msg = rsvp_reminder_text($guestName, $couple, $weddingHuman, $rsvpUrl);
         return 'https://wa.me/?text=' . rawurlencode($msg);
     }
 ?>
@@ -198,27 +196,64 @@
     <!-- Awaiting reply: reminder actions -->
     <div class="panel p-3 mb-3">
         <h6 class="mb-2"><i class="mdi mdi-clock-alert-outline mr-1"></i> Awaiting reply (<?= $tally['pending']; ?>)</h6>
-        <p class="text-muted" style="font-size:12.5px;">Each guest has a personal link. Copy the reminder into WhatsApp — it opens their chat pre-filled (choose their number when WhatsApp asks).</p>
+        <p class="text-muted" style="font-size:12.5px;">Select guests to remind, or use the per-guest actions. SMS charges the planner's credits; WhatsApp opens each chat pre-filled.</p>
         <?php
         $pending_rows = array_values(array_filter($guest_list, function ($g) {
             return ($g->rsvp_status ?? 'pending') === 'pending';
         }));
+        $pending_with_phone = array_filter($pending_rows, function ($g) {
+            return wa_number_ke($g->phone ?? '') !== '';
+        });
         ?>
         <?php if (empty($pending_rows)): ?>
             <p class="text-success mb-0" style="font-size:13px;"><i class="mdi mdi-check-circle mr-1"></i>Everyone has replied — no reminders needed.</p>
         <?php else: ?>
+        <form method="get" action="rsvp_wa_queue.php" id="waQueueForm" target="_blank">
+            <input type="hidden" name="booking_id" value="<?= $booking_id; ?>">
+            <input type="hidden" name="user_id" value="<?= $user_id; ?>">
+            <div id="bulkBar" class="mb-2 p-2 rounded" style="background:#F1F5F9; display:none;">
+                <span class="mr-2" style="font-size:12.5px; font-weight:600;"><span id="selCount">0</span> selected</span>
+                <button type="submit" class="btn btn-sm btn-wa" id="waOpenBtn" <?= count($pending_with_phone) === 0 ? 'disabled title="No selected guest has a WhatsApp number"' : ''; ?>>
+                    <i class="mdi mdi-whatsapp mr-1"></i>Open WhatsApp queue
+                </button>
+                <button type="button" class="btn btn-sm btn-success ml-1" id="smsBtn"
+                        data-toggle="modal" data-target="#smsConfirmModal">
+                    <i class="mdi mdi-cellphone-arrow-down mr-1"></i>Send SMS to selected
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary ml-1" id="clearSel">Clear</button>
+            </div>
+        </form>
+        <form method="post" action="rsvp_remind_bulk.php" id="smsForm">
+            <?= $session->csrf_field(); ?>
+            <input type="hidden" name="booking_id" value="<?= $booking_id; ?>">
+            <input type="hidden" name="user_id" value="<?= $user_id; ?>">
             <div class="table-responsive">
                 <table class="table table-sm mb-0" style="font-size:12.5px;">
-                    <thead><tr><th>Guest</th><th>Group</th><th>Phone</th><th style="width:30%;">Reminder</th></tr></thead>
+                    <thead><tr>
+                        <th style="width:28px;"><input type="checkbox" id="checkAll" aria-label="Select all pending guests"></th>
+                        <th>Guest</th><th>Group</th><th>Phone</th><th>Auto-reminders</th><th style="width:30%;">Reminder</th>
+                    </tr></thead>
                     <tbody>
                     <?php foreach ($pending_rows as $g):
                         $waNum = wa_number_ke($g->phone ?? '');
                         $remind = rsvp_whatsapp_reminder($g->guestname ?: $g->fullname, $couple, $wedding_human, rsvp_url_for($g->rsvp_token ?? ''));
+                        $remCount = (int) ($g->rsvp_reminders ?? 0);
+                        $remAt = $g->rsvp_reminded_at ?? null;
                     ?>
                         <tr>
+                            <td><input type="checkbox" class="sel-guest" form="waQueueForm" name="ids[]" value="<?= (int) $g->id; ?>"
+                                       data-has-wa="<?= $waNum !== '' ? '1' : '0'; ?>" aria-label="Select <?= htmlspecialchars($g->fullname); ?>"></td>
                             <td><strong><?= htmlspecialchars($g->fullname); ?></strong></td>
                             <td><?= htmlspecialchars($group_labels[$g->relationship] ?? ucfirst(str_replace('_', ' ', (string) $g->relationship))); ?></td>
                             <td><?= $waNum !== '' ? htmlspecialchars($g->phone) : '<span class="text-muted">no number</span>'; ?></td>
+                            <td><?php if ($remCount === 0): ?>
+                                    <span class="text-muted" style="font-size:12px;">not yet</span>
+                                <?php else: ?>
+                                    <span class="badge badge-secondary" title="Last: <?= htmlspecialchars((string) $remAt); ?>">
+                                        <?= $remCount; ?> sent
+                                    </span>
+                                    <?php if ($remCount >= 3): ?><span class="badge badge-warning">cap</span><?php endif; ?>
+                                <?php endif; ?></td>
                             <td>
                                 <a href="<?= htmlspecialchars($remind); ?>" target="_blank" rel="noopener" class="btn btn-wa btn-sm">
                                     <i class="mdi mdi-whatsapp mr-1"></i>Send reminder
@@ -232,6 +267,7 @@
                     </tbody>
                 </table>
             </div>
+        </form>
         <?php endif; ?>
     </div>
 
@@ -264,7 +300,94 @@
     </div>
 </div>
 
+<!-- SMS confirm modal (bulk action) -->
+<div class="modal fade" id="smsConfirmModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content" style="border-radius:16px;">
+            <div class="modal-header border-0 pb-0">
+                <h6 class="modal-title" style="font-weight:700;"><i class="mdi mdi-cellphone-arrow-down mr-1" style="color:#065F46;"></i>Send SMS reminders</h6>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span>&times;</span></button>
+            </div>
+            <div class="modal-body" style="font-size:13.5px;">
+                <p id="smsModalText" class="mb-2"></p>
+                <p class="text-muted mb-0" style="font-size:12px;">Each SMS charges the planner's credit balance and is logged in the SMS outbox. Guests already replied, without a number, or at the reminder cap are skipped with a reason.</p>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success btn-sm" id="smsGo">
+                    <i class="mdi mdi-send mr-1"></i>Send now
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
+    // ---- bulk selection -------------------------------------------------
+    var waForm = document.getElementById('waQueueForm');
+    var bulkBar = document.getElementById('bulkBar');
+    var selCount = document.getElementById('selCount');
+    var checkAll = document.getElementById('checkAll');
+
+    function selectedBoxes() {
+        return Array.prototype.slice.call(document.querySelectorAll('.sel-guest:checked'));
+    }
+    function refreshBulkBar() {
+        var sel = selectedBoxes();
+        var hasWa = sel.some(function (b) { return b.getAttribute('data-has-wa') === '1'; });
+        if (selCount) selCount.textContent = sel.length;
+        if (bulkBar) bulkBar.style.display = sel.length > 0 ? 'block' : 'none';
+        var waBtn = document.getElementById('waOpenBtn');
+        if (waBtn && sel.length > 0) {
+            waBtn.disabled = !hasWa;
+            waBtn.title = hasWa ? '' : 'No selected guest has a WhatsApp number';
+        }
+        if (checkAll) {
+            var all = document.querySelectorAll('.sel-guest');
+            checkAll.checked = all.length > 0 && sel.length === all.length;
+        }
+    }
+    document.addEventListener('change', function (e) {
+        if (e.target.classList && e.target.classList.contains('sel-guest')) refreshBulkBar();
+        if (e.target === checkAll) {
+            document.querySelectorAll('.sel-guest').forEach(function (b) { b.checked = checkAll.checked; });
+            refreshBulkBar();
+        }
+    });
+    var clearBtn = document.getElementById('clearSel');
+    if (clearBtn) clearBtn.addEventListener('click', function () {
+        document.querySelectorAll('.sel-guest').forEach(function (b) { b.checked = false; });
+        if (checkAll) checkAll.checked = false;
+        refreshBulkBar();
+    });
+
+    // SMS confirm modal: mirror the selection into the POST form, submit.
+    var smsBtn = document.getElementById('smsBtn');
+    if (smsBtn) smsBtn.addEventListener('click', function () {
+        var sel = selectedBoxes();
+        if (sel.length === 0) return;
+        var names = sel.map(function (b) {
+            return b.closest('tr').querySelector('strong').textContent;
+        });
+        var noWa = sel.filter(function (b) { return b.getAttribute('data-has-wa') !== '1'; }).length;
+        var txt = 'Send an SMS reminder to <strong>' + sel.length + ' guest' + (sel.length > 1 ? 's' : '') + '</strong>';
+        if (noWa > 0) txt += ' <span class="text-muted">(' + noWa + ' without a number will be skipped)</span>';
+        var el = document.getElementById('smsModalText');
+        if (el) el.innerHTML = txt + ':<br><small>' + names.join(', ') + '</small>';
+        var post = document.getElementById('smsForm');
+        post.querySelectorAll('input[name="ids[]"]').forEach(function (i) { i.remove(); });
+        sel.forEach(function (b) {
+            var input = document.createElement('input');
+            input.type = 'hidden'; input.name = 'ids[]'; input.value = b.value;
+            post.appendChild(input);
+        });
+    });
+    var smsGo = document.getElementById('smsGo');
+    if (smsGo) smsGo.addEventListener('click', function () {
+        var post = document.getElementById('smsForm');
+        if (post) post.submit();
+    });
+
     document.addEventListener('click', function (e) {
         var btn = e.target.closest('.copy-rsvp');
         if (!btn) return;

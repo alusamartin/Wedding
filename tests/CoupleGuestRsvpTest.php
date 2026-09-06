@@ -33,6 +33,8 @@ final class CoupleGuestRsvpTest extends TestCase
     private static $serverProc = null;
     /** @var int[] probe guest ids created by this run */
     private static array $probeGuestIds = [];
+    /** Highest sms id at boot — rows beyond this on the booking are ours. */
+    private static int $smsBaselineId = 0;
 
     public static function setUpBeforeClass(): void
     {
@@ -57,10 +59,24 @@ final class CoupleGuestRsvpTest extends TestCase
         }
 
         self::bootServer();
+
+        if (self::$db !== null) {
+            self::$smsBaselineId = (int) self::$db->fetchValue('SELECT COALESCE(MAX(id), 0) FROM tblsms_logs');
+        }
     }
 
     public static function tearDownAfterClass(): void
     {
+        if (self::$db !== null) {
+            // Remove SMS rows the reminder tests queued (baseline captured
+            // at boot, before any test ran).
+            if (self::$smsBaselineId > 0) {
+                self::$db->execute(
+                    'DELETE FROM tblsms_logs WHERE booking_id = :b AND id > :base',
+                    [':b' => self::BOOKING_ID, ':base' => self::$smsBaselineId]
+                );
+            }
+        }
         if (self::$db !== null && self::$probeGuestIds !== []) {
             try {
                 self::$db->prepare(
@@ -300,7 +316,8 @@ final class CoupleGuestRsvpTest extends TestCase
         $bounced = self::http('GET', '/admin/rsvp_dashboard.php?booking_id=' . self::BOOKING_ID . '&user_id=200');
         self::assertSame(302, $bounced['status'], 'clients must not open the staff RSVP dashboard');
 
-        // Staff view: seed 2 yes + 1 maybe among probes, then check the math.
+        // Staff view: seed 2 yes + 1 maybe + 1 pending-with-reminder among
+        // probes, then check the math and the auto-reminder column.
         self::loginStaff();
         foreach ([['Probe Dash Yes 1', 'yes'], ['Probe Dash Yes 2', 'yes'], ['Probe Dash Maybe', 'maybe']] as [$name, $status]) {
             self::$db->prepare(
@@ -309,12 +326,21 @@ final class CoupleGuestRsvpTest extends TestCase
             )->execute([':b' => self::BOOKING_ID, ':n' => $name, ':n2' => 'Dash', ':t' => bin2hex(random_bytes(16)), ':s' => $status]);
             self::$probeGuestIds[] = (int) self::$db->the_insert_id();
         }
+        self::$db->prepare(
+            'INSERT INTO tblguest (booking_id, fullname, guestname, relationship, rsvp_token, rsvp_status, rsvp_reminded_at, rsvp_reminders) '
+            . 'VALUES (:b, "Probe Dash Pending", "Dash", "regular", :t, "pending", NOW(), 1)'
+        )->execute([':b' => self::BOOKING_ID, ':t' => bin2hex(random_bytes(16))]);
+        self::$probeGuestIds[] = (int) self::$db->the_insert_id();
 
         $body = self::http('GET', '/admin/rsvp_dashboard.php?booking_id=' . self::BOOKING_ID . '&user_id=200')['body'];
         self::assertSame(200, 200);
         self::assertStringContainsString('RSVP Dashboard', $body);
         self::assertStringContainsString('Probe Dash Yes 1', $body, 'responses table must list the guests');
         self::assertStringContainsString('Export venue headcount', $body, 'CSV export must be linked');
+        // Auto-reminder state column: reminded pending guest shows the count.
+        self::assertStringContainsString('Auto-reminders', $body);
+        self::assertStringContainsString('1 sent', $body, 'reminded guest must show the reminder count');
+        self::assertStringContainsString('not yet', $body, 'un-reminded pending guests show "not yet"');
 
         // Tally math from the DB is what the page renders — verify consistency.
         $tally = Guest::rsvp_tally(self::BOOKING_ID);
@@ -361,6 +387,184 @@ final class CoupleGuestRsvpTest extends TestCase
         self::assertStringContainsString('Wedding%20payment%20receipt', $ledger, 'receipt text must be pre-filled');
     }
 
+    #[Group('integration')]
+    public function testBulkSmsEndpointRequiresStaffPostAndCsrf(): void
+    {
+        $this->requireHttp();
+
+        // Anonymous GET -> bounced to site root.
+        self::$jar = [];
+        $anon = self::http('GET', '/admin/rsvp_remind_bulk.php?booking_id=200&user_id=200');
+        self::assertSame(302, $anon['status']);
+
+        // Anonymous POST -> also bounced (no session, no CSRF).
+        $anonPost = self::http('POST', '/admin/rsvp_remind_bulk.php', ['booking_id' => '200', 'user_id' => '200']);
+        self::assertSame(302, $anonPost['status']);
+
+        // Staff GET -> method rejected (redirect to client list, nothing sent).
+        self::loginStaff();
+        $get = self::http('GET', '/admin/rsvp_remind_bulk.php?booking_id=200&user_id=200');
+        self::assertSame(302, $get['status']);
+
+        // Staff POST without token -> rejected before any send.
+        $baseline = (int) self::$db->fetchValue(
+            'SELECT COUNT(*) FROM tblsms_logs WHERE booking_id = ' . self::BOOKING_ID
+        );
+        $noToken = self::http('POST', '/admin/rsvp_remind_bulk.php', [
+            'booking_id' => '200', 'user_id' => '200', 'ids' => ['1'],
+        ]);
+        self::assertSame(302, $noToken['status']);
+        self::assertSame($baseline, (int) self::$db->fetchValue(
+            'SELECT COUNT(*) FROM tblsms_logs WHERE booking_id = ' . self::BOOKING_ID
+        ), 'no SMS may be sent by a tokenless POST');
+    }
+
+    #[Group('integration')]
+    public function testBulkSmsSendsToSelectedPendingGuestsOnly(): void
+    {
+        $this->requireHttp();
+        self::loginStaff();
+
+        // Probes on booking 200: pending+phone, pending+no phone, replied.
+        $ids = [];
+        foreach ([
+            ['Probe Bulk Pending', '0723000111', 'pending'],
+            ['Probe Bulk NoPhone', null, 'pending'],
+            ['Probe Bulk Replied', '0723000112', 'yes'],
+        ] as [$name, $phone, $status]) {
+            self::$db->prepare(
+                'INSERT INTO tblguest (booking_id, fullname, guestname, phone, relationship, rsvp_token, rsvp_status) '
+                . 'VALUES (:b, :n, :n2, :p, "regular", :t, :s)'
+            )->execute([':b' => self::BOOKING_ID, ':n' => $name, ':n2' => 'Bulk', ':p' => $phone, ':t' => bin2hex(random_bytes(16)), ':s' => $status]);
+            $ids[$name] = (int) self::$db->the_insert_id();
+            self::$probeGuestIds[] = $ids[$name];
+        }
+
+        // Organizer 7 (Amina) seeds with 0 credits — top up, restore later.
+        $prior = (int) self::$db->fetchValue('SELECT credits FROM tblsms_credits WHERE user_id = 7');
+        self::$db->execute('UPDATE tblsms_credits SET credits = 100 WHERE user_id = 7');
+
+        try {
+            $page = self::http('GET', '/admin/rsvp_dashboard.php?booking_id=' . self::BOOKING_ID . '&user_id=200');
+            preg_match('/name="_token" value="([^"]+)"/', $page['body'], $m);
+            $token = html_entity_decode($m[1], ENT_QUOTES);
+
+            $smsBefore = (int) self::$db->fetchValue('SELECT COUNT(*) FROM tblsms_logs WHERE booking_id = ' . self::BOOKING_ID);
+
+            $res = self::http('POST', '/admin/rsvp_remind_bulk.php', [
+                'booking_id' => (string) self::BOOKING_ID,
+                'user_id'    => '200',
+                '_token'     => $token,
+                'ids'        => [ (string) $ids['Probe Bulk Pending'], (string) $ids['Probe Bulk NoPhone'], (string) $ids['Probe Bulk Replied'] ],
+            ]);
+            self::assertSame(302, $res['status']);
+
+            // Exactly one SMS — to the pending guest with a phone.
+            $smsAfter = self::$db->fetchAll(
+                'SELECT phone, status FROM tblsms_logs WHERE booking_id = ' . self::BOOKING_ID
+            );
+            self::assertCount($smsBefore + 1, $smsAfter, 'only the reachable pending guest is texted');
+            $last = end($smsAfter);
+            $phone = is_object($last) ? $last->phone : $last['phone'];
+            self::assertSame('254723000111', $phone, 'number normalized to E.164 without +');
+
+            // Reminder state: marked only for the actually-sent guest.
+            $marked = (int) self::$db->fetchValue(
+                'SELECT rsvp_reminders FROM tblguest WHERE id = ' . $ids['Probe Bulk Pending']
+            );
+            self::assertSame(1, $marked);
+            $untouched = (int) self::$db->fetchValue(
+                'SELECT rsvp_reminders FROM tblguest WHERE id = ' . $ids['Probe Bulk Replied']
+            );
+            self::assertSame(0, $untouched, 'replied guests must never be reminded');
+
+            // Flash summary on the redirected dashboard load.
+            $dash = self::http('GET', '/admin/rsvp_dashboard.php?booking_id=' . self::BOOKING_ID . '&user_id=200')['body'];
+            self::assertStringContainsString('1 reminder sent', $dash);
+            self::assertStringContainsString('no phone number', $dash, 'skipped guests are listed with a reason');
+        } finally {
+            self::$db->execute('UPDATE tblsms_credits SET credits = ' . $prior . ' WHERE user_id = 7');
+        }
+    }
+
+    #[Group('integration')]
+    public function testWhatsAppQueueWalksSelectedGuestsAndRejectsForeigners(): void
+    {
+        $this->requireHttp();
+
+        // Probe guest on booking 200 with a phone.
+        self::loginStaff();
+        self::$db->prepare(
+            'INSERT INTO tblguest (booking_id, fullname, guestname, phone, relationship, rsvp_token, rsvp_status) '
+            . 'VALUES (:b, "Probe WA Queue", "WA", "0723000113", "regular", :t, "pending")'
+        )->execute([':b' => self::BOOKING_ID, ':t' => bin2hex(random_bytes(16))]);
+        $gid = (int) self::$db->the_insert_id();
+        self::$probeGuestIds[] = $gid;
+
+        // Clients are bounced.
+        self::loginCouple();
+        $client = self::http('GET', '/admin/rsvp_wa_queue.php?booking_id=' . self::BOOKING_ID . '&user_id=200&ids=' . $gid);
+        self::assertSame(302, $client['status']);
+
+        // Staff gets the walkthrough with the guest's pre-filled WhatsApp link.
+        self::loginStaff();
+        $walk = self::http('GET', '/admin/rsvp_wa_queue.php?booking_id=' . self::BOOKING_ID . '&user_id=200&ids=' . $gid);
+        self::assertSame(200, $walk['status']);
+        self::assertStringContainsString('Probe WA Queue', $walk['body']);
+        self::assertStringContainsString('https://wa.me/254723000113?text=', $walk['body']);
+        self::assertStringContainsString('Open WhatsApp', $walk['body']);
+
+        // Guests from another booking are filtered out -> redirect with a warning.
+        $foreign = self::http('GET', '/admin/rsvp_wa_queue.php?booking_id=201&user_id=201&ids=' . $gid);
+        self::assertSame(302, $foreign['status']);
+    }
+
+    #[Group('integration')]
+    public function testBrandedReceiptRendersAndIsScoped(): void
+    {
+        $this->requireHttp();
+
+        // The newest ledger row of booking 200 (seed data).
+        $receiptId = (int) self::$db->fetchValue(
+            'SELECT id FROM tbl_liquidation WHERE booking_id = 200 ORDER BY id DESC LIMIT 1'
+        );
+        if ($receiptId === 0) {
+            self::markTestSkipped('seed has no liquidation rows for booking 200');
+        }
+
+        // Anonymous visitors get bounced to the site root. (The jar is
+        // cleared explicitly: earlier tests in this class leave a session.)
+        self::$jar = [];
+        $anon = self::http('GET', '/admin/receipt.php?id=' . $receiptId);
+        self::assertSame(302, $anon['status']);
+
+        // A foreign couple must never see another wedding's receipt.
+        self::loginCouple();
+        $other = self::$db->fetchValue(
+            'SELECT booking_id FROM tbl_liquidation WHERE booking_id <> 200 ORDER BY id DESC LIMIT 1'
+        );
+        if ($other) {
+            $foreignId = (int) self::$db->fetchValue(
+                'SELECT id FROM tbl_liquidation WHERE booking_id <> 200 ORDER BY id DESC LIMIT 1'
+            );
+            $res = self::http('GET', '/admin/receipt.php?id=' . $foreignId);
+            self::assertSame(302, $res['status'], 'foreign receipt must redirect away');
+        }
+
+        // The owning couple gets the branded receipt.
+        $body = self::http('GET', '/admin/receipt.php?id=' . $receiptId)['body'];
+        self::assertStringContainsString('Everafter Planner', $body);
+        self::assertStringContainsString('PAYMENT RECEIPT', $body);
+        self::assertStringContainsString('Share on WhatsApp', $body, 'receipt must carry the WhatsApp share action');
+        self::assertStringContainsString('Balance remaining', $body);
+        self::assertMatchesRegularExpression('/EP-\d{6}/', $body, 'receipt number stamp must render');
+
+        // A garbage id renders the designed not-found state, not a warning.
+        $nf = self::http('GET', '/admin/receipt.php?id=99999999');
+        self::assertSame(404, $nf['status']);
+        self::assertStringContainsString('Receipt not found', $nf['body']);
+    }
+
     // ------------------------------------------------------------------
     // Fixtures + harness
     // ------------------------------------------------------------------
@@ -372,7 +576,7 @@ final class CoupleGuestRsvpTest extends TestCase
 
     private static function loginStaff(): void
     {
-        self::login('wafula@wpms.co.ke', 'Admin@2024!', '/admin/login.php');
+        self::login('wafula@wpms.co.ke', 'Admin@2024!', '/login.php');
     }
 
     private static function login(string $email, string $pass, string $page): void

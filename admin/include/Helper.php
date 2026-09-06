@@ -182,6 +182,18 @@ function whatsapp_invite_link(?string $phone, string $guestName, string $wedding
  * Used for deposit receipts; invite links use whatsapp_invite_link() with an
  * explicit number instead.
  */
+/**
+ * Shared reminder text for nudging a guest who hasn't replied. Used by the
+ * RSVP dashboard's per-guest WhatsApp links, the bulk WhatsApp queue and the
+ * bulk SMS sender — one wording everywhere.
+ */
+function rsvp_reminder_text(string $guestName, string $couple, string $weddingHuman, string $rsvpUrl): string
+{
+    return 'Habari ' . $guestName . '! Gentle reminder from ' . $couple
+        . ($weddingHuman !== '' ? ' — our wedding is on ' . $weddingHuman : '')
+        . '. Kindly confirm your attendance here: ' . $rsvpUrl . ' — Asante!';
+}
+
 function whatsapp_share_link(string $text): string
 {
     return 'https://wa.me/?text=' . rawurlencode($text);
