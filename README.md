@@ -2,9 +2,11 @@
 
 Kenyan-market edition of the Wedding Planner Management System (v2.1): package
 catalog + sign-up hero, client/couple portal, planner & vendor admin area,
-wedding bookings, guest lists, budgets (KSh), calendar, subscriptions, and
-M-Pesa-ready pricing. Modernized 2026 theme (`css/modern.css`), PDO-based data
-layer, hardened sessions (CSRF, fingerprinting, audit log).
+wedding bookings, guest lists (with token RSVP links + automatic SMS
+reminders), budgets (KSh), branded shareable M-Pesa receipts, calendar,
+subscriptions, and M-Pesa-ready pricing. Modernized 2026 theme
+(`css/modern.css`), PDO-based data layer, hardened sessions (CSRF,
+fingerprinting, audit log).
 
 > 📖 The full operator manual lives in [`WPMS_KENYA_MANUAL.md`](WPMS_KENYA_MANUAL.md)
 > (feature walkthrough, directory map, API/troubleshooting). This README is the
@@ -120,17 +122,56 @@ Cron example (every 15 minutes):
 */15 * * * * php /path/to/Wedding/scripts/mail_retry.php --quiet
 ```
 
+### RSVP reminders (SMS to non-responders)
+
+`scripts/rsvp_reminders.php` finds guests who haven't replied on **confirmed**
+bookings whose wedding is within the window and texts them their personal
+RSVP link through the SMS outbox (`tblsms_logs`, Africa's Talking-ready;
+sends charge credits to the assigned organizer). Scheduling is built in:
+re-remind at most every N days, lifetime cap per guest, single-flight lock,
+and `--dry-run` to preview.
+
+```bash
+php scripts/rsvp_reminders.php --dry-run        # preview, writes nothing
+php scripts/rsvp_reminders.php                  # defaults: 30d window, 7d resend, cap 3
+php scripts/rsvp_reminders.php --days=45 --resend=5 --max=2 --limit=100
+```
+
+Cron example (daily at 09:00):
+
+```cron
+0 9 * * * php /path/to/Wedding/scripts/rsvp_reminders.php --quiet
+```
+
+Every send is recorded on the guest (`rsvp_reminded_at` + count, visible on
+the staff RSVP dashboard) **only after** the SMS reports success — a credits
+or gateway failure retries naturally on the next run. Without an Africa's
+Talking API key the messages are logged to the outbox in dev mode without
+delivery, exactly like the SMS center.
+
+Planners can also remind guests **manually** from the RSVP dashboard: tick
+pending guests and either *Send SMS to selected* (staff-only, CSRF-protected
+endpoint that re-checks every guest belongs to the booking and skips
+already-replied / phoneless guests with a reason) or *Open WhatsApp queue*,
+which walks each selected guest's chat pre-filled, one at a time.
+
 ### 5. Access the system
+
+**One login door for every role:** http://localhost/Wedding/login.php
+
+Sign in with any account — client, planner, or admin — and the system routes
+you to the page your role needs (see “Where each role lands” below). Already
+signed in? Both login pages skip the form and take you straight to your home.
 
 | Entry | URL |
 |---|---|
 | Public site (home + sign-up hero) | http://localhost/Wedding/ |
-| Client / couple login | http://localhost/Wedding/login.php |
+| **Single login door (all roles)** | http://localhost/Wedding/login.php |
+| Old admin login (`admin/login.php`) | retired — `301` redirect to the single door |
 
 > Registration happens on the **index.php hero form** — the single
 > client-facing entry point. `sign_up.php` is a legacy stub that permanently
 > redirects there (`301 → /#sign-up`).
-| Admin login | http://localhost/Wedding/admin/login.php |
 
 Ensure Apache can write to `admin/upload/{categories,events,gallery,users}/`.
 
@@ -139,10 +180,19 @@ Ensure Apache can write to `admin/upload/{categories,events,gallery,users}/`.
 ## Demo logins
 
 Passwords are stored as bcrypt hashes in the seed — these plaintext values were
-verified against the seed hashes.
+verified against the seed hashes. **All of them sign in through the same door**
+(`login.php`; the old `admin/login.php` permanently redirects there).
 
-### Admin area → `admin/login.php`
-(redirects to the dashboard; first login may route to the subscription page)
+### Where each role lands
+
+| Account | Role | Lands on |
+|---|---|---|
+| Couple/client (`tblaccounts`) | Client | `admin/client.php` — their bookings dashboard |
+| `access_level 2` staff | Super Admin | `admin/dashboard.php` |
+| `access_level 1` staff | Wedding Planner | `admin/dashboard.php` — or `admin/subscription.php` first when there is no active subscription |
+| `access_level 0` staff (vendor) | Vendor Lead | `admin/client.php` scoped to an empty account — vendor self-service is a known roadmap gap; manage vendor data from an admin login |
+
+### Seeded accounts
 
 | Role | Email | Password |
 |---|---|---|
@@ -150,12 +200,6 @@ verified against the seed hashes.
 | Super Admin (alt) | `abdi@wpms.co.ke` | `Admin@2024!` |
 | Wedding Planner | `amina@wpms.co.ke` | `Test@1234` |
 | Vendor Lead | `kamau@nyamachoma.co.ke` | `Vendor@2024` |
-
-### Client / couple portal → public `login.php`
-(redirects to the client dashboard under `/admin/client.php`)
-
-| Role | Email | Password |
-|---|---|---|
 | Couple (client) | `brian.wafula@gmail.com` | `Test@1234` |
 | Couple (client) | `faith.njeri@yahoo.com` | `Test@1234` |
 

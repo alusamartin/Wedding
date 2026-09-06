@@ -115,6 +115,8 @@
                         <td><?= format_date_kd($item->date_issue, true); ?></td>
                         <td><?= htmlspecialchars(event_label($item->event_id)); ?></td>
                         <td><?= $method_label; ?>
+                            <a href="receipt.php?id=<?= (int) $item->id; ?>" class="btn btn-sm btn-outline-success ml-1" title="View branded receipt">
+                                <i class="mdi mdi-receipt"></i></a>
                             <a href="<?= htmlspecialchars(whatsapp_share_link($receipt_text)); ?>" target="_blank" rel="noopener"
                                class="btn btn-sm btn-wa ml-1" title="Share this receipt on WhatsApp"><i class="mdi mdi-share-variant"></i></a>
                         </td>
