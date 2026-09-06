@@ -244,15 +244,13 @@ INSERT IGNORE INTO `tblweddingcategories` (`id`,`wedding_type`,`price`,`preview_
 (7, 'Church Wedding', 250000.00, 'church.jpg'),
 (8, 'Civil Registration', 50000.00, 'civil.jpg'),
 (9, 'Reception Package', 350000.00, 'reception.jpg'),
-(10, 'After-Party Celebration', 100000.00, 'afterparty.jpg'),
-(200, 'Test Budget Package', 9999.99, 'test.jpg');
+(10, 'After-Party Celebration', 100000.00, 'afterparty.jpg');
 
 -- --------------------------------------------------------------------------
 -- 5. tbl_features — Kenyan Features (all linked to Kenyan packages 6-10, prices in KSh context)
 -- --------------------------------------------------------------------------
 DELETE FROM `tbl_features` WHERE `feature_id` IN (200,201,202);
 INSERT INTO `tbl_features` (`feature_id`,`category_id`,`title`,`description`) VALUES
-(200, 200, 'Test Feature', 'Automated test — KSh 9,999 package'),
 (201, 6, 'Nyama Choma & Pilau — 200 pax', 'Mbuzi, kuku, pilau, ugali, kachumbari — KSh 85,000'),
 (202, 9, 'Reception PA — JBL + Generator', 'JBL PA, generator, MC — KSh 45,000'),
 (203, 7, 'Church Decor — KSh 35,000', 'Kitenge + fresh flowers, altar décor'),
@@ -335,7 +333,7 @@ DELETE FROM `tblgallery` WHERE `booking_id` IN (200,201);
 INSERT INTO `tblgallery` (`id`,`booking_id`,`title`,`caption`,`description`,`filename`,`alternate_text`,`type`,`size`,`relate_id`) VALUES
 (200, 200, 'Ruracio Elders — Bungoma', 'Elders negotiating dowry', 'Nyeri ruracio elders in kitenge — KSh event', 'ruracio_elders_2025.jpg', 'Ruracio elders', 'image', '2048000', 0),
 (201, 200, 'Bride & Groom — Karen', 'First look', 'Linda & Brian at Karen Gardens, Nairobi', 'bride_groom_karen.jpg', 'Bride and groom', 'image', '3120000', 0),
-(202, 201, 'Diani Beach — Mombasa', 'Sunset vows', 'Faith & James at Diani Reef', 'diani_beach_2025.jpg', 'Beach wedding', 'image', '2800000', 0);
+(202, 201, 'Diani Beach — Mombasa', 'Sunset vows', 'Faith & James at Diani Reef', 'wdnf2.JPG', 'Beach wedding', 'image', '2800000', 0);
 
 -- --------------------------------------------------------------------------
 -- 11. tblpostwedding — Kenyan Real Weddings ONLY (KSh pricing, Kenyan counties)
@@ -343,11 +341,11 @@ INSERT INTO `tblgallery` (`id`,`booking_id`,`title`,`caption`,`description`,`fil
 -- --------------------------------------------------------------------------
 DELETE FROM `tblpostwedding` WHERE `id` IN (200,201,202);
 INSERT INTO `tblpostwedding` (`id`,`title`,`description`,`preview_image`,`location`,`status`,`wedding_date`,`wedding_type`,`date_created`,`date_published`) VALUES
-(200, 'A Modern Ruracio in Nyeri — Brian & Linda', 'Colourful ruracio in Othaya, Nyeri County. 200 guests, nyama choma + 3 mbuzi. VC harambee KSh 500,000. Total budget KSh 850,000.', 'ruracio_nyeri_2024.jpg', 'Othaya, Nyeri County', '1', '2025-12-20', 'Traditional Ruracio/Dowry', '2024-09-20 10:00:00', '2024-09-21 10:00:00'),
-(201, 'Beach Wedding in Diani — Faith & James', 'Sunset vows at Diani Reef, Kwale County. 180 guests, dhow cruise. Reception KSh 350,000 package.', 'diani_beach_2025.jpg', 'Diani, Kwale County', '1', '2025-11-15', 'Reception Package', '2024-09-18 09:00:00', '2024-09-19 09:00:00'),
-(202, 'Garden Wedding — Lake Naivasha', 'Naivasha, Nakuru County. KSh 250,000 Church + KSh 100,000 After-Party. Draft — not published.', 'naivasha_garden_2025.jpg', 'Naivasha, Nakuru County', '0', '2025-10-10', 'Church Wedding', '2024-09-18 09:00:00', ''),
-(203, 'Civil Registration — Sheria House Nairobi', '50,000 KSh civil registration, Sheria House. 30 guests, witness arrangement KSh 5,000.', 'sheria_house_2025.jpg', 'Sheria House, Nairobi County', '1', '2025-11-12', 'Civil Registration', '2024-09-22 10:00:00', '2024-09-23 10:00:00'),
-(204, 'Kikuyu Dowry — Murang''a', 'Murang''a County ruracio, 150 guests, harambee KSh 1.2M. M-Pesa Paybill 123456.', 'muranga_ruracio_2025.jpg', 'Kangema, Murang''a County', '1', '2025-11-10', 'Traditional Ruracio/Dowry', '2024-09-23 10:00:00', '2024-09-24 10:00:00');
+(200, 'A Modern Ruracio in Nyeri — Brian & Linda', 'Colourful ruracio in Othaya, Nyeri County. 200 guests, nyama choma + 3 mbuzi. VC harambee KSh 500,000. Total budget KSh 850,000.', 'wdnf10.JPG', 'Othaya, Nyeri County', '1', '2025-12-20', 'Traditional Ruracio/Dowry', '2024-09-20 10:00:00', '2024-09-21 10:00:00'),
+(201, 'Beach Wedding in Diani — Faith & James', 'Sunset vows at Diani Reef, Kwale County. 180 guests, dhow cruise. Reception KSh 350,000 package.', 'wdnf2.JPG', 'Diani, Kwale County', '1', '2025-11-15', 'Reception Package', '2024-09-18 09:00:00', '2024-09-19 09:00:00'),
+(202, 'Garden Wedding — Lake Naivasha', 'Naivasha, Nakuru County. KSh 250,000 Church + KSh 100,000 After-Party. Draft — not published.', 'wdnf12.JPG', 'Naivasha, Nakuru County', '0', '2025-10-10', 'Church Wedding', '2024-09-18 09:00:00', ''),
+(203, 'Civil Registration — Sheria House Nairobi', '50,000 KSh civil registration, Sheria House. 30 guests, witness arrangement KSh 5,000.', 'wdnf7.JPG', 'Sheria House, Nairobi County', '1', '2025-11-12', 'Civil Registration', '2024-09-22 10:00:00', '2024-09-23 10:00:00'),
+(204, 'Kikuyu Dowry — Murang''a', 'Murang''a County ruracio, 150 guests, harambee KSh 1.2M. M-Pesa Paybill 123456.', 'wdnf4.JPG', 'Kangema, Murang''a County', '1', '2025-11-10', 'Traditional Ruracio/Dowry', '2024-09-23 10:00:00', '2024-09-24 10:00:00');
 
 -- --------------------------------------------------------------------------
 -- 12. tblsubscription_plans — KSh pricing (already KSh, kept Kenyan)

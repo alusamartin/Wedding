@@ -100,3 +100,17 @@ CREATE TABLE IF NOT EXISTS `tbl_mail_logs` (
   KEY `idx_mail_notification` (`notification_id`),
   KEY `idx_mail_retry` (`status`, `attempts`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Password reset tokens (client forgot-password flow).
+-- Tokens are stored SHA-256 hashed; one live token per account; 60-min TTL.
+CREATE TABLE IF NOT EXISTS `tbl_password_resets` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id` INT NOT NULL,
+  `token_hash` CHAR(64) NOT NULL,
+  `expires_at` DATETIME NOT NULL,
+  `used_at` DATETIME DEFAULT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_reset_hash` (`token_hash`),
+  KEY `idx_reset_user` (`user_id`, `used_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

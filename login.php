@@ -161,7 +161,8 @@
         </label>
     </div>
     <button class="btn btn-lg btn-success btn-block" type="submit" name="login">Login</button>
-    <p class="mt-5 mb-3 text-muted">&copy; <?php echo date('Y')?> Everafter Planner</p>
+    <p class="mt-3 mb-0" style="font-size:13px;"><a href="forgot_password.php">Forgot your password?</a></p>
+    <p class="mt-4 mb-0 text-muted">&copy; <?php echo date('Y')?> Everafter Planner</p>
 </form>
 <script src="js/jquery-3.2.1.slim.min.js"></script>
 <script src="js/jquery.min.js"></script>

@@ -23,6 +23,7 @@ require_once(INCLUDES_PATH.DS."Events.php");
 require_once(INCLUDES_PATH.DS."Liquidation.php");
 require_once(INCLUDES_PATH.DS."Monetization.php");
 require_once(INCLUDES_PATH.DS."Notification.php");
+require_once(INCLUDES_PATH.DS."PasswordReset.php");
 
 /**
  * Is the current session a staff (planner/admin) account?
