@@ -365,6 +365,83 @@ final class StaffNotificationsPageTest extends TestCase
         self::assertSame(0, self::unreadForStaff(), 'readall must clear every unread row for the user');
     }
 
+    #[Group('integration')]
+    public function testUnreadOnlyFilterShowsOnlyUnreadRows(): void
+    {
+        $this->requireHttp();
+        self::seedProbes(5, 2); // 3 read + 2 unread
+
+        $body = self::http('GET', '/admin/notifications.php?filter=unread')['body'];
+        self::assertStringContainsString('value="unread" checked', $body, 'the toggle must reflect the active filter');
+
+        // Scope to the archive card: the sidebar dropdown always lists the
+        // 8 latest regardless of filter, so whole-body assertions would be
+        // meaningless here.
+        $posDropdown = strpos($body, 'dropdown-menu');
+        $posCard     = strpos($body, 'card shadow-sm');
+        self::assertNotSame(false, $posCard, 'archive card must render');
+        $card = $posDropdown !== false && $posDropdown < $posCard
+            ? substr($body, $posCard)
+            : $body;
+        self::assertStringContainsString('probe notification 4', $card, 'unread rows must render');
+        self::assertStringContainsString('probe notification 5', $card, 'unread rows must render');
+        self::assertStringNotContainsString('probe notification 1', $card, 'read rows must be filtered out of the card');
+        self::assertStringNotContainsString('probe notification 3', $card, 'read rows must be filtered out of the card');
+    }
+
+    #[Group('integration')]
+    public function testSearchMatchesMessageSubstringAndEscapesLikeMeta(): void
+    {
+        $this->requireHttp();
+        global $db;
+        // One row whose message contains literal LIKE metacharacters.
+        $stmt = $db->prepare(
+            'INSERT INTO tblnotifications (user_id, booking_id, message, link, is_read) '
+            . 'VALUES (:uid, 0, :msg, "dashboard.php", 0)'
+        );
+        $stmt->execute([':uid' => self::$staffId, ':msg' => '[page-test] deposit 100% confirmed _today_']);
+        self::$probeIds[] = (int) $db->the_insert_id();
+
+        // Substring match.
+        $page = self::http('GET', '/admin/notifications.php?q=' . urlencode('100% confirmed'));
+        self::assertSame(200, $page['status']);
+        self::assertStringContainsString('deposit 100% confirmed _today_', $page['body'], 'search must match the literal substring');
+
+        // "%" in the query is a literal percent, not a wildcard: it must NOT match everything.
+        $page = self::http('GET', '/admin/notifications.php?q=' . urlencode('[page-test] probe'));
+        self::assertSame(200, $page['status']);
+        self::assertStringContainsString('probe notification', $page['body']);
+
+        // XSS attempt is escaped in the re-filled input.
+        $page = self::http('GET', '/admin/notifications.php?q=' . urlencode('<script>alert(1)</script>'));
+        self::assertSame(200, $page['status']);
+        self::assertStringNotContainsString('<script>alert(1)</script>', $page['body'], 'search term must be escaped on render');
+        self::assertStringContainsString('&lt;script&gt;', $page['body']);
+    }
+
+    #[Group('integration')]
+    public function testPaginationLinksCarryActiveFilters(): void
+    {
+        $this->requireHttp();
+        // Ensure >25 UNREAD rows so the filtered view spans two pages.
+        global $db;
+        $count = (int) $db->fetchValue(
+            'SELECT COUNT(*) FROM tblnotifications WHERE user_id = :uid AND is_read = 0',
+            [':uid' => self::$staffId]
+        );
+        self::seedProbes(max(0, 30 - $count), max(0, 30 - $count)); // top up to 30 unread
+        self::assertGreaterThanOrEqual(30, self::unreadForStaff());
+
+        $page1 = self::http('GET', '/admin/notifications.php?filter=unread');
+        self::assertSame(200, $page1['status']);
+        self::assertMatchesRegularExpression('/Page 1 of 2 \(\d+ total\)/', $page1['body'], '30+ unread rows must paginate');
+        self::assertStringContainsString('notifications.php?page=2&filter=unread', $page1['body'], 'older link must carry the filter');
+
+        $page2 = self::http('GET', '/admin/notifications.php?page=2&filter=unread');
+        self::assertSame(200, $page2['status']);
+        self::assertStringContainsString('Page 2 of 2', $page2['body']);
+    }
+
     /** Re-establish the staff session (after the client-session gate test). */
     private static function loginStaff(): void
     {

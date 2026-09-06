@@ -138,32 +138,63 @@ class Notification
     }
 
     /**
-     * Total notifications for a staff user (pagination).
+     * Total notifications for a staff user (pagination). Optional filters:
+     * unread-only and/or a substring match on the message.
      */
-    public static function count_for(int $userId): int
+    public static function count_for(int $userId, bool $unreadOnly = false, string $search = ''): int
     {
         global $db;
-        $stmt = $db->prepare('SELECT COUNT(*) FROM ' . self::$db_table . ' WHERE user_id = :uid');
-        $stmt->execute([':uid' => $userId]);
+        [$where, $params] = self::filter_clause($unreadOnly, $search);
+        $stmt = $db->prepare(
+            'SELECT COUNT(*) FROM ' . self::$db_table . ' WHERE user_id = :uid' . $where
+        );
+        $stmt->execute([':uid' => $userId] + $params);
         return (int) $stmt->fetchColumn();
     }
 
     /**
      * One page of a staff user's notifications, newest first (full archive).
+     * Honors the same unread-only / message-search filters as count_for().
      *
      * @return object[]
      */
-    public static function page(int $userId, int $offset, int $limit): array
+    public static function page(int $userId, int $offset, int $limit, bool $unreadOnly = false, string $search = ''): array
     {
         global $db;
+        [$where, $params] = self::filter_clause($unreadOnly, $search);
         $stmt = $db->prepare(
-            'SELECT * FROM ' . self::$db_table . ' WHERE user_id = :uid ORDER BY id DESC LIMIT :offset, :limit'
+            'SELECT * FROM ' . self::$db_table . ' WHERE user_id = :uid' . $where
+            . ' ORDER BY id DESC LIMIT :offset, :limit'
         );
         $stmt->bindValue(':uid', $userId, PDO::PARAM_INT);
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value, PDO::PARAM_STR);
+        }
         $stmt->bindValue(':offset', max(0, $offset), PDO::PARAM_INT);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
+    /**
+     * Shared WHERE fragment + bind params for the archive filters.
+     * The search is a literal substring match (LIKE metacharacters in user
+     * input are escaped, so '%', '_' and '\\' find themselves).
+     *
+     * @return array{0: string, 1: array<string, string>}
+     */
+    private static function filter_clause(bool $unreadOnly, string $search): array
+    {
+        $where  = '';
+        $params = [];
+        if ($unreadOnly) {
+            $where .= ' AND is_read = 0';
+        }
+        if ($search !== '') {
+            $where .= ' AND message LIKE :search ESCAPE "\\\\"';
+            $params[':search'] = '%' . addcslashes($search, "\\%_") . '%';
+        }
+        return [$where, $params];
     }
 
     public static function mark_read(int $id, int $userId): bool

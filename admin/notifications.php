@@ -36,13 +36,25 @@
     // NOTE: $notifs is deliberately avoided here — include/sidebar.php reuses
     // that name for its 8-item dropdown and would clobber this page's list
     // (includes share scope).
-    $perPage     = 25;
-    $total       = Notification::count_for($plannerId);
-    $pages       = (int) ceil($total / $perPage);
-    $pageNo      = min(max((int) ($_GET['page'] ?? 1), 1), max($pages, 1));
-    $offset      = ($pageNo - 1) * $perPage;
-    $archiveRows = Notification::page($plannerId, $offset, $perPage);
-    $unread      = Notification::unread_count($plannerId);
+    $perPage  = 25;
+    $qRaw     = trim((string) ($_GET['q'] ?? ''));
+    $q        = mb_substr($qRaw, 0, 100);
+    $unreadOnly = (($_GET['filter'] ?? '') === 'unread');
+    $total    = Notification::count_for($plannerId, $unreadOnly, $q);
+    $pages    = (int) ceil($total / $perPage);
+    $pageNo   = min(max((int) ($_GET['page'] ?? 1), 1), max($pages, 1));
+    $offset   = ($pageNo - 1) * $perPage;
+    $archiveRows = Notification::page($plannerId, $offset, $perPage, $unreadOnly, $q);
+    $unread   = Notification::unread_count($plannerId);
+    // Filter-preserving pagination links (page is swapped per link).
+    $qs = static function (int $p) use ($unreadOnly, $q): string {
+        $params = array_filter([
+            'page'   => $p > 1 ? $p : null,
+            'filter' => $unreadOnly ? 'unread' : null,
+            'q'      => $q !== '' ? $q : null,
+        ], static fn($v) => $v !== null);
+        return 'notifications.php' . ($params === [] ? '' : '?' . http_build_query($params));
+    };
 ?>
 <?php $users_profile = Users::find_by_id($plannerId); ?>
 <!doctype html>
@@ -89,16 +101,35 @@
         <?php endif; ?>
     </div>
 
+    <!-- Filter bar: unread-only toggle + message search -->
+    <form method="get" action="notifications.php" class="form-inline d-flex flex-wrap align-items-center mb-3" style="gap: 8px;">
+        <div class="custom-control custom-switch mr-2">
+            <input type="checkbox" class="custom-control-input" id="filterUnread" name="filter"
+                   value="unread" <?= $unreadOnly ? 'checked' : ''; ?> onchange="this.form.submit()">
+            <label class="custom-control-label" for="filterUnread" style="font-size: 13px;">
+                Unread only
+                <?php if ($unread > 0): ?><span class="badge badge-success ml-1" style="font-size: 10px;"><?= (int) $unread; ?></span><?php endif; ?>
+            </label>
+        </div>
+        <input type="search" class="form-control form-control-sm" name="q" value="<?= htmlspecialchars($q, ENT_QUOTES); ?>"
+               placeholder="Search messages…" style="max-width: 240px; flex: 1 1 160px;">
+        <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="mdi mdi-magnify"></i> Search</button>
+        <?php if ($unreadOnly || $q !== ''): ?>
+            <a href="notifications.php" class="btn btn-sm btn-link text-muted" style="font-size: 12px;"><i class="mdi mdi-close"></i> Clear</a>
+        <?php endif; ?>
+    </form>
+
     <?php if ($session->message()): ?>
         <div class="alert alert-dismissible fade show"><?= $session->message(); ?><button type="button" class="close" data-dismiss="alert"><span>&times;</span></button></div>
     <?php endif; ?>
 
     <div class="card shadow-sm" style="border: none; border-radius: 14px;">
-        <?php if (empty($archiveRows)):
-?>
+        <?php if (empty($archiveRows)): ?>
             <div class="text-center py-5 text-muted">
-                <i class="mdi mdi-bell-sleep" style="font-size: 40px;"></i>
-                <div class="mt-2" style="font-size: 14px;">No notifications yet — deposits from your couples will land here.</div>
+                <i class="mdi mdi-<?= ($unreadOnly || $q !== '') ? 'magnify' : 'bell-sleep'; ?>" style="font-size: 40px;"></i>
+                <div class="mt-2" style="font-size: 14px;"><?= ($unreadOnly || $q !== '')
+                    ? 'Nothing matches this filter — try clearing the search or the unread toggle.'
+                    : 'No notifications yet — deposits from your couples will land here.'; ?></div>
             </div>
         <?php else: ?>
             <div class="card-body p-0">
@@ -122,10 +153,10 @@
                     <span class="text-muted" style="font-size: 12px;">Page <?= $pageNo; ?> of <?= $pages; ?> (<?= $total; ?> total)</span>
                     <div>
                         <?php if ($pageNo > 1): ?>
-                            <a href="notifications.php?page=<?= $pageNo - 1; ?>" class="btn btn-sm btn-outline-secondary"><i class="mdi mdi-chevron-left"></i> Newer</a>
+                            <a href="<?= $qs($pageNo - 1); ?>" class="btn btn-sm btn-outline-secondary"><i class="mdi mdi-chevron-left"></i> Newer</a>
                         <?php endif; ?>
                         <?php if ($pageNo < $pages): ?>
-                            <a href="notifications.php?page=<?= $pageNo + 1; ?>" class="btn btn-sm btn-outline-secondary">Older <i class="mdi mdi-chevron-right"></i></a>
+                            <a href="<?= $qs($pageNo + 1); ?>" class="btn btn-sm btn-outline-secondary">Older <i class="mdi mdi-chevron-right"></i></a>
                         <?php endif; ?>
                     </div>
                 </div>
