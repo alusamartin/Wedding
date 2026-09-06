@@ -125,16 +125,20 @@ Cron example (every 15 minutes):
 ### RSVP reminders (SMS to non-responders)
 
 `scripts/rsvp_reminders.php` finds guests who haven't replied on **confirmed**
-bookings whose wedding is within the window and texts them their personal
-RSVP link through the SMS outbox (`tblsms_logs`, Africa's Talking-ready;
-sends charge credits to the assigned organizer). Scheduling is built in:
-re-remind at most every N days, lifetime cap per guest, single-flight lock,
-and `--dry-run` to preview.
+bookings and texts them their personal RSVP link through the SMS outbox
+(`tblsms_logs`, Africa's Talking-ready; sends charge credits to the assigned
+organizer). Timing is **invite-relative**: the clock starts when the guest
+was invited (`rsvp_invited_at`, stamped automatically when their RSVP token
+is minted or the list is marked invited) — not at the wedding date — so a
+couple planning a year out gets gentle nudges on their own schedule, and
+late-added invitees get a fair countdown of their own. Weddings already past
+(beyond a grace window) are never chased. Re-remind at most every N days,
+lifetime cap per guest, single-flight lock, `--dry-run` to preview.
 
 ```bash
 php scripts/rsvp_reminders.php --dry-run        # preview, writes nothing
-php scripts/rsvp_reminders.php                  # defaults: 30d window, 7d resend, cap 3
-php scripts/rsvp_reminders.php --days=45 --resend=5 --max=2 --limit=100
+php scripts/rsvp_reminders.php                  # defaults: 7d after invite, 7d resend, cap 3
+php scripts/rsvp_reminders.php --after=3 --resend=5 --max=2 --grace=10
 ```
 
 Cron example (daily at 09:00):

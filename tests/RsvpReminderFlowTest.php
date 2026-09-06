@@ -73,7 +73,7 @@ final class RsvpReminderFlowTest extends TestCase
     }
 
     /** Confirmed booking 20 days out, organizer 7 (credits topped up). */
-    private static function seedFixture(): void
+    private static function seedFixture(?string $invitedWhen = null): void
     {
         self::cleanup(); // idempotent between tests
         $p = self::$pdo;
@@ -91,43 +91,63 @@ final class RsvpReminderFlowTest extends TestCase
                      VALUES (?, ?, 'Njeri', 'Kamau', 6, 'fixture.reminder@example.com', ?, 7)")
             ->execute([self::FIX_BOOK, self::FIX_USER, $wedding]);
 
-        $ins = $p->prepare("INSERT INTO tblguest (booking_id, fullname, guestname, address, state, zipcode, priority, out_of_town, relationship, tracks_and_gifts, city, phone, rsvp_token, rsvp_status)
-                            VALUES (?, ?, ?, '', '', '', 'B', 'n', 'Friend', '', 'Nakuru', ?, ?, 'pending')");
-        $ins->execute([self::FIX_BOOK, 'Wanjiku Mwangi', 'Wanjiku Mwangi', '254729990002', bin2hex(random_bytes(16))]);
-        $ins->execute([self::FIX_BOOK, 'Otieno Nyalenda', 'Otieno Nyalenda', null, bin2hex(random_bytes(16))]);
+        // invitedWhen: when the guests were 'invited' (rsvp_invited_at).
+        // null = just now; '8 days ago' etc. drive invite-relative windows.
+        $invited = $invitedWhen
+            ? date('Y-m-d H:i:s', strtotime($invitedWhen))
+            : date('Y-m-d H:i:s');
+        $ins = $p->prepare("INSERT INTO tblguest (booking_id, fullname, guestname, address, state, zipcode, priority, out_of_town, relationship, tracks_and_gifts, city, phone, rsvp_token, rsvp_status, rsvp_invited_at)
+                            VALUES (?, ?, ?, '', '', '', 'B', 'n', 'Friend', '', 'Nakuru', ?, ?, 'pending', ?)");
+        $ins->execute([self::FIX_BOOK, 'Wanjiku Mwangi', 'Wanjiku Mwangi', '254729990002', bin2hex(random_bytes(16)), $invited]);
+        $ins->execute([self::FIX_BOOK, 'Otieno Nyalenda', 'Otieno Nyalenda', null, bin2hex(random_bytes(16)), $invited]);
         // A guest who already replied — never due, token and phone notwithstanding.
-        $ins->execute([self::FIX_BOOK, 'Chebet Rono', 'Chebet Rono', '254729990003', bin2hex(random_bytes(16))]);
+        $ins->execute([self::FIX_BOOK, 'Chebet Rono', 'Chebet Rono', '254729990003', bin2hex(random_bytes(16)), $invited]);
         $p->exec("UPDATE tblguest SET rsvp_status = 'yes', rsvp_at = NOW() WHERE fullname = 'Chebet Rono' AND booking_id = " . self::FIX_BOOK);
     }
 
-    private static function runScript(string $args = '--days=30 --quiet'): string
+    private static function runScript(string $args = '--after=0 --quiet'): string
     {
         $cmd = 'php ' . escapeshellarg(self::SCRIPT) . ' ' . $args . ' 2>&1';
         return (string) shell_exec($cmd);
     }
 
     #[Group('integration')]
-    public function testWindowMathExcludesRepliedAndPendingBookings(): void
+    public function testInviteRelativeWindowMath(): void
     {
-        self::seedFixture();
-        $p = self::$pdo;
-
-        // 20 days out -> inside a 30-day window, outside a 10-day one.
-        $due = Guest::find_reminder_due(30, 7, 3);
+        // Invited 8 days ago -> due with a 7-day-after threshold...
+        self::seedFixture('8 days ago');
+        $due = Guest::find_reminder_due(7, 7, 3);
         $ids = array_map(fn ($r) => (int) $r->id, $due);
-        $this->assertContains(self::guestId('Wanjiku Mwangi'), $ids, 'pending guest inside window is due');
+        $this->assertContains(self::guestId('Wanjiku Mwangi'), $ids, 'pending guest invited 8d ago is due');
         $this->assertContains(self::guestId('Otieno Nyalenda'), $ids, 'phoneless-but-pending guest is due (gets marked to avoid cron spin)');
         $this->assertNotContains(self::guestId('Chebet Rono'), $ids, 'replied guest is never due');
 
-        $none = Guest::find_reminder_due(10, 7, 3);
+        // ...but NOT due with a 14-day-after threshold.
+        $none = Guest::find_reminder_due(14, 7, 3);
         $ids = array_map(fn ($r) => (int) $r->id, $none);
-        $this->assertNotContains(self::guestId('Wanjiku Mwangi'), $ids, 'guest beyond the window is not due');
+        $this->assertNotContains(self::guestId('Wanjiku Mwangi'), $ids, 'guest invited less than the threshold is not due');
+
+        // Freshly invited guests never qualify on day zero.
+        self::seedFixture(null);
+        $fresh = Guest::find_reminder_due(7, 7, 3);
+        $this->assertSame([], $fresh, 'guests invited moments ago must not be due');
+    }
+
+    #[Group('integration')]
+    public function testUninvitedGuestsNeverQualify(): void
+    {
+        // Rows WITHOUT rsvp_invited_at (imported before invite tracking):
+        // no invite, no nag — regardless of threshold.
+        self::seedFixture('8 days ago');
+        self::$pdo->exec('UPDATE tblguest SET rsvp_invited_at = NULL WHERE booking_id = ' . self::FIX_BOOK);
+        $due = Guest::find_reminder_due(0, 7, 3);
+        $this->assertSame([], $due, 'guests with no invite timestamp must never be due');
     }
 
     #[Group('integration')]
     public function testDispatcherSendsMarksDedupsAndNotifies(): void
     {
-        self::seedFixture();
+        self::seedFixture('8 days ago');
         $p = self::$pdo;
         $out = self::runScript();
 
@@ -161,9 +181,9 @@ final class RsvpReminderFlowTest extends TestCase
     #[Group('integration')]
     public function testDryRunWritesNothing(): void
     {
-        self::seedFixture();
+        self::seedFixture('8 days ago');
         $p = self::$pdo;
-        $out = self::runScript('--days=30 --dry-run');
+        $out = self::runScript('--after=0 --dry-run');
 
         $this->assertStringContainsString('DRY RUN', $out);
         $this->assertSame(0, (int) $p->query('SELECT COUNT(*) FROM tblsms_logs WHERE booking_id = ' . self::FIX_BOOK)->fetchColumn());

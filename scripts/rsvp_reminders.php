@@ -5,17 +5,24 @@ declare(strict_types=1);
  * Cron-safe RSVP reminder dispatcher.
  *
  * Finds guests who have not replied to their invitation (rsvp_status still
- * 'pending') on CONFIRMED bookings whose wedding is inside the reminder
- * window, and sends them a polite Kenyan SMS containing their personal
- * RSVP link. Delivery rides the existing SMS::send() pipeline, so every
- * message lands in the tblsms_logs outbox with status pending/sent/failed
- * and credits are charged to the assigned organizer — exactly like a send
- * from the SMS center.
+ * 'pending') on CONFIRMED bookings and sends them a polite Kenyan SMS with
+ * their personal RSVP link. Timing is INVITE-RELATIVE: the clock starts at
+ * the guest's invite (rsvp_invited_at — stamped when their RSVP token was
+ * minted or the guest list was marked invited), NOT at the wedding date,
+ * so early planners get early reminders and late invitees get a fair
+ * countdown of their own. Weddings already past (beyond a grace window)
+ * are never chased.
+ *
+ * Delivery rides the existing SMS::send() pipeline, so every message lands
+ * in the tblsms_logs outbox with status pending/sent/failed and credits
+ * are charged to the assigned organizer — exactly like a send from the
+ * SMS center.
  *
  * Scheduling rules (all configurable via options):
- *   --days=30        wedding must be within this many days (default 30)
+ *   --after=7        first reminder N days after the invite (default 7)
  *   --resend=7       re-remind at most every N days (default 7)
  *   --max=3          lifetime cap of reminders per guest (default 3)
+ *   --grace=7        stop reminding N days after the wedding date
  *   --limit=100      max SMS sent per run
  *   --dry-run        print what would be sent; write nothing
  *
@@ -31,12 +38,13 @@ declare(strict_types=1);
  *   0 9 * * * php /path/to/scripts/rsvp_reminders.php --quiet
  */
 
-$opts = getopt('', ['days::', 'resend::', 'max::', 'limit::', 'quiet', 'dry-run']) ?: [];
+$opts = getopt('', ['after::', 'resend::', 'max::', 'grace::', 'limit::', 'quiet', 'dry-run']) ?: [];
 $quiet   = isset($opts['quiet']);
 $dryRun  = isset($opts['dry-run']);
-$days    = max(1, (int) ($opts['days'] ?? 30));
+$after   = max(0, (int) ($opts['after'] ?? 7));
 $resend  = max(1, (int) ($opts['resend'] ?? 7));
 $maxR    = max(1, (int) ($opts['max'] ?? 3));
+$grace   = max(0, (int) ($opts['grace'] ?? 7));
 $limit   = max(1, (int) ($opts['limit'] ?? 100));
 
 $root = dirname(__DIR__);
@@ -62,12 +70,12 @@ if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
     exit(1);
 }
 
-$due = Guest::find_reminder_due($days, $resend, $maxR);
+$due = Guest::find_reminder_due($after, $resend, $maxR, $grace);
 
 if ($due === []) {
     if (!$quiet) {
         echo "no pending guests are due a reminder "
-            . "(window={$days}d, resend={$resend}d, cap={$maxR})\n";
+            . "(invited {$after}d+ ago, resend={$resend}d, cap={$maxR}, grace={$grace}d)\n";
     }
     flock($lock, LOCK_UN);
     fclose($lock);

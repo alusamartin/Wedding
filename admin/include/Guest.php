@@ -26,6 +26,7 @@ class Guest extends DB_Object
         'rsvp_status',
         'rsvp_at',
         'rsvp_note',
+        'rsvp_invited_at',
         'rsvp_reminded_at',
         'rsvp_reminders'
     );
@@ -51,6 +52,8 @@ class Guest extends DB_Object
     public $rsvp_status;
     public $rsvp_at;
     public $rsvp_note;
+    /** When this guest was invited — reminder windows count from here. */
+    public $rsvp_invited_at;
     /** Defaults matter: the ORM binds every declared property on create(). */
     public $rsvp_reminded_at = null;
     public $rsvp_reminders = 0;
@@ -156,7 +159,9 @@ class Guest extends DB_Object
         return $stmt->rowCount() > 0;
     }
 
-    /** Ensure every guest of a booking has an RSVP token; returns tokens created. */
+    /** Ensure every guest of a booking has an RSVP token; returns tokens created.
+     *  Token minting IS the invite: the same moment stamps rsvp_invited_at,
+     *  which reminder windows count from (not the wedding date). */
     public static function ensure_tokens(mixed $booking_id): int
     {
         global $db;
@@ -165,7 +170,9 @@ class Guest extends DB_Object
         );
         $stmt->execute([':bid' => (int) $booking_id]);
         $missing = $stmt->fetchAll(PDO::FETCH_COLUMN);
-        $upd = $db->prepare('UPDATE tblguest SET rsvp_token = :t WHERE id = :id');
+        $upd = $db->prepare(
+            'UPDATE tblguest SET rsvp_token = :t, rsvp_invited_at = COALESCE(rsvp_invited_at, NOW()) WHERE id = :id'
+        );
         $n = 0;
         foreach ($missing as $id) {
             $upd->execute([':t' => bin2hex(random_bytes(16)), ':id' => (int) $id]);
@@ -175,26 +182,65 @@ class Guest extends DB_Object
     }
 
     /**
+     * Mark guests as invited at an explicit moment (planner sent invites,
+     * guest list imported, etc.). Only fills gaps — never overwrites an
+     * existing invite timestamp — and always mints tokens, since a guest
+     * cannot be invited without one.
+     *
+     * @param array<int, int|string> $guest_ids
+     */
+    public static function mark_invited(array $guest_ids, ?int $booking_id = null): int
+    {
+        global $db;
+        $guest_ids = array_values(array_filter(array_map('intval', $guest_ids)));
+        if ($guest_ids === []) {
+            return 0;
+        }
+        $placeholders = implode(',', array_fill(0, count($guest_ids), '?'));
+        $sql = "UPDATE tblguest
+                SET rsvp_token = COALESCE(NULLIF(rsvp_token, ''), :t),
+                    rsvp_invited_at = COALESCE(rsvp_invited_at, :now)
+                WHERE id IN ($placeholders)"
+            . ($booking_id !== null ? ' AND booking_id = :bid' : '');
+        $params = array_merge(
+            [':t' => bin2hex(random_bytes(16)), ':now' => date('Y-m-d H:i:s')],
+            $guest_ids
+        );
+        if ($booking_id !== null) {
+            $params[':bid'] = $booking_id;
+        }
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->rowCount();
+    }
+
+    /**
      * Pending guests whose reminder window has arrived.
      *
-     * A reminder is due when the guest:
-     *  - belongs to a CONFIRMED booking whose wedding is within the window
-     *    (today..$min_days_before days out — never for pending/cancelled
-     *    bookings or past weddings),
+     * Timing is INVITE-RELATIVE: the clock starts at the guest's invite
+     * (rsvp_invited_at — stamped when their token was minted, or explicitly
+     * via mark_invited()), NOT at the wedding date. A reminder is due when
+     * the guest:
+     *  - was invited at least $remind_after_days ago,
+     *  - belongs to a CONFIRMED booking whose wedding has not passed
+     *    ($grace_days of post-wedding grace covers events still settling),
      *  - has not replied (rsvp_status still 'pending'), and
      *  - was never reminded, or was last reminded $resend_days+ days ago,
      *    with a lifetime cap of $max_reminders per guest.
      *
+     * Guests without an invite timestamp never qualify (no invite, no nag).
+     *
      * @return array<int, object> rows with booking + couple context attached
      */
     public static function find_reminder_due(
-        int $min_days_before = 30,
+        int $remind_after_days = 7,
         int $resend_days = 7,
-        int $max_reminders = 3
+        int $max_reminders = 3,
+        int $grace_days = 7
     ): array {
         global $db;
         $sql = "SELECT g.id, g.booking_id, g.fullname, g.phone, g.rsvp_token,
-                       g.rsvp_status, g.rsvp_reminded_at, g.rsvp_reminders,
+                       g.rsvp_status, g.rsvp_invited_at, g.rsvp_reminded_at, g.rsvp_reminders,
                        b.wedding_date, b.bride, b.groom, b.organizer_id,
                        d.firstname, d.lastname, d.user_id AS couple_user_id
                 FROM tblguest g
@@ -205,16 +251,18 @@ class Guest extends DB_Object
                   AND d.status = 'confirm'
                   AND g.rsvp_reminders < :maxr
                   AND g.rsvp_token IS NOT NULL
+                  AND g.rsvp_invited_at IS NOT NULL
+                  AND g.rsvp_invited_at <= DATE_SUB(NOW(), INTERVAL :afterdays DAY)
                   AND (g.rsvp_reminded_at IS NULL
                        OR g.rsvp_reminded_at <= DATE_SUB(NOW(), INTERVAL :resend DAY))
-                  AND b.wedding_date >= CURDATE()
-                  AND b.wedding_date <= DATE_ADD(CURDATE(), INTERVAL :mindays DAY)
+                  AND b.wedding_date >= DATE_SUB(CURDATE(), INTERVAL :grace DAY)
                 ORDER BY b.wedding_date ASC, g.id ASC";
         $stmt = $db->prepare($sql);
         $stmt->execute([
-            ':maxr'    => $max_reminders,
-            ':resend'  => $resend_days,
-            ':mindays' => $min_days_before,
+            ':maxr'      => $max_reminders,
+            ':resend'    => $resend_days,
+            ':afterdays' => $remind_after_days,
+            ':grace'     => $grace_days,
         ]);
         return $stmt->fetchAll(PDO::FETCH_OBJ);
     }
