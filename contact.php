@@ -160,8 +160,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
                                     <td><i class="mdi mdi-email mr-3"></i> info@wpms.co.ke</td>
                                 </tr>
                                 <tr>
-                                    <td><i class="mdi mdi-phone mr-2"></i> +254 700 000 000</td>
-                                    <td><i class="mdi mdi-whatsapp mr-3"></i> +254 700 000 000</td>
+                                    <td><i class="mdi mdi-phone mr-2"></i> <a href="tel:+254700000000">+254 700 000 000</a></td>
+                                    <td><i class="mdi mdi-whatsapp mr-1" style="color:#25D366;"></i> <a href="https://wa.me/254700000000?text=<?= rawurlencode('Hi Everafter Planner! I am planning my wedding and would like to know more about your packages.'); ?>" target="_blank" rel="noopener">Chat with us on WhatsApp</a></td>
                                 </tr>
                                 <tr>
                                     <td><i class="mdi mdi-web mr-2"></i> www.wpms.co.ke</td>

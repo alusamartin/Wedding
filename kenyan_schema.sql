@@ -14,6 +14,11 @@ ADD COLUMN IF NOT EXISTS `harambee_contribution` DECIMAL(12,2) DEFAULT 0.00 AFTE
 ADD COLUMN IF NOT EXISTS `dietary_requirements` VARCHAR(100) DEFAULT NULL AFTER `harambee_contribution`,
 ADD COLUMN IF NOT EXISTS `transport_needed` TINYINT(1) DEFAULT 0 AFTER `dietary_requirements`,
 ADD COLUMN IF NOT EXISTS `phone` VARCHAR(20) DEFAULT NULL AFTER `transport_needed`,
+ADD COLUMN IF NOT EXISTS `rsvp_token` CHAR(32) DEFAULT NULL AFTER `phone`,
+ADD COLUMN IF NOT EXISTS `rsvp_status` ENUM('pending','yes','no','maybe') DEFAULT 'pending' AFTER `rsvp_token`,
+ADD COLUMN IF NOT EXISTS `rsvp_at` DATETIME DEFAULT NULL AFTER `rsvp_status`,
+ADD COLUMN IF NOT EXISTS `rsvp_note` VARCHAR(255) DEFAULT NULL AFTER `rsvp_at`,
+ADD UNIQUE INDEX IF NOT EXISTS `idx_guest_rsvp_token` (`rsvp_token`),
 MODIFY `state` VARCHAR(100) NOT NULL DEFAULT '';
 
 -- 2. tbl_liquidation - M-Pesa Payment Tracking

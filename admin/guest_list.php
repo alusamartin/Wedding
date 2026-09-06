@@ -98,12 +98,13 @@
             <th>Transport</th>
             <th>Harambee</th>
             <th>Dietary</th>
+            <th>RSVP</th>
             <th>Tools</th>
         </tr>
     </thead>
     <tbody>
     <?php if (empty($guest_list)) : ?>
-        <?php empty_state_row(10, 'No guests on the list yet', 'Add your first guest — family elders, bridal train and friends all belong here.', 'mdi-account-multiple-outline', 'guest_add.php?' . $links, 'Add First Guest', 'mdi-account-plus'); ?>
+        <?php empty_state_row(11, 'No guests on the list yet', 'Add your first guest — family elders, bridal train and friends all belong here.', 'mdi-account-multiple-outline', 'guest_add.php?' . $links, 'Add First Guest', 'mdi-account-plus'); ?>
     <?php else : ?>
     <?php foreach ($guest_list as $g) : ?>
         <tr>
@@ -136,6 +137,11 @@
             <td class="special"><?= $g->transport_needed ? '<i class="mdi mdi-bus text-primary"></i>' : ''; ?></td>
             <td class="special"><?= $g->harambee_contribution > 0 ? format_ksh($g->harambee_contribution) : ''; ?></td>
             <td class="special"><?= htmlspecialchars($g->dietary_requirements); ?></td>
+            <td class="special"><?= [
+                'yes' => '<span class="badge badge-success"><i class="mdi mdi-check mr-1"></i>Attending</span>',
+                'no' => '<span class="badge badge-secondary">Not attending</span>',
+                'maybe' => '<span class="badge badge-warning">Maybe</span>',
+            ][$g->rsvp_status ?? 'pending'] ?? '<span class="badge badge-light text-muted">Pending</span>'; ?></td>
             <td class="special">
                 <a href="guest_edit.php?id=<?= $g->id; ?>&<?= $links; ?>" class="btn btn-secondary btn-sm" title="Edit"><i class="mdi mdi-pencil"></i></a>
                 <form method="post" action="guest_delete.php?id=<?= $g->id; ?>&<?= $links; ?>" class="d-inline" onsubmit="return confirm('Delete this guest?');">

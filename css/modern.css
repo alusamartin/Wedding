@@ -52,6 +52,13 @@ a{ text-underline-offset:3px; }
 }
 /* Prevent content from hiding behind the fixed navbar */
 body{ padding-top:72px; }
+/* Toggler: visible branded hamburger on tablet/mobile (was invisible white-on-white
+   before navbar-light was added to the nav markup) */
+.navbar.wpms-nav .navbar-toggler-icon{
+  background-image:url("data:image/svg+xml,%3csvg viewBox='0 0 30 30' xmlns='http://www.w3.org/2000/svg'%3e%3cpath stroke='%23065F46' stroke-width='2.4' stroke-linecap='round' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+  width:1.4em; height:1.4em;
+}
+.navbar.wpms-nav .navbar-toggler:focus{ outline:none; box-shadow:0 0 0 3px rgba(5,150,105,.25); border-radius:6px; }
 /* Brand: logo + wordmark sized to never crowd the first nav link */
 .navbar.wpms-nav .wpms-brand{ flex:0 0 auto; width:max-content; gap:.55rem; margin-right:.5rem; padding-top:0; padding-bottom:0; white-space:nowrap; font-family:'Plus Jakarta Sans','Inter',sans-serif; font-weight:800; letter-spacing:-.02em; color:var(--kenya-black) !important; }
 .navbar.wpms-nav .wpms-brand-logo{ height:30px; width:auto; display:inline-block; }

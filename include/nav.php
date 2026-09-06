@@ -6,7 +6,7 @@
     $nav_portal_url = $nav_is_staff ? 'admin/dashboard.php' : 'admin/client.php';
     $nav_identity = $_SESSION['user_email'] ?? (isset($_SESSION['email']) ? $_SESSION['email'] : '');
 ?>
-<nav class="navbar navbar-expand-xl wpms-nav fixed-top">
+<nav class="navbar navbar-expand-xl navbar-light wpms-nav fixed-top">
     <div class="container-fluid" style="max-width:1180px;">
         <a class="navbar-brand wpms-brand d-flex align-items-center" href="index.php">
             <img class="wpms-brand-logo" src="images/logo/everafter-crest.png" alt="Everafter Planner logo">

@@ -40,6 +40,8 @@
     <style>
         .stat-card { background: #fff; border-radius: 12px; padding: 14px 18px; margin-bottom: 16px;
                      box-shadow: 0 1px 3px rgba(0,0,0,0.08); border-left: 4px solid #065F46; }
+        .btn-wa { background: #25D366; color: #fff; border-radius: 20px; font-size: 11px; padding: 2px 9px; }
+        .btn-wa:hover { background: #1DA851; color: #fff; }
         .stat-card h6 { font-size: 11px; text-transform: uppercase; color: #64748B; margin: 0; letter-spacing: .06em; }
         .stat-card .value { font-size: 24px; font-weight: 700; color: #0F172A; }
         .stat-card .value.due { color: #B45309; }
@@ -101,12 +103,21 @@
                     } else {
                         $method_label = '<span class="badge badge-secondary">Other</span>';
                     }
+                    // Receipt share text (WhatsApp chooser: the couple picks the chat).
+                    $receipt_text = 'Wedding payment receipt — ' . event_label($item->event_id) . "\n"
+                        . 'Paid: ' . format_ksh($item->payment, 2)
+                        . (!empty($item->mpesa_code) ? "\nM-Pesa code: " . $item->mpesa_code : '')
+                        . "\nDate: " . format_date_kd($item->date_issue)
+                        . "\n— Everafter Planner";
                 ?>
                     <tr>
                         <td><?= $i + 1; ?></td>
                         <td><?= format_date_kd($item->date_issue, true); ?></td>
                         <td><?= htmlspecialchars(event_label($item->event_id)); ?></td>
-                        <td><?= $method_label; ?></td>
+                        <td><?= $method_label; ?>
+                            <a href="<?= htmlspecialchars(whatsapp_share_link($receipt_text)); ?>" target="_blank" rel="noopener"
+                               class="btn btn-sm btn-wa ml-1" title="Share this receipt on WhatsApp"><i class="mdi mdi-share-variant"></i></a>
+                        </td>
                         <td><?= htmlspecialchars($item->mpesa_code ?? ''); ?></td>
                         <td class="text-right font-weight-bold"><?= format_ksh($item->payment, 2); ?></td>
                     </tr>

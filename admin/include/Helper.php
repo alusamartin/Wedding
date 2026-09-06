@@ -109,6 +109,85 @@ function format_date_kd($value, bool $withTime = false): string
 }
 
 /**
+ * The public base URL of the site (no trailing slash).
+ *
+ * Order: WPMS_SITE_URL env (set in production) -> auto-detect from the
+ * request so dev servers on any port keep working.
+ */
+function site_base_url(): string
+{
+    $env = getenv('WPMS_SITE_URL');
+    if (is_string($env) && trim($env) !== '') {
+        return rtrim(trim($env), '/');
+    }
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    return $scheme . '://' . $host;
+}
+
+/**
+ * Normalize a Kenyan phone number to the international form WhatsApp
+ * deep links need (2547XXXXXXXX / 2541XXXXXXXX). Returns '' when the
+ * input holds no plausible number — callers then hide the button.
+ */
+function wa_number_ke(?string $phone): string
+{
+    $digits = preg_replace('/\D+/', '', (string) $phone);
+    if ($digits === '' || $digits === null) {
+        return '';
+    }
+    if (str_starts_with($digits, '0')) {
+        $digits = '254' . substr($digits, 1);      // 0712... -> 254712...
+    } elseif (str_starts_with($digits, '7') || str_starts_with($digits, '1')) {
+        $digits = '254' . $digits;                  // 712.../112... -> 254...
+    } elseif (!str_starts_with($digits, '254')) {
+        return ''; // foreign or malformed — do not guess
+    }
+    return (strlen($digits) >= 12 && strlen($digits) <= 15) ? $digits : '';
+}
+
+/**
+ * Absolute RSVP link for a guest token, e.g.
+ *   https://everafterplanner.co.ke/rsvp.php?g=<32-hex>
+ */
+function rsvp_url_for(?string $token): string
+{
+    $token = preg_replace('/[^a-f0-9]/', '', (string) $token);
+    if ($token === '' || $token === null) {
+        return '';
+    }
+    return site_base_url() . '/rsvp.php?g=' . $token;
+}
+
+/**
+ * wa.me deep link that opens WhatsApp with a pre-filled invitation for
+ * the guest. Returns '' when the guest has no usable number.
+ */
+function whatsapp_invite_link(?string $phone, string $guestName, string $weddingDate, string $rsvpUrl): string
+{
+    $num = wa_number_ke($phone);
+    if ($num === '') {
+        return '';
+    }
+    $msg = 'Habari ' . $guestName . "! You are warmly invited to our wedding"
+        . ($weddingDate !== '' ? ' on ' . $weddingDate : '') . '. '
+        . 'Please find the details and confirm your attendance here: ' . $rsvpUrl
+        . ' — Karibu! 🎉';
+    return 'https://wa.me/' . $num . '?text=' . rawurlencode($msg);
+}
+
+/**
+ * WhatsApp "share via chooser" link — no recipient number, WhatsApp lets the
+ * user pick the chat (family group, harambee committee, the planner…).
+ * Used for deposit receipts; invite links use whatsapp_invite_link() with an
+ * explicit number instead.
+ */
+function whatsapp_share_link(string $text): string
+{
+    return 'https://wa.me/?text=' . rawurlencode($text);
+}
+
+/**
  * Human label for a scheduled ceremony/event row: "Church Blessing — Sat 20 Dec 2025".
  *
  * Replaces every "Event #202"-style machine label in ledgers and dropdowns.
