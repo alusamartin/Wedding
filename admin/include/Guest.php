@@ -102,6 +102,17 @@ class Guest extends DB_Object
         return (float) ($stmt->fetchColumn() ?? 0);
     }
 
+    /** How many guests have pledged a (non-zero) harambee contribution. */
+    public static function count_pledged(mixed $booking_id): int
+    {
+        global $db;
+        $stmt = $db->prepare(
+            'SELECT COUNT(*) FROM tblguest WHERE booking_id = :bid AND harambee_contribution > 0'
+        );
+        $stmt->execute([':bid' => (int) $booking_id]);
+        return (int) $stmt->fetchColumn();
+    }
+
     /** RSVP tallies for one booking: counts per status (pending included). */
     public static function rsvp_tally(mixed $booking_id): array
     {

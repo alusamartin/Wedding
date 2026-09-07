@@ -24,6 +24,16 @@
     $budget_items = Liquidation::find_by_liquadate_all($booking_id);
 
     $couple = trim(($booking->bride ?? '') . ' & ' . ($booking->groom ?? ''));
+
+    // ---- Budget-vs-actual: harambee pledges against the package balance ----
+    // The Kenyan reality: families rarely pay the package out of pocket — the
+    // committee collects harambee from guests. Show both sides of that plan:
+    // what the wedding costs, what has been paid, what the committee has
+    // pledged, and what is realistically still to be raised.
+    $harambee_pledged = Guest::total_harambee($booking_id);
+    $harambee_backed  = max(0.0, $package_price - $amount_paid - $harambee_pledged); // still to raise after pledges
+    $over_collected   = max(0.0, $amount_paid + $harambee_pledged - $package_price); // pledges + payments exceed the package
+    $planners_note    = $package_price > 0 && $amount_paid + $harambee_pledged >= $package_price;
 ?>
 <?php $users_profile = Users::find_by_id($_SESSION['id']); ?>
 <!doctype html>
@@ -46,6 +56,20 @@
         .stat-card .value { font-size: 24px; font-weight: 700; color: #0F172A; }
         .stat-card .value.due { color: #B45309; }
         .readonly-note { font-size: 12px; color: #64748B; }
+        .budget-panel { background: #fff; border-radius: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); padding: 20px 22px; margin-bottom: 18px; }
+        .budget-panel h6 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #065F46; font-weight: 700; }
+        .fund-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid #F1F5F9; font-size: 13.5px; }
+        .fund-row:last-child { border-bottom: 0; }
+        .fund-row .label { color: #334155; }
+        .fund-row .amount { font-weight: 700; color: #0F172A; }
+        .fund-row.total { border-top: 2px solid #E2E8F0; margin-top: 4px; padding-top: 12px; }
+        .fund-row.total .amount { font-size: 16px; }
+        .fund-bar { background: #E2E8F0; border-radius: 999px; height: 12px; overflow: hidden; margin: 10px 0 4px; display: flex; }
+        .fund-bar .paid { background: linear-gradient(90deg, #065F46, #059669); }
+        .fund-bar .pledged { background: #F59E0B; }
+        .fund-legend { font-size: 11.5px; color: #64748B; }
+        .fund-legend .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin: 0 4px 0 10px; }
+        .harambee-note { background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 10px; padding: 10px 14px; font-size: 12.5px; color: #92400E; margin-top: 12px; }
     </style>
 </head>
 <body>
@@ -74,6 +98,48 @@
         <div class="col-md-3"><div class="stat-card" style="border-left-color:#0EA5A0"><h6>Via M-Pesa</h6><div class="value"><?= format_ksh($mpesa_total, 2); ?></div></div></div>
         <div class="col-md-3"><div class="stat-card" style="border-left-color:#D97706"><h6>Balance Due</h6><div class="value due"><?= format_ksh($balance_due, 2); ?></div></div></div>
     </div>
+
+    <?php if ($package_price > 0): ?>
+    <div class="budget-panel">
+        <h6><i class="mdi mdi-chart-donut mr-1"></i>Budget vs Actual — how your wedding is funded</h6>
+        <?php
+            $paid_pct    = $package_price > 0 ? min(100, $amount_paid / $package_price * 100) : 0;
+            $pledged_pct = $package_price > 0 ? min(100 - $paid_pct, $harambee_pledged / $package_price * 100) : 0;
+        ?>
+        <div class="fund-bar">
+            <div class="paid" style="width: <?= round($paid_pct, 1); ?>%;"></div>
+            <div class="pledged" style="width: <?= round($pledged_pct, 1); ?>%;"></div>
+        </div>
+        <div class="fund-legend">
+            <span class="dot" style="background:#059669;"></span>Paid to date
+            <span class="dot" style="background:#F59E0B;"></span>Harambee pledged
+            <span class="dot" style="background:#E2E8F0;"></span>Still to raise
+        </div>
+        <div class="row mt-3">
+            <div class="col-md-6">
+                <div class="fund-row"><span class="label">Package price</span><span class="amount"><?= format_ksh($package_price, 2); ?></span></div>
+                <div class="fund-row"><span class="label">Paid to date (M-Pesa, cash, bank)</span><span class="amount" style="color:#065F46;"><?= format_ksh($amount_paid, 2); ?></span></div>
+                <div class="fund-row"><span class="label">Balance due</span><span class="amount" style="color:#B45309;"><?= format_ksh($balance_due, 2); ?></span></div>
+            </div>
+            <div class="col-md-6">
+                <div class="fund-row"><span class="label">Harambee pledged by guests (<?= $harambee_pledged > 0 ? (int) Guest::count_pledged($booking_id) : 0; ?> guests)</span><span class="amount" style="color:#B45309;"><?= format_ksh($harambee_pledged, 2); ?></span></div>
+                <div class="fund-row"><span class="label">Still to raise after pledges</span><span class="amount"><?= format_ksh($harambee_backed, 2); ?></span></div>
+                <?php if ($over_collected > 0): ?>
+                <div class="fund-row total"><span class="label">Pledges + payments exceed the package by</span><span class="amount" style="color:#065F46;"><?= format_ksh($over_collected, 2); ?></span></div>
+                <?php else: ?>
+                <div class="fund-row total"><span class="label">Projected total once pledges land</span><span class="amount"><?= format_ksh($amount_paid + $harambee_pledged, 2); ?></span></div>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php if ($planners_note): ?>
+            <div class="harambee-note"><i class="mdi mdi-hand-heart mr-1"></i>Great news — payments plus harambee pledges already cover your package. Your planner will guide you on any extras.</div>
+        <?php elseif ($harambee_backed > 0 && $harambee_pledged > 0): ?>
+            <div class="harambee-note"><i class="mdi mdi-hand-heart mr-1"></i>Your committee has pledged <?= format_ksh($harambee_pledged); ?> of the <?= format_ksh($balance_due, 2); ?> balance — about <?= round($balance_due > 0 ? $harambee_pledged / $balance_due * 100 : 0); ?>% of what remains. Encourage the committee to collect early; M-Pesa makes it easy.</div>
+        <?php elseif ($balance_due > 0): ?>
+            <div class="harambee-note"><i class="mdi mdi-hand-heart mr-1"></i>No harambee pledges recorded yet — add them on <a href="client_guests.php?<?= $links; ?>">My Guests</a> as your committee confirms contributions.</div>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
 
     <div class="card shadow-sm" style="border:none; border-radius:14px;">
         <div class="card-body">

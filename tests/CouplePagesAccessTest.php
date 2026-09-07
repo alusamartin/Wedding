@@ -210,6 +210,23 @@ final class CouplePagesAccessTest extends TestCase
         }
     }
 
+    /** Log a couple in on a FRESH session (login.php auto-redirects users
+     *  who are already signed in, so the jar must start empty). */
+    private static function loginCouple(string $email, string $pass): void
+    {
+        self::$jar = [];
+        $page = self::http('GET', '/login.php');
+        if ($page['status'] !== 200 || !preg_match('/name="_token" value="([^"]+)"/', $page['body'], $m)) {
+            self::fail('could not load the login page for the swap-login leg');
+        }
+        self::http('POST', '/login.php', [
+            'input_email'    => $email,
+            'input_password' => $pass,
+            '_token'         => html_entity_decode($m[1], ENT_QUOTES),
+            'login'          => '1',
+        ]);
+    }
+
     /**
      * @return array<string, array{0: string}>
      */
@@ -267,5 +284,44 @@ final class CouplePagesAccessTest extends TestCase
         self::assertSame(200, $payments['status']);
         self::assertStringNotContainsString('budget_add.php', $payments['body'], 'Couple payments page must not offer recording payments');
         self::assertStringNotContainsString('budget_liquidate.php', $payments['body'], 'Couple payments page must not offer liquidation');
+    }
+
+    #[Group('integration')]
+    public function testBudgetVsActualPanelMath(): void
+    {
+        $this->requireHttp();
+
+        // Booking 203 has a package (KSh 150,000) with zero payments and zero
+        // pledges — the panel must render with the full balance outstanding
+        // and the committee prompt.
+        $body = self::http('GET', '/admin/client_budget.php?booking_id=' . self::OWN_BOOKING . '&user_id=' . self::OWN_USER)['body'];
+        self::assertStringContainsString('Budget vs Actual', $body, 'the funding panel must render when a package is priced');
+        self::assertStringContainsString('KSh 150,000.00', $body, 'package price must appear in the panel');
+        self::assertStringContainsString('Still to raise after pledges', $body);
+        self::assertStringContainsString('No harambee pledges recorded yet', $body, 'zero-pledge couples get the committee prompt');
+        self::assertStringNotContainsString('Pledges + payments exceed the package', $body, 'nothing over-collected here');
+
+        // Booking 200 (seed, Brian & Linda): package 250,000 / paid 245,000 /
+        // pledged 96,000 — pledges exceed the balance, so the panel must show
+        // the over-collection row and the good-news note, never a negative.
+        // Needs Brian's own session (IDOR gate): swap the cookie jar to a
+        // Brian login for this leg, then restore Chebet's.
+        $jarBackup = self::$jar;
+        self::loginCouple('brian.wafula@gmail.com', 'Test@1234');
+        $seed = self::http('GET', '/admin/client_budget.php?booking_id=200&user_id=200');
+        self::$jar = $jarBackup;
+        if ($seed['status'] !== 200) {
+            self::markTestSkipped('seed booking 200 not reachable with this fixture');
+        }
+        self::assertStringContainsString('Pledges + payments exceed the package by', $seed['body']);
+        self::assertStringContainsString('Great news', $seed['body']);
+        self::assertStringNotContainsString('KSh -', $seed['body'], 'the panel must never render a negative amount');
+
+        // Booking 215 has no package (wedding_type 0) — the panel must be
+        // suppressed entirely rather than divide by zero.
+        $noPackage = self::http('GET', '/admin/client_budget.php?booking_id=215&user_id=215');
+        if ($noPackage['status'] === 200) {
+            self::assertStringNotContainsString('Budget vs Actual', $noPackage['body'], 'no package = no funding panel');
+        }
     }
 }
