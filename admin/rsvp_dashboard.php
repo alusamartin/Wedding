@@ -319,6 +319,28 @@
     </div>
 </div>
 
+<!-- Invites-sent confirm modal (bulk action) -->
+<div class="modal fade" id="invitedConfirmModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content" style="border-radius:16px;">
+            <div class="modal-header border-0 pb-0">
+                <h6 class="modal-title" style="font-weight:700;"><i class="mdi mdi-send-check mr-1" style="color:#065F46;"></i>Mark invites as sent</h6>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span>&times;</span></button>
+            </div>
+            <div class="modal-body" style="font-size:13.5px;">
+                <p id="invitedModalText" class="mb-2"></p>
+                <p class="text-muted mb-0" style="font-size:12px;">Today is stamped as each guest's invite date — their automatic reminder clock starts counting. Guests already invited keep their original date, and missing RSVP links are minted on the spot.</p>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success btn-sm" id="invitedGo">
+                    <i class="mdi mdi-send-check mr-1"></i>Mark invited
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- SMS confirm modal (bulk action) -->
 <div class="modal fade" id="smsConfirmModal" tabindex="-1" role="dialog" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered" role="document">
@@ -404,6 +426,31 @@
     var smsGo = document.getElementById('smsGo');
     if (smsGo) smsGo.addEventListener('click', function () {
         var post = document.getElementById('smsForm');
+        if (post) post.submit();
+    });
+
+    // Invites-sent modal: mirror the selection into its POST form, submit.
+    var invitedBtn = document.getElementById('invitedBtn');
+    if (invitedBtn) invitedBtn.addEventListener('click', function () {
+        var sel = selectedBoxes();
+        if (sel.length === 0) return;
+        var names = sel.map(function (b) {
+            return b.closest('tr').querySelector('strong').textContent;
+        });
+        var el = document.getElementById('invitedModalText');
+        if (el) el.innerHTML = 'Mark <strong>' + sel.length + ' guest' + (sel.length > 1 ? 's' : '')
+            + '</strong> as invited?<br><small>' + names.join(', ') + '</small>';
+        var post = document.getElementById('invitedForm');
+        post.querySelectorAll('input[name="ids[]"]').forEach(function (i) { i.remove(); });
+        sel.forEach(function (b) {
+            var input = document.createElement('input');
+            input.type = 'hidden'; input.name = 'ids[]'; input.value = b.value;
+            post.appendChild(input);
+        });
+    });
+    var invitedGo = document.getElementById('invitedGo');
+    if (invitedGo) invitedGo.addEventListener('click', function () {
+        var post = document.getElementById('invitedForm');
         if (post) post.submit();
     });
 

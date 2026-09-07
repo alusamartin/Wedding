@@ -96,11 +96,16 @@
                 <?= $couple !== '&' ? htmlspecialchars($couple) . ' — ' : ''; ?>add guests, copy their RSVP link, or invite straight on WhatsApp
             </p>
         </div>
-        <?php if ($is_client_view): ?>
-        <button type="button" class="btn btn-success" data-toggle="collapse" data-target="#addGuestForm">
-            <i class="mdi mdi-account-plus mr-1"></i> Add Guest
-        </button>
-        <?php endif; ?>
+        <div>
+            <a class="btn btn-outline-success mr-2" href="sheet_guests.php?<?= $links; ?>" target="_blank" rel="noopener" title="Printable guest list for the wedding day">
+                <i class="mdi mdi-printer mr-1"></i> Print sheet
+            </a>
+            <?php if ($is_client_view): ?>
+            <button type="button" class="btn btn-success" data-toggle="collapse" data-target="#addGuestForm">
+                <i class="mdi mdi-account-plus mr-1"></i> Add Guest
+            </button>
+            <?php endif; ?>
+        </div>
     </div>
 
     <div class="row">

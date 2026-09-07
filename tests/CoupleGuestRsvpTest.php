@@ -565,6 +565,153 @@ final class CoupleGuestRsvpTest extends TestCase
         self::assertStringContainsString('Receipt not found', $nf['body']);
     }
 
+    #[Group('integration')]
+    public function testMarkInvitedRequiresStaffPostAndCsrf(): void
+    {
+        $this->requireHttp();
+
+        // Anonymous GET/POST -> bounced to site root.
+        self::$jar = [];
+        self::assertSame(302, self::http('GET', '/admin/rsvp_mark_invited.php?booking_id=200&user_id=200')['status']);
+        self::assertSame(302, self::http('POST', '/admin/rsvp_mark_invited.php', ['booking_id' => '200', 'user_id' => '200'])['status']);
+
+        // Staff GET -> method rejected (redirect to client list).
+        self::loginStaff();
+        self::assertSame(302, self::http('GET', '/admin/rsvp_mark_invited.php?booking_id=200&user_id=200')['status']);
+
+        // Staff POST without token -> rejected; nothing stamped.
+        $probe = self::probeGuest('Probe Invited CSRF', '0723000114');
+        preg_match('/name="_token" value="([^"]+)"/',
+            self::http('GET', '/admin/rsvp_dashboard.php?booking_id=' . self::BOOKING_ID . '&user_id=200')['body'], $m);
+        self::assertSame(302, self::http('POST', '/admin/rsvp_mark_invited.php', [
+            'booking_id' => (string) self::BOOKING_ID, 'user_id' => '200', 'ids' => [(string) $probe],
+        ])['status']);
+        self::assertNull(self::$db->fetchValue('SELECT rsvp_invited_at FROM tblguest WHERE id = ' . $probe));
+
+        // Foreign-booking scoping: even a fully-authenticated POST can never
+        // stamp a guest that belongs to another booking.
+        $foreign = self::probeGuest('Probe Invited Foreign', '0723000115', 201);
+        self::assertSame(302, self::http('POST', '/admin/rsvp_mark_invited.php', [
+            'booking_id' => (string) self::BOOKING_ID, 'user_id' => '200',
+            '_token' => html_entity_decode($m[1], ENT_QUOTES), 'ids' => [(string) $foreign],
+        ])['status']);
+        self::assertNull(self::$db->fetchValue('SELECT rsvp_invited_at FROM tblguest WHERE id = ' . $foreign));
+    }
+
+    #[Group('integration')]
+    public function testMarkInvitedStampsSelectionFillsGapsAndMintsTokens(): void
+    {
+        $this->requireHttp();
+        self::loginStaff();
+
+        // A: fresh guest (no token, not invited) — must be stamped now.
+        // NB: grab the CSRF token BEFORE seeding — loading the dashboard
+        // runs ensure_tokens(), which mints empty tokens (and thus stamps
+        // invite dates) as a side effect.
+        preg_match('/name="_token" value="([^"]+)"/',
+            self::http('GET', '/admin/rsvp_dashboard.php?booking_id=' . self::BOOKING_ID . '&user_id=200')['body'], $m);
+        $token = html_entity_decode($m[1], ENT_QUOTES);
+
+        $fresh = self::probeGuest('Probe Invited Fresh', '0723000116', self::BOOKING_ID, null, false);
+        // B: invited 10 days ago — must keep the original date (gap-fill only).
+        $older = self::probeGuest('Probe Invited Older', '0723000117', self::BOOKING_ID, 'DATE_SUB(NOW(), INTERVAL 10 DAY)');
+        // C: fresh guest on another booking — must never be stamped.
+        $foreign = self::probeGuest('Probe Invited Foreign2', '0723000118', 201);
+
+        $res = self::http('POST', '/admin/rsvp_mark_invited.php', [
+            'booking_id' => (string) self::BOOKING_ID, 'user_id' => '200',
+            '_token' => $token, 'ids' => [(string) $fresh, (string) $older, (string) $foreign],
+        ]);
+        self::assertSame(302, $res['status']);
+
+        // Fresh guest: stamped just now, token minted.
+        $row = self::$db->fetchAll(
+            'SELECT rsvp_invited_at, rsvp_token FROM tblguest WHERE id = ' . $fresh
+        )[0];
+        self::assertNotNull($row->rsvp_invited_at);
+        self::assertGreaterThanOrEqual(time() - 60, strtotime((string) $row->rsvp_invited_at), 'fresh guest stamped as invited now');
+        self::assertMatchesRegularExpression('/^[a-f0-9]{32}$/', (string) $row->rsvp_token, 'a guest cannot be invited without a personal RSVP token');
+
+        // Older guest: original invite date preserved, token untouched.
+        $olderAt = (string) self::$db->fetchValue('SELECT rsvp_invited_at FROM tblguest WHERE id = ' . $older);
+        self::assertLessThan(time() - 9 * 86400, strtotime($olderAt), 'existing invite dates are never overwritten');
+
+        // Foreign guest: untouched.
+        self::assertNull(self::$db->fetchValue('SELECT rsvp_invited_at FROM tblguest WHERE id = ' . $foreign));
+
+        // Flash summary counts the real stamps (only the fresh guest; the
+        // 10-days-ago one is pre-filtered as already invited), then a re-run is a no-op.
+        $dash = self::http('GET', '/admin/rsvp_dashboard.php?booking_id=' . self::BOOKING_ID . '&user_id=200')['body'];
+        self::assertStringContainsString('1 guest marked invited', $dash);
+        self::assertStringContainsString('Probe Invited Older', $dash, 'already-invited guests are listed as unchanged');
+
+        self::http('POST', '/admin/rsvp_mark_invited.php', [
+            'booking_id' => (string) self::BOOKING_ID, 'user_id' => '200',
+            '_token' => $token, 'ids' => [(string) $fresh, (string) $older],
+        ]);
+        $dash2 = self::http('GET', '/admin/rsvp_dashboard.php?booking_id=' . self::BOOKING_ID . '&user_id=200')['body'];
+        self::assertStringContainsString('Already marked invited', $dash2);
+        self::assertStringNotContainsString('reminder window starts now', $dash2);
+    }
+
+    #[Group('integration')]
+    public function testWeddingDaySheetsRenderAndAreScoped(): void
+    {
+        $this->requireHttp();
+
+        // Anonymous visitors are bounced.
+        self::$jar = [];
+        self::assertSame(302, self::http('GET', '/admin/sheet_guests.php?booking_id=200&user_id=200')['status']);
+        self::assertSame(302, self::http('GET', '/admin/sheet_venue.php?booking_id=200&user_id=200')['status']);
+
+        // A couple cannot open another wedding's sheets.
+        self::loginCouple();
+        self::assertSame(302, self::http('GET', '/admin/sheet_guests.php?booking_id=201&user_id=201')['status']);
+        self::assertSame(302, self::http('GET', '/admin/sheet_venue.php?booking_id=201&user_id=201')['status']);
+
+        // Staff gets the guest list sheet: grouped tables, dietary brief,
+        // harambee ledger, headcount stats. Seed one confirmed guest with
+        // dietary + logistics flags so the sheet's attending-only sections
+        // render deterministically (seed data has no 'yes' RSVPs).
+        self::loginStaff();
+        $sheetProbe = self::probeGuest('Probe Sheet Attending', '0723000119', self::BOOKING_ID, null, true, 'yes');
+        self::$db->prepare(
+            "UPDATE tblguest SET dietary_requirements = 'Vegetarian', transport_needed = 1, upcountry_accommodation = 1 WHERE id = :id"
+        )->execute([':id' => $sheetProbe]);
+
+        $g = self::http('GET', '/admin/sheet_guests.php?booking_id=' . self::BOOKING_ID . '&user_id=200');
+        self::assertSame(200, $g['status']);
+        self::assertStringContainsString('Wedding Day Guest List', $g['body']);
+        self::assertStringContainsString('Guests by group', $g['body']);
+        self::assertStringContainsString('Caterer brief', $g['body'], 'dietary summary renders when needs exist');
+        self::assertStringContainsString('Vegetarian', $g['body'], 'the confirmed guest\'s dietary need is listed');
+        self::assertStringContainsString('Harambee contributions', $g['body']);
+        self::assertMatchesRegularExpression('/KSh [\d,]+/', $g['body'], 'harambee pledges render as KSh');
+        self::assertStringContainsString('Plan for', $g['body'], 'headcount guidance stat present');
+
+        // Staff gets the venue sheet: running order with real event titles,
+        // headcount plan, contacts, checklist.
+        $v = self::http('GET', '/admin/sheet_venue.php?booking_id=' . self::BOOKING_ID . '&user_id=200');
+        self::assertSame(200, $v['status']);
+        self::assertStringContainsString('Venue &amp; Day Summary', $v['body']);
+        self::assertStringContainsString('Running order', $v['body']);
+        self::assertStringContainsString('Ruracio Ceremony', $v['body'], 'real event titles, never machine labels');
+        self::assertStringContainsString('Headcount plan per function', $v['body']);
+        self::assertStringContainsString('Key contacts', $v['body']);
+        self::assertStringContainsString('Coordination checklist', $v['body']);
+        self::assertStringContainsString('Amina Hassan', $v['body'], 'planner named on the sheet');
+
+        // Both sheets are print-first: shared chrome + A4 print rules.
+        foreach ([$g['body'], $v['body']] as $body) {
+            self::assertStringContainsString('@page { size: A4', $body);
+            self::assertStringContainsString('Print this sheet', $body);
+            self::assertStringNotContainsString('Warning', $body, 'no PHP warnings leak into the sheets');
+        }
+
+        // Garbage booking id -> staff redirected to the client list.
+        self::assertSame(302, self::http('GET', '/admin/sheet_guests.php?booking_id=99999999&user_id=1')['status']);
+    }
+
     // ------------------------------------------------------------------
     // Fixtures + harness
     // ------------------------------------------------------------------
@@ -577,6 +724,18 @@ final class CoupleGuestRsvpTest extends TestCase
     private static function loginStaff(): void
     {
         self::login('wafula@wpms.co.ke', 'Admin@2024!', '/login.php');
+    }
+
+    /** Insert a probe guest and register it for teardown cleanup. */
+    private static function probeGuest(string $name, string $phone = '0723000111', int $bookingId = 200, ?string $invitedSql = null, bool $withToken = true, string $status = 'pending'): int
+    {
+        self::$db->prepare(
+            'INSERT INTO tblguest (booking_id, fullname, guestname, phone, relationship, rsvp_token, rsvp_status, rsvp_invited_at) '
+            . "VALUES (:b, :n, :n2, :p, \"regular\", :t, :s, " . ($invitedSql ?? 'NULL') . ')'
+        )->execute([':b' => $bookingId, ':n' => $name, ':n2' => 'Probe', ':p' => $phone, ':t' => $withToken ? bin2hex(random_bytes(16)) : '', ':s' => $status]);
+        $gid = (int) self::$db->the_insert_id();
+        self::$probeGuestIds[] = $gid;
+        return $gid;
     }
 
     private static function login(string $email, string $pass, string $page): void
