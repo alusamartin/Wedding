@@ -168,7 +168,6 @@ overwritten.
 ### Couple engagement tools (checklist + wedding page)
 
 Two couple-facing features keep clients coming back between planner meetings:
-
 - **Planning Checklist** (`admin/client_checklist.php`) — every booking gets
   the standard Kenyan milestone plan seeded on first open: ruracio and family
   introductions, church banns (three Sundays) plus the Registrar's 21-day
@@ -183,6 +182,21 @@ Two couple-facing features keep clients coming back between planner meetings:
   bounce visitors home. Guests RSVP through their personal token links (the
   website page explains this instead of offering a form that goes nowhere).
   Slugs are generated from the couple's names and stay stable once created.
+- **Budget vs Actual** (on `admin/client_budget.php`) — the funding panel
+  Kenyan couples actually plan around: package price, payments to date, and
+  the committee's harambee pledges side by side. A stacked bar shows paid vs
+  pledged vs still-to-raise, the panel counts pledged guests, projects the
+  total once pledges land (or shows the over-collection when pledges +
+  payments exceed the package), and coaches the couple — add pledges on My
+  Guests, collect early over M-Pesa, or celebrate when the package is
+  covered. The panel hides entirely for bookings with no priced package.
+- **Vendor Marketplace** (`admin/client_vendors.php`) — couples browse
+  approved vendors (catering, decor, photography, transport, MC and more)
+  with live KSh package prices, filtered by category and county. The
+  Enquire button opens a modal pre-filled with the wedding date and the
+  vendor's packages; sending records the enquiry (pending on the vendor
+  ledger) and notifies the assigned planner so the couple never negotiates
+  alone. Unknown vendors, foreign bookings and tokenless posts are refused.
 
 ### 5. Access the system
 

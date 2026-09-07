@@ -138,6 +138,58 @@ class Vendor extends DB_Object
         $row = $stmt->fetch(PDO::FETCH_OBJ);
         return $row ?: null;
     }
+
+    /** Active packages of one vendor, cheapest first. (Prepared for the
+     *  couple-facing vendor marketplace — not yet wired to a page.) */
+    public static function packages_for(int $vendor_id): array
+    {
+        global $db;
+        $stmt = $db->prepare(
+            'SELECT * FROM tblvendor_packages WHERE vendor_id = :vid AND is_active = 1 ORDER BY price ASC'
+        );
+        $stmt->execute([':vid' => $vendor_id]);
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
+    /** One vendor's active packages keyed by id — for validating an enquiry. */
+    public static function package_of(int $vendor_id, int $package_id): ?object
+    {
+        global $db;
+        $stmt = $db->prepare(
+            'SELECT * FROM tblvendor_packages WHERE id = :pid AND vendor_id = :vid AND is_active = 1 LIMIT 1'
+        );
+        $stmt->execute([':pid' => $package_id, ':vid' => $vendor_id]);
+        $row = $stmt->fetch(PDO::FETCH_OBJ);
+        return $row ?: null;
+    }
+
+    /**
+     * Record a couple's vendor enquiry. The vendor's booking row is created
+     * pending so staff see the enquiry on the vendor ledger; returns the
+     * tblvendor_bookings id or 0 on failure. $booking_id ties the enquiry to
+     * the couple's wedding (0 = general enquiry with no wedding attached).
+     */
+    public static function record_enquiry(
+        int $vendor_id,
+        int $booking_id,
+        int $package_id,
+        string $event_date,
+        string $message
+    ): int {
+        global $db;
+        $stmt = $db->prepare(
+            "INSERT INTO tblvendor_bookings (vendor_id, booking_id, package_id, event_date, amount, commission, status, notes)
+             VALUES (:vid, :bid, :pid, :edate, 0, 0, 'pending', :notes)"
+        );
+        $ok = $stmt->execute([
+            ':vid'   => $vendor_id,
+            ':bid'   => $booking_id,
+            ':pid'   => $package_id > 0 ? $package_id : null,
+            ':edate' => $event_date !== '' ? $event_date : null,
+            ':notes' => mb_substr($message, 0, 1000),
+        ]);
+        return $ok ? (int) $db->the_insert_id() : 0;
+    }
 }
 
 /**

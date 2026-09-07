@@ -219,6 +219,7 @@
                 <a class="btn btn-sm btn-outline-primary mr-2 " style="font-size: 12px;" href="client_checklist.php?<?= $links; ?>"><i class="mdi mdi-checkbox-marked-outline mr-2"></i> Checklist</a>
                 <a class="btn btn-sm btn-outline-secondary mr-2 " style="font-size: 12px;" href="client_website.php?<?= $links; ?>"><i class="mdi mdi-web mr-2"></i> Wedding Page</a>
                 <a class="btn btn-sm btn-outline-success mr-2 " style="font-size: 12px;" href="client_budget.php?<?= $links; ?>"><i class="mdi mdi-cash-multiple mr-2"></i> My Payments</a>
+                <a class="btn btn-sm btn-outline-warning mr-2 " style="font-size: 12px;" href="client_vendors.php?<?= $links; ?>"><i class="mdi mdi-store mr-2"></i> Vendors</a>
                 <a class="btn btn-sm btn-outline-secondary" style="font-size: 12px;" href="../contact.php"><i class="mdi mdi-email-outline mr-2"></i> Contact Planner</a>
             <?php endif; ?>
         </div>
