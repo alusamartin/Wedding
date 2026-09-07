@@ -3,7 +3,7 @@
  * Wedding Website Builder - Simple public-facing wedding page
  * Access at: /wedding/site/slug
  */
-include_once '../admin/include/init.php';
+include_once __DIR__ . '/admin/include/init.php';
 
 $slug = isset($_GET['slug']) ? clean($_GET['slug']) : '';
 
@@ -33,8 +33,8 @@ $gallery = Gallery::find_by_event_all($website->booking_id);
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title><?= htmlspecialchars($website->title ?: 'Our Wedding'); ?></title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="../css/bootstrap.min.css">
-    <link rel="stylesheet" href="../css/modern.css">
+    <link rel="stylesheet" href="css/bootstrap.min.css">
+    <link rel="stylesheet" href="css/modern.css">
     <style>
         :root{ --kenya-green:#065F46; --kenya-gold:#D97706; --radius:16px; --shadow:0 8px 24px rgba(0,0,0,.07); }
         body { font-family:'Inter','Plus Jakarta Sans',sans-serif; background:#FAFAF8; color:#1C1917; }
@@ -86,7 +86,7 @@ $gallery = Gallery::find_by_event_all($website->booking_id);
         <h2>Gallery</h2>
         <div class="gallery-grid">
             <?php foreach (array_slice($gallery, 0, 8) as $photo): ?>
-                <img src="../admin/<?= $photo->picture_path(); ?>" alt="<?= htmlspecialchars($photo->caption ?: 'Wedding photo'); ?>">
+                <img src="admin/<?= $photo->picture_path(); ?>" alt="<?= htmlspecialchars($photo->caption ?: 'Wedding photo'); ?>">
             <?php endforeach; ?>
         </div>
     </div>
@@ -95,29 +95,14 @@ $gallery = Gallery::find_by_event_all($website->booking_id);
     <div class="section">
         <h2>RSVP</h2>
         <div class="rsvp-form">
-            <form method="post" action="rsvp.php">
-                <input type="hidden" name="website_id" value="<?= $website->id; ?>">
-                <div class="form-group">
-                    <label>Your Name</label>
-                    <input type="text" name="name" class="form-control" required>
-                </div>
-                <div class="form-group">
-                    <label>Will you attend?</label>
-                    <select name="attending" class="form-control" required>
-                        <option value="yes">Yes, I'll be there!</option>
-                        <option value="no">Sorry, can't make it</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Number of Guests</label>
-                    <input type="number" name="guests" class="form-control" value="1" min="1" max="5">
-                </div>
-                <div class="form-group">
-                    <label>Dietary Requirements</label>
-                    <input type="text" name="dietary" class="form-control" placeholder="e.g. Vegetarian, Halal">
-                </div>
-                <button type="submit" class="btn btn-danger btn-block">Send RSVP</button>
-            </form>
+            <?php /* The RSVP form is the personal token invite — couples share
+                   each guest's link from My Guests; replies land in their
+                   guest list and alert the planner. Generic website-form RSVPs
+                   are not accepted (they had no destination). */ ?>
+            <div class="text-center py-4">
+                <p style="font-size: 14px; color:#57534E; margin-bottom: 6px;">RSVPs are by personal invitation — check your WhatsApp or SMS for <strong>your link</strong>.</p>
+                <p style="font-size: 12.5px; color:#78716C;">Didn't get one? Let the couple know on <span style="color:#25D366; font-weight:600;">WhatsApp</span> or via the committee.</p>
+            </div>
         </div>
     </div>
 

@@ -165,6 +165,25 @@ that moment, so un-invited guests are never nagged) and mints missing RSVP
 tokens on the spot. Re-running is a no-op — existing invite dates are never
 overwritten.
 
+### Couple engagement tools (checklist + wedding page)
+
+Two couple-facing features keep clients coming back between planner meetings:
+
+- **Planning Checklist** (`admin/client_checklist.php`) — every booking gets
+  the standard Kenyan milestone plan seeded on first open: ruracio and family
+  introductions, church banns (three Sundays) plus the Registrar's 21-day
+  notice, eCitizen registration, committee formation, final-month vendor
+  confirmations. Couples tick items off themselves; the page shows progress,
+  overdue flags against the wedding date (silenced once the wedding has
+  passed) and the next item up. Staff can preview any couple's checklist.
+- **Our Wedding Page** (`admin/client_website.php`) — couples create and
+  publish one shareable public page (`site.php?slug=...`) with their story,
+  venue, address, live countdown and gallery. The share box has the URL, a
+  WhatsApp share button and a publish/unpublish toggle; unpublished pages
+  bounce visitors home. Guests RSVP through their personal token links (the
+  website page explains this instead of offering a form that goes nowhere).
+  Slugs are generated from the couple's names and stay stable once created.
+
 ### 5. Access the system
 
 **One login door for every role:** http://localhost/Wedding/login.php

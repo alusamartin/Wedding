@@ -170,6 +170,31 @@ final class HumanDatesTest extends TestCase
     }
 
     #[Group('integration')]
+    public function testOverviewShowsCountdownAndStatusBanner(): void
+    {
+        $this->requireHttp();
+
+        // Couple view: booking 200 is past-dated (2025-12-20) and confirmed, so
+        // the banner must say so — never a raw date-only header or a wrong
+        // "pending" state.
+        self::loginCouple();
+        $body = self::http('GET', '/admin/client_manage_account_details.php?booking_id=' . self::BOOKING_ID . '&user_id=200')['body'];
+        self::assertStringContainsString('countdown-banner', $body, 'overview must render the countdown banner');
+        self::assertStringContainsString('Happily married', $body, 'past weddings show the married headline, not a countdown');
+        self::assertStringContainsString('Saturday, 20 December 2025', $body, 'wedding date must be human-formatted in the banner');
+        self::assertStringContainsString('cd-status-confirmed', $body, 'confirmed account must show the Confirmed pill');
+        self::assertStringNotContainsString('Pending Confirmation', $body, 'confirmed account must never show the pending pill');
+        self::assertStringContainsString('Your date is locked in', $body);
+
+        // A pending future booking must show the countdown + pending messaging.
+        self::loginStaff();
+        $future = self::http('GET', '/admin/client_manage_account_details.php?booking_id=215&user_id=215')['body'];
+        self::assertMatchesRegularExpression('/\d+ days? to go/', $future, 'future weddings show a live days-to-go countdown');
+        self::assertStringContainsString('Pending Confirmation', $future, 'booking without a confirmed account row shows pending');
+        self::assertStringContainsString('Awaiting confirmation', $future);
+    }
+
+    #[Group('integration')]
     public function testStaffTaskCalendarOpensOnWeddingMonth(): void
     {
         $this->requireHttp();

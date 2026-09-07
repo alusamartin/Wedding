@@ -35,6 +35,32 @@
 
     $events = $req->fetchAll(PDO::FETCH_ASSOC);
 
+    // Countdown + booking-status banner (the couple's "where do I stand" moment).
+    // Booking status lives on the account row (tblaccounts_detail.status), not the
+    // wedding row, so look it up there.
+    $account_status_row = Account_Details::find_by_user_id($user_id);
+    $is_confirmed = strtolower(trim((string) ($account_status_row->status ?? ''))) === 'confirm';
+    $countdown_days = null;
+    $countdown_headline = '';
+    $countdown_sub = '';
+    if (!empty($booking->wedding_date) && ($wts = strtotime((string) $booking->wedding_date)) !== false) {
+        $today = strtotime(date('Y-m-d'));
+        $wedding_day = strtotime(date('Y-m-d', $wts));
+        $countdown_days = (int) round(($wedding_day - $today) / 86400);
+        if ($countdown_days > 0) {
+            $countdown_headline = $countdown_days . ' day' . ($countdown_days === 1 ? '' : 's') . ' to go';
+            $countdown_sub = $countdown_days <= 7
+                ? 'The final week — your planner is putting the finishing touches in place.'
+                : 'Plenty of time to plan every detail, one step at a time.';
+        } elseif ($countdown_days === 0) {
+            $countdown_headline = 'Today is the day!';
+            $countdown_sub = ' Congratulations from all of us at Everafter Planner.';
+        } else {
+            $countdown_headline = 'Happily married';
+            $countdown_sub = 'Thank you for letting us be part of your story.';
+        }
+    }
+
     // Open the calendar on the wedding month (or the next scheduled ceremony),
     // not today — couples book 12-18 months out and today is usually empty.
     $wedding_default = null;
@@ -109,12 +135,62 @@
             border-color:#ff000000;
         }
 
+        .countdown-banner {
+            background: linear-gradient(135deg, #064E3B 0%, #059669 100%);
+            border-radius: 16px;
+            color: #fff;
+            padding: 22px 26px;
+            margin-bottom: 18px;
+            box-shadow: 0 10px 24px rgba(6, 78, 59, .18);
+        }
+        .countdown-banner .cd-days { font-size: 34px; font-weight: 800; letter-spacing: -.02em; line-height: 1.1; font-family: 'Plus Jakarta Sans','Inter',sans-serif; }
+        .countdown-banner .cd-sub { font-size: 13px; opacity: .85; margin-top: 2px; }
+        .countdown-banner .cd-couple { font-size: 15px; font-weight: 700; margin: 0; }
+        .countdown-banner .cd-date { font-size: 12.5px; opacity: .8; }
+        .countdown-banner .cd-status { font-size: 12px; font-weight: 700; border-radius: 999px; padding: 6px 14px; display: inline-block; }
+        .cd-status-confirmed { background: rgba(255,255,255,.22); }
+        .cd-status-pending { background: #FBBF24; color: #78350F; }
+        .cd-status-note { font-size: 12.5px; opacity: .9; margin-top: 6px; }
+        @media (max-width: 767px) { .countdown-banner { padding: 18px; } .countdown-banner .cd-days { font-size: 27px; } }
+
     </style>
 </head>
 
 <body>
 
 <?php include_once 'include/sidebar.php'; ?>
+
+<?php if ($booking && ($countdown_headline !== '' || !empty($booking->wedding_date))): ?>
+<div class="row no-gutters mt-4">
+    <div class="col-md-12">
+        <div class="countdown-banner d-flex flex-wrap justify-content-between align-items-center">
+            <div class="mr-4 mb-2 mb-md-0">
+                <p class="cd-couple">
+                    <?= htmlspecialchars(trim(($booking->bride ?? '') . ' & ' . ($booking->groom ?? ''), ' &')) ?: 'Your Wedding'; ?>
+                </p>
+                <div class="cd-date">
+                    <i class="mdi mdi-calendar-heart mr-1"></i><?= htmlspecialchars(date('l, j F Y', strtotime((string) $booking->wedding_date))); ?>
+                    <?php $cat_name = $category_details->wedding_type ?? ''; if ($cat_name !== ''): ?>
+                        &nbsp;&middot;&nbsp;<i class="mdi mdi-gift mr-1"></i><?= htmlspecialchars((string) $cat_name); ?>
+                    <?php endif; ?>
+                </div>
+                <?php if ($is_confirmed): ?>
+                    <div class="cd-status-note"><i class="mdi mdi-check-decagram mr-1"></i>Your date is locked in — your planner is on it.</div>
+                <?php elseif ($countdown_days === null || $countdown_days >= 0): ?>
+                    <div class="cd-status-note"><i class="mdi mdi-clock-outline mr-1"></i>Awaiting confirmation — our team is reviewing your date and will reach out shortly.</div>
+                <?php endif; ?>
+            </div>
+            <div class="text-md-right">
+                <div class="cd-days"><?= $countdown_headline !== '' ? htmlspecialchars($countdown_headline) : 'Date to be set'; ?></div>
+                <div class="cd-sub"><?= htmlspecialchars($countdown_sub !== '' ? $countdown_sub : 'Pick a date with your planner to start the countdown.'); ?></div>
+                <span class="cd-status mt-2 <?= $is_confirmed ? 'cd-status-confirmed' : 'cd-status-pending'; ?>">
+                    <?= $is_confirmed ? 'Confirmed' : 'Pending Confirmation'; ?>
+                </span>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
@@ -140,6 +216,8 @@
                 <a class="btn btn-sm btn-warning mr-2 " style="font-size: 12px;" href="task_calendar.php?<?= $links; ?>"><i class="mdi mdi-calendar-text mr-2"></i> Task Calendar</a>
             <?php else: ?>
                 <a class="btn btn-sm btn-outline-info mr-2 " style="font-size: 12px;" href="client_guests.php?<?= $links; ?>"><i class="mdi mdi-account-network mr-2"></i> My Guests</a>
+                <a class="btn btn-sm btn-outline-primary mr-2 " style="font-size: 12px;" href="client_checklist.php?<?= $links; ?>"><i class="mdi mdi-checkbox-marked-outline mr-2"></i> Checklist</a>
+                <a class="btn btn-sm btn-outline-secondary mr-2 " style="font-size: 12px;" href="client_website.php?<?= $links; ?>"><i class="mdi mdi-web mr-2"></i> Wedding Page</a>
                 <a class="btn btn-sm btn-outline-success mr-2 " style="font-size: 12px;" href="client_budget.php?<?= $links; ?>"><i class="mdi mdi-cash-multiple mr-2"></i> My Payments</a>
                 <a class="btn btn-sm btn-outline-secondary" style="font-size: 12px;" href="../contact.php"><i class="mdi mdi-email-outline mr-2"></i> Contact Planner</a>
             <?php endif; ?>

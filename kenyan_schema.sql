@@ -122,3 +122,40 @@ CREATE TABLE IF NOT EXISTS `tbl_password_resets` (
   UNIQUE KEY `uq_reset_hash` (`token_hash`),
   KEY `idx_reset_user` (`user_id`, `used_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Kenyan wedding planning checklist. One row per milestone per booking;
+-- seeded from the Kenyan template in Checklist::ensure_seeded() on first
+-- open. due_offset_days = days BEFORE the wedding the item should be done
+-- (the due date is wedding_date - offset; never recomputed if the wedding
+-- moves — offsets stay stable and the view recomputes).
+CREATE TABLE IF NOT EXISTS `tblchecklist` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `booking_id` INT NOT NULL,
+  `phase` VARCHAR(60) NOT NULL DEFAULT '',
+  `title` VARCHAR(190) NOT NULL,
+  `due_offset_days` INT NOT NULL DEFAULT 0,
+  `position` INT NOT NULL DEFAULT 0,
+  `is_done` TINYINT(1) NOT NULL DEFAULT 0,
+  `done_at` DATETIME NULL DEFAULT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY `idx_checklist_booking` (`booking_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Couple wedding websites — the shareable public page (site.php?slug=...).
+-- One per booking; slug generated from the couple's names and stable once
+-- created. is_published is the only gate the public page checks. Created
+-- and edited by the couple in admin/client_website.php.
+CREATE TABLE IF NOT EXISTS `tblwedding_websites` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `booking_id` INT NOT NULL UNIQUE,
+  `slug` VARCHAR(100) NOT NULL UNIQUE,
+  `title` VARCHAR(200) NOT NULL,
+  `story` TEXT,
+  `venue` VARCHAR(200) NOT NULL,
+  `venue_address` TEXT,
+  `wedding_date` DATE NOT NULL,
+  `cover_image` VARCHAR(255) DEFAULT NULL,
+  `is_published` TINYINT(1) NOT NULL DEFAULT 0,
+  `views` INT NOT NULL DEFAULT 0,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
