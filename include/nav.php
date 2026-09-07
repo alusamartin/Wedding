@@ -33,7 +33,11 @@
                     <a class="wpms-cta btn btn-sm" href="<?= $nav_portal_url; ?>"><i class="mdi mdi-calendar-heart mr-1"></i> <?= $nav_is_staff ? 'My Dashboard' : 'My Bookings'; ?></a>
                     <a class="wpms-cta-ghost btn btn-sm" href="admin/logout.php"><i class="mdi mdi-logout mr-1"></i> Log Out</a>
                 <?php else: ?>
-                    <a class="wpms-cta btn btn-sm" href="#" data-toggle="modal" data-target="#loginModal"><i class="mdi mdi-login-variant mr-1"></i> Login</a>
+                    <?php // Mobile: full-page login (the modal is cramped on small
+                          // screens and stacked toggles are fiddly). Desktop: the
+                          // shared modal without leaving the page. ?>
+                    <a class="wpms-cta btn btn-sm d-inline-block d-xl-none" href="login.php"><i class="mdi mdi-login-variant mr-1"></i> Login</a>
+                    <a class="wpms-cta btn btn-sm d-none d-xl-inline-block" href="#" data-toggle="modal" data-target="#loginModal"><i class="mdi mdi-login-variant mr-1"></i> Login</a>
                     <a class="wpms-cta-ghost btn btn-sm" href="index.php#sign-up">Join Now — Free</a>
                 <?php endif; ?>
             </div>

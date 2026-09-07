@@ -198,7 +198,7 @@ if ($session->is_signed_in() && isset($_SESSION['id'])) {
     <?= $session->csrf_field(); ?>
     <a href="index.php"><img class="mb-4" src="images/logo/everafter-crest.png" alt="Everafter Planner" style="height:104px;"></a>
     <h3 class="h3 mb-3 font-weight-normal">Login Your Account</h3>
-    <p class="login-sub">Welcome back — sign in to access your account</p>
+    <p class="login-sub">Welcome back — sign in to access your account.<br>One login for everyone: your account takes you to the right place.</p>
     <?php
         if ($session->message()) {
             echo $session->message();
