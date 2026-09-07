@@ -43,6 +43,15 @@ function time_elapsed_string($datetime, $full = false) {
     return $string ? implode(', ', $string) . ' ago' : 'just now';
 }
 
+/**
+ * Compact human age for tooltips, e.g. "5 days ago" / "2 hours ago".
+ * Thin wrapper over time_elapsed_string() kept for readable call-sites.
+ */
+function human_age(string $datetime): string
+{
+    return time_elapsed_string($datetime);
+}
+
 function trim_body($text, $max_length = 30, $tail = '...') {
 
     $tail_len = strlen($tail);

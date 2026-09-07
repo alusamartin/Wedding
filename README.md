@@ -159,6 +159,12 @@ endpoint that re-checks every guest belongs to the booking and skips
 already-replied / phoneless guests with a reason) or *Open WhatsApp queue*,
 which walks each selected guest's chat pre-filled, one at a time.
 
+When physical or digital invites go out, *Mark invites sent* stamps the
+selected guests' `rsvp_invited_at` (the automatic-reminder clock starts from
+that moment, so un-invited guests are never nagged) and mints missing RSVP
+tokens on the spot. Re-running is a no-op — existing invite dates are never
+overwritten.
+
 ### 5. Access the system
 
 **One login door for every role:** http://localhost/Wedding/login.php

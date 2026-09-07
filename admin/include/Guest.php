@@ -196,16 +196,22 @@ class Guest extends DB_Object
         if ($guest_ids === []) {
             return 0;
         }
-        $placeholders = implode(',', array_fill(0, count($guest_ids), '?'));
+        // NB: PDO forbids mixing named (:x) and positional (?) parameters in
+        // one statement (HY093) — build named placeholders for the id list.
+        $idMarks = [];
+        $params = [
+            ':t'   => bin2hex(random_bytes(16)),
+            ':now' => date('Y-m-d H:i:s'),
+        ];
+        foreach ($guest_ids as $i => $gid) {
+            $idMarks[]      = ':g' . $i;
+            $params[':g' . $i] = $gid;
+        }
         $sql = "UPDATE tblguest
                 SET rsvp_token = COALESCE(NULLIF(rsvp_token, ''), :t),
                     rsvp_invited_at = COALESCE(rsvp_invited_at, :now)
-                WHERE id IN ($placeholders)"
+                WHERE id IN (" . implode(',', $idMarks) . ')'
             . ($booking_id !== null ? ' AND booking_id = :bid' : '');
-        $params = array_merge(
-            [':t' => bin2hex(random_bytes(16)), ':now' => date('Y-m-d H:i:s')],
-            $guest_ids
-        );
         if ($booking_id !== null) {
             $params[':bid'] = $booking_id;
         }

@@ -154,9 +154,17 @@
                 <div class="d-flex justify-content-between" style="font-size:13px;">
                     <span><i class="mdi mdi-bed text-info"></i> Accommodation needed</span><strong><?= $accommodation_needed; ?></strong>
                 </div>
-                <a class="btn btn-outline-success btn-sm mt-2" href="rsvp_export.php?<?= $links; ?>&format=csv">
-                    <i class="mdi mdi-download mr-1"></i> Export venue headcount (CSV)
-                </a>
+                <div class="mt-2">
+                    <a class="btn btn-outline-success btn-sm" href="rsvp_export.php?<?= $links; ?>&format=csv">
+                        <i class="mdi mdi-download mr-1"></i> Export venue headcount (CSV)
+                    </a>
+                    <a class="btn btn-outline-success btn-sm" href="sheet_guests.php?<?= $links; ?>" target="_blank" rel="noopener">
+                        <i class="mdi mdi-printer mr-1"></i> Guest list sheet
+                    </a>
+                    <a class="btn btn-outline-success btn-sm" href="sheet_venue.php?<?= $links; ?>" target="_blank" rel="noopener">
+                        <i class="mdi mdi-file-document-outline mr-1"></i> Venue summary
+                    </a>
+                </div>
             </div>
         </div>
 
@@ -220,6 +228,10 @@
                         data-toggle="modal" data-target="#smsConfirmModal">
                     <i class="mdi mdi-cellphone-arrow-down mr-1"></i>Send SMS to selected
                 </button>
+                <button type="button" class="btn btn-sm btn-outline-success ml-1" id="invitedBtn"
+                        data-toggle="modal" data-target="#invitedConfirmModal" title="Stamp today as each guest's invite date — their reminder window starts counting">
+                    <i class="mdi mdi-send-check mr-1"></i>Mark invites sent
+                </button>
                 <button type="button" class="btn btn-sm btn-outline-secondary ml-1" id="clearSel">Clear</button>
             </div>
         </form>
@@ -227,7 +239,13 @@
             <?= $session->csrf_field(); ?>
             <input type="hidden" name="booking_id" value="<?= $booking_id; ?>">
             <input type="hidden" name="user_id" value="<?= $user_id; ?>">
-            <div class="table-responsive">
+        </form>
+        <form method="post" action="rsvp_mark_invited.php" id="invitedForm">
+            <?= $session->csrf_field(); ?>
+            <input type="hidden" name="booking_id" value="<?= $booking_id; ?>">
+            <input type="hidden" name="user_id" value="<?= $user_id; ?>">
+        </form>
+        <div class="table-responsive">
                 <table class="table table-sm mb-0" style="font-size:12.5px;">
                     <thead><tr>
                         <th style="width:28px;"><input type="checkbox" id="checkAll" aria-label="Select all pending guests"></th>
@@ -239,6 +257,8 @@
                         $remind = rsvp_whatsapp_reminder($g->guestname ?: $g->fullname, $couple, $wedding_human, rsvp_url_for($g->rsvp_token ?? ''));
                         $remCount = (int) ($g->rsvp_reminders ?? 0);
                         $remAt = $g->rsvp_reminded_at ?? null;
+                        $invAt = $g->rsvp_invited_at ?? null;
+                        $invAge = $invAt ? 'Invited ' . human_age((string) $invAt) : 'Not marked invited yet';
                     ?>
                         <tr>
                             <td><input type="checkbox" class="sel-guest" form="waQueueForm" name="ids[]" value="<?= (int) $g->id; ?>"
@@ -247,9 +267,9 @@
                             <td><?= htmlspecialchars($group_labels[$g->relationship] ?? ucfirst(str_replace('_', ' ', (string) $g->relationship))); ?></td>
                             <td><?= $waNum !== '' ? htmlspecialchars($g->phone) : '<span class="text-muted">no number</span>'; ?></td>
                             <td><?php if ($remCount === 0): ?>
-                                    <span class="text-muted" style="font-size:12px;">not yet</span>
+                                    <span class="text-muted" style="font-size:12px;" title="<?= htmlspecialchars($invAge); ?>">not yet</span>
                                 <?php else: ?>
-                                    <span class="badge badge-secondary" title="Last: <?= htmlspecialchars((string) $remAt); ?>">
+                                    <span class="badge badge-secondary" title="<?= htmlspecialchars($invAge); ?> &middot; Last reminder: <?= htmlspecialchars((string) $remAt); ?>">
                                         <?= $remCount; ?> sent
                                     </span>
                                     <?php if ($remCount >= 3): ?><span class="badge badge-warning">cap</span><?php endif; ?>
@@ -267,7 +287,6 @@
                     </tbody>
                 </table>
             </div>
-        </form>
         <?php endif; ?>
     </div>
 
