@@ -276,4 +276,33 @@ class Notification
         );
         return $stmt->execute([':uid' => $userId]);
     }
+
+    /**
+     * Housekeeping: drop alerts older than the retention window. Read alerts
+     * are pruned after 60 days, unread after 180 (the owner still has not seen
+     * them, so they keep their chance a bit longer). Mail-log rows travel with
+     * their notification. Returns the number of notifications removed.
+     */
+    public static function prune_old(int $readDays = 60, int $unreadDays = 180): int
+    {
+        global $db;
+        $db->execute(
+            'DELETE FROM tbl_mail_logs
+              WHERE notification_id IN (
+                  SELECT id FROM (
+                      SELECT id FROM tblnotifications
+                       WHERE (is_read = 1 AND created_at < DATE_SUB(NOW(), INTERVAL :read_days DAY))
+                          OR (is_read = 0 AND created_at < DATE_SUB(NOW(), INTERVAL :unread_days DAY))
+                  ) x
+              )',
+            [':read_days' => $readDays, ':unread_days' => $unreadDays]
+        );
+        $stmt = $db->prepare(
+            'DELETE FROM tblnotifications
+              WHERE (is_read = 1 AND created_at < DATE_SUB(NOW(), INTERVAL :read_days DAY))
+                 OR (is_read = 0 AND created_at < DATE_SUB(NOW(), INTERVAL :unread_days DAY))'
+        );
+        $stmt->execute([':read_days' => $readDays, ':unread_days' => $unreadDays]);
+        return $stmt->rowCount();
+    }
 }

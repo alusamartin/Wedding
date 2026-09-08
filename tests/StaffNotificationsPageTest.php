@@ -443,6 +443,58 @@ final class StaffNotificationsPageTest extends TestCase
     }
 
     /** Re-establish the staff session (after the client-session gate test). */
+    #[Group('integration')]
+    public function testPruneOldRemovesExpiredAndSparesFresh(): void
+    {
+        $this->requireHttp();
+
+        // Three probes for the wafula admin (not a real planner): expired-read,
+        // expired-unread, and a fresh control. Only the control must survive.
+        $db = self::$db;
+        $insert = $db->prepare(
+            'INSERT INTO tblnotifications (user_id, booking_id, message, link, is_read, created_at) '
+            . 'VALUES (:uid, 0, :msg, "dashboard.php", :read, :created)'
+        );
+        $cases = [
+            ['[page-test] prune expired read', 1, '-90 days'],
+            ['[page-test] prune expired unread', 0, '-200 days'],
+            ['[page-test] prune fresh control', 1, 'now'],
+        ];
+        $ids = [];
+        foreach ($cases as [$msg, $read, $age]) {
+            $insert->execute([
+                ':uid'     => self::$staffId,
+                ':msg'     => $msg,
+                ':read'    => $read,
+                ':created' => (new DateTimeImmutable($age))->format('Y-m-d H:i:s'),
+            ]);
+            $ids[$msg] = (int) $db->the_insert_id();
+        }
+
+        $pruned = Notification::prune_old(60, 180);
+
+        // The two expired probes are gone; the fresh control survives.
+        self::assertSame(null, $db->fetchOne('SELECT id FROM tblnotifications WHERE id = :id', [':id' => $ids['[page-test] prune expired read']]), 'expired read alert must be pruned');
+        self::assertSame(null, $db->fetchOne('SELECT id FROM tblnotifications WHERE id = :id', [':id' => $ids['[page-test] prune expired unread']]), 'expired unread alert must be pruned');
+        self::assertNotNull($db->fetchOne('SELECT id FROM tblnotifications WHERE id = :id', [':id' => $ids['[page-test] prune fresh control']]), 'fresh alerts must survive the pruner');
+        self::assertGreaterThanOrEqual(2, $pruned, 'prune_old must report the removed rows');
+
+        // Mail-log rows must travel with their notification.
+        $db->execute(
+            "INSERT INTO tbl_mail_logs (notification_id, user_id, booking_id, to_email, subject, body, status) "
+            . "VALUES (:nid, :uid, 0, 'probe@example.com', 'probe', 'probe body', 'sent')",
+            [':nid' => $ids['[page-test] prune fresh control'], ':uid' => self::$staffId]
+        );
+        $mailId = (int) $db->the_insert_id();
+        $db->execute('UPDATE tblnotifications SET is_read = 1, created_at = DATE_SUB(NOW(), INTERVAL 90 DAY) WHERE id = :id', [':id' => $ids['[page-test] prune fresh control']]);
+        Notification::prune_old(60, 180);
+        self::assertSame(null, $db->fetchOne('SELECT id FROM tbl_mail_logs WHERE id = :id', [':id' => $mailId]), 'the mail-log row must be pruned with its notification');
+
+        // Backfill cleanup for anything that survived.
+        $db->execute('DELETE FROM tblnotifications WHERE id = :id', [':id' => $ids['[page-test] prune fresh control']]);
+        $db->execute('DELETE FROM tblnotifications WHERE message LIKE "[page-test] prune %"');
+    }
+
     private static function loginStaff(): void
     {
         self::$jar = [];

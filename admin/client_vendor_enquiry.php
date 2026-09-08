@@ -81,7 +81,7 @@ if ($enquiry_id > 0) {
         Notification::create(
             $plannerId,
             $booking_id,
-            sprintf('%s enquired with %s (%s) for %s.', $couple !== '' ? $couple : 'A couple', $vendor->business_name, $what, $event_date !== '' ? format_date_kd($event_date) : 'an unset date'),
+            sprintf('%s enquired with %s (%s)%s.', $couple !== '' ? $couple : 'A couple', $vendor->business_name, $what, $event_date !== '' ? ' for ' . format_date_kd($event_date) : ''),
             'vendor_enquiries.php',
             'Vendor enquiry — ' . $vendor->business_name
         );
@@ -113,11 +113,11 @@ if ($enquiry_id > 0) {
             $vendorSmsNote = ''; // no planner to charge the SMS to
         } else {
             $smsText = sprintf(
-                'Habari %s! New wedding enquiry from %s (%s) for %s via Everafter Planner. Kindly confirm availability.',
+                'Habari %s! New wedding enquiry from %s (%s)%s via Everafter Planner. Kindly confirm availability.',
                 $vendor->business_name,
                 $couple !== '' ? $couple : 'A couple',
                 $what,
-                $event_date !== '' ? format_date_kd($event_date) : 'an unset date'
+                $event_date !== '' ? ' for ' . format_date_kd($event_date) : ''
             );
             $r = SMS::send($vendorPhone, $smsText, $plannerId, $booking_id);
             if (!empty($r['success'])) {

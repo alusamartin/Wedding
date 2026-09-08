@@ -245,7 +245,13 @@ final class Smoke
         );
     }
 
-    /** Restore seed state: the smoke deposit row + its notification + mail log. */
+    /**
+     * Restore seed state: the smoke deposit row + its notification + mail log.
+     *
+     * ALSO sweeps the residue the smoke walk itself creates (vendor enquiry,
+     * invite-stamp and reminder notifications for the planner) so repeated
+     * smoke runs never flood the staff bell again.
+     */
     private function dbCleanupDeposit(int $bookingId, float $amount): void
     {
         $db = $this->db();
@@ -262,6 +268,31 @@ final class Smoke
                 $db->execute('DELETE FROM tbl_mail_logs WHERE notification_id = :id', [':id' => (int) $notif->id]);
                 $db->execute('DELETE FROM tblnotifications WHERE id = :id', [':id' => (int) $notif->id]);
             }
+
+            // Residue sweep — page walks and POST legs on this booking produce
+            // these three alert shapes; nothing in the seed depends on them.
+            // (Derived-table wrapper satisfies MySQL's update-target rule.)
+            $db->execute(
+                "DELETE FROM tbl_mail_logs
+                  WHERE notification_id IN (
+                      SELECT id FROM (
+                          SELECT id FROM tblnotifications
+                           WHERE booking_id = :b AND user_id = :u
+                             AND (message LIKE 'Invites marked sent%'
+                                  OR message LIKE 'Manual RSVP reminders sent%'
+                                  OR message LIKE '%enquired with%')
+                      ) x
+                  )",
+                [':b' => $bookingId, ':u' => $organizer]
+            );
+            $db->execute(
+                "DELETE FROM tblnotifications
+                  WHERE booking_id = :b AND user_id = :u
+                    AND (message LIKE 'Invites marked sent%'
+                         OR message LIKE 'Manual RSVP reminders sent%'
+                         OR message LIKE '%enquired with%')",
+                [':b' => $bookingId, ':u' => $organizer]
+            );
         }
         $ledger = $this->dbDepositRow($bookingId, $amount);
         if ($ledger) {
