@@ -197,6 +197,12 @@ Two couple-facing features keep clients coming back between planner meetings:
   vendor's packages; sending records the enquiry (pending on the vendor
   ledger) and notifies the assigned planner so the couple never negotiates
   alone. Unknown vendors, foreign bookings and tokenless posts are refused.
+- **Vendor Enquiries ledger** (`admin/vendor_enquiries.php`, staff) — every
+  couple's enquiry across all vendors, pending rows first, with status
+  filters and tallies. Planners confirm deals (amount defaults to the
+  package price, 10% commission recorded), mark them completed after the
+  wedding, or cancel; every transition stamps who moved it into the notes
+  trail. Enquiry notifications deep-link here.
 
 ### 5. Access the system
 

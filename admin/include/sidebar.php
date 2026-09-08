@@ -119,6 +119,12 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="vendor_enquiries.php">
+                            <i class="mdi mdi-handshake-outline mr-3"></i>
+                            Vendor Enquiries
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="sms_center.php">
                             <i class="mdi mdi-message-text mr-3"></i>
                             SMS Center
