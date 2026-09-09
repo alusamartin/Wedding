@@ -69,6 +69,21 @@
                 'client_manage_account_details.php?booking_id=' . $booking_id . '&user_id=' . $user_id
             );
 
+            // Big-moment SMS: couples may not be logged in — text them the
+            // news (charged to the assigned planner's credits, best-effort;
+            // the bell alert above is the reliable channel).
+            $organizerId = (int) ($booking_detail->organizer_id ?? 0);
+            $coupleSms = SMS::send_courtesy(
+                (string) ($account_detail->phone ?? ''),
+                sprintf(
+                    'Habari%s! Your wedding date is CONFIRMED%s. Karibu Everafter Planner — your planner will call you soon.',
+                    $firstname !== '' ? ' ' . $firstname : '',
+                    !empty($booking_detail->wedding_date) ? ' for ' . format_date_kd((string) $booking_detail->wedding_date) : ''
+                ),
+                $organizerId,
+                $booking_id
+            );
+
            redirect_to("client.php");
 
             $session->message("

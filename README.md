@@ -199,6 +199,22 @@ or gateway failure retries naturally on the next run. Without an Africa's
 Talking API key the messages are logged to the outbox in dev mode without
 delivery, exactly like the SMS center.
 
+### Big-moment SMS to couples
+
+Two moments matter enough to reach a couple **when they are not logged in**:
+
+- a booking is **confirmed** (staff saves the client form with Confirm) —
+  "Your wedding date is CONFIRMED for Sat 19 Dec 2026…"
+- a vendor enquiry is **confirmed** or **cancelled** on the staff ledger —
+  the deal amount is quoted in the confirmation text.
+
+Each text is sent through `SMS::send_courtesy()` (best-effort: a missing
+number, empty credits or a gateway failure never blocks the action — the
+in-app bell notification always fires first and is the reliable channel),
+charged to the booking's **assigned planner** credits, and logged in
+`tblsms_logs` like every other send. Without an Africa's Talking API key
+the messages are logged as `sent` in dev mode without delivery.
+
 Planners can also remind guests **manually** from the RSVP dashboard: tick
 pending guests and either *Send SMS to selected* (staff-only, CSRF-protected
 endpoint that re-checks every guest belongs to the booking and skips

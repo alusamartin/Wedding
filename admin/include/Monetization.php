@@ -233,6 +233,32 @@ class SMS
         return $response;
     }
 
+    /**
+     * Best-effort courtesy SMS for big moments (booking confirmed, vendor
+     * confirmed): the couple should hear the news even when logged out, but a
+     * missing number, empty planner credits or a gateway failure must never
+     * block or fail the request — the in-app bell notification is the
+     * reliable channel and is sent by the caller regardless.
+     *
+     * Charges the given staff user's credits (the couple never pays to
+     * receive good news).
+     *
+     * @return bool true when the SMS actually reported sent
+     */
+    public static function send_courtesy(string $phone, string $message, int $chargedUserId, int $bookingId): bool
+    {
+        $phone = trim($phone);
+        if ($phone === '' || $chargedUserId <= 0) {
+            return false;
+        }
+        try {
+            $r = self::send($phone, $message, $chargedUserId, $bookingId);
+            return !empty($r['success']);
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
     public static function send_bulk(mixed $booking_id, string $message, int $user_id): array
     {
         global $db;

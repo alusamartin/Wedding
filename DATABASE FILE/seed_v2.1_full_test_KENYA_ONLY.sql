@@ -408,7 +408,7 @@ INSERT INTO `tblvendor_bookings` (`id`,`vendor_id`,`booking_id`,`package_id`,`ev
 DELETE FROM `tblsms_credits` WHERE `user_id` IN (5,7,8);
 INSERT INTO `tblsms_credits` (`id`,`user_id`,`credits`,`total_purchased`,`total_used`) VALUES
 (200, 5, 500, 500, 0),
-(201, 7, 0, 100, 100),
+(201, 7, 500, 600, 100),
 (202, 8, 1000, 1000, 0);
 
 -- --------------------------------------------------------------------------

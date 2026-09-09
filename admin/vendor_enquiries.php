@@ -129,6 +129,30 @@
                 $status_copy[$to] ?? ($row->business_name . ' enquiry updated to ' . $to . '.'),
                 'client_vendors.php?booking_id=' . (int) $row->booking_id . '&user_id=' . $coupleUid
             );
+
+            // Big-moment SMS on the two moments couples care most about:
+            // the vendor is locked in, or the deal fell through. Best-effort
+            // (charged to the assigned planner's credits); the bell alert
+            // above already fired either way.
+            if ($to === 'confirmed' || $to === 'cancelled') {
+                global $db;
+                $cphone = (string) $db->fetchValue(
+                    'SELECT phone FROM tblaccounts_detail WHERE user_id = :u LIMIT 1',
+                    [':u' => $coupleUid]
+                );
+                $organizerId = (int) $db->fetchValue(
+                    'SELECT organizer_id FROM tblweddingbook WHERE booking_id = :b LIMIT 1',
+                    [':b' => (int) $row->booking_id]
+                );
+                if ($to === 'confirmed') {
+                    $smsText = 'Habari! ' . $row->business_name . ' is CONFIRMED for your wedding'
+                        . (!empty($row->wedding_date) ? ' (' . format_date_kd((string) $row->wedding_date) . ')' : '')
+                        . ' — deal locked at ' . format_ksh((float) ($amount ?? 0)) . '. Your planner finalized the details.';
+                } else {
+                    $smsText = 'Habari! Your ' . $row->business_name . ' enquiry was cancelled. Your planner will help you find a great alternative.';
+                }
+                SMS::send_courtesy($cphone, $smsText, $organizerId, (int) $row->booking_id);
+            }
         }
 
         redirect_to("vendor_enquiries.php" . ($status_filter !== '' ? "?status={$status_filter}" : ''));

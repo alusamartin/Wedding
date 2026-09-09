@@ -38,7 +38,10 @@ final class CoupleNotificationLoopTest extends TestCase
     private static $serverProc = null;
     /** @var int[] probe notification ids created by this run */
     private static array $probeNotifIds = [];
+    /** @var int[] probe SMS log ids created by this run */
+    private static array $probeSmsIds = [];
     private static ?string $originalStatus = null;
+    private static ?int $originalCredits = null;
 
     public static function setUpBeforeClass(): void
     {
@@ -57,6 +60,13 @@ final class CoupleNotificationLoopTest extends TestCase
                 [':u' => self::COUPLE_ID]
             );
             self::$originalStatus = $row ? (string) $row->status : null;
+            $credits = self::$db->fetchValue('SELECT credits FROM tblsms_credits WHERE user_id = 7 LIMIT 1');
+            self::$originalCredits = $credits === null ? null : (int) $credits;
+            // The courtesy SMS charges planner 7 — keep a healthy balance so
+            // the flow is exercised (restored in teardown).
+            if (self::$originalCredits !== null && self::$originalCredits < 50) {
+                self::$db->execute('UPDATE tblsms_credits SET credits = 500 WHERE user_id = 7');
+            }
         } catch (Throwable $e) {
             self::$db = null;
         }
@@ -79,6 +89,30 @@ final class CoupleNotificationLoopTest extends TestCase
             }
         }
         self::$probeNotifIds = [];
+
+        if (self::$db !== null && self::$probeSmsIds !== []) {
+            try {
+                self::$db->execute(
+                    'DELETE FROM tblsms_logs WHERE id IN (' . implode(',', self::$probeSmsIds) . ')'
+                );
+            } catch (Throwable $e) {
+                // leave state untouched on failure
+            }
+        }
+        self::$probeSmsIds = [];
+
+        // Restore planner 7's credit balance.
+        if (self::$db !== null && self::$originalCredits !== null) {
+            try {
+                self::$db->execute(
+                    'UPDATE tblsms_credits SET credits = :c WHERE user_id = 7',
+                    [':c' => self::$originalCredits]
+                );
+            } catch (Throwable $e) {
+                // ignore
+            }
+        }
+        self::$originalCredits = null;
 
         if (self::$serverProc !== null && is_resource(self::$serverProc)) {
             proc_terminate(self::$serverProc);
@@ -136,6 +170,19 @@ final class CoupleNotificationLoopTest extends TestCase
         self::assertNotNull($notif, 'confirm must create a couple-facing notification');
         self::assertStringContainsString('confirmed', strtolower((string) $notif->message));
         self::assertStringContainsString('Sat 19 Sep 2026', (string) $notif->message, 'the human wedding date must appear in the alert');
+
+        // Big-moment SMS: the confirm must also TEXT the couple (charged to
+        // the assigned planner, dev-mode gateway logs 'sent' hermetically).
+        $sms = self::$db->fetchOne(
+            "SELECT id, phone, message, status FROM tblsms_logs
+              WHERE booking_id = :b AND message LIKE '%CONFIRMED%' AND phone = '254733123456'
+              ORDER BY id DESC LIMIT 1",
+            [':b' => self::BOOKING_ID]
+        );
+        self::assertNotNull($sms, 'confirm must send the couple an SMS (seed phone 0733123456 normalized)');
+        self::assertSame('sent', (string) $sms->status, 'dev-mode gateway must report sent without network');
+        self::assertStringContainsString('Sat 19 Sep 2026', (string) $sms->message);
+        self::$probeSmsIds[] = (int) $sms->id;
     }
 
     #[Group('integration')]

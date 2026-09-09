@@ -33,6 +33,8 @@ final class VendorEnquiriesLedgerTest extends TestCase
     private static array $probeIds = [];
     /** @var int[] probe notification ids created by this run */
     private static array $probeNotifIds = [];
+    /** @var int[] probe SMS log ids created by this run */
+    private static array $probeSmsIds = [];
 
     public static function setUpBeforeClass(): void
     {
@@ -81,6 +83,16 @@ final class VendorEnquiriesLedgerTest extends TestCase
             }
         }
         self::$probeNotifIds = [];
+        if (self::$db !== null && self::$probeSmsIds !== []) {
+            try {
+                self::$db->execute(
+                    'DELETE FROM tblsms_logs WHERE id IN (' . implode(',', self::$probeSmsIds) . ')'
+                );
+            } catch (Throwable $e) {
+                // leave state untouched on failure
+            }
+        }
+        self::$probeSmsIds = [];
         // Every transition (confirm/complete/cancel/reopen) now alerts the
         // couple — sweep any vendor-status alert the probes produced on this
         // booking. Probe enquiries are the only source of Safari Transport
@@ -195,6 +207,21 @@ final class VendorEnquiriesLedgerTest extends TestCase
         self::assertNotNull($coupleNotif, 'confirm must create a couple-facing notification');
         self::assertStringContainsString('confirmed for your wedding', (string) $coupleNotif->message);
         self::$probeNotifIds[] = (int) $coupleNotif->id;
+
+        // Big-moment SMS: the couple also gets TEXTED that their vendor is
+        // locked in (charged to the booking's organizer; dev-mode gateway
+        // reports sent hermetically). Booking 200's couple phone is
+        // 0712345678 -> normalized 254712345678.
+        $coupleSms = self::$db->fetchOne(
+            "SELECT id, phone, message, status FROM tblsms_logs
+              WHERE booking_id = 200 AND phone = '254712345678' AND message LIKE '%CONFIRMED for your wedding%'
+              ORDER BY id DESC LIMIT 1",
+            []
+        );
+        self::assertNotNull($coupleSms, 'vendor confirm must SMS the couple');
+        self::assertSame('sent', (string) $coupleSms->status);
+        self::assertStringContainsString('KSh 40,000', (string) $coupleSms->message, 'the SMS must carry the locked deal amount');
+        self::$probeSmsIds[] = (int) $coupleSms->id;
 
         // Complete.
         $done = self::http('POST', '/admin/vendor_enquiries.php', [
