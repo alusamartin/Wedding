@@ -331,6 +331,14 @@ final class CoupleGuestRsvpTest extends TestCase
             . 'VALUES (:b, "Probe Dash Pending", "Dash", "regular", :t, "pending", NOW(), 1)'
         )->execute([':b' => self::BOOKING_ID, ':t' => bin2hex(random_bytes(16))]);
         self::$probeGuestIds[] = (int) self::$db->the_insert_id();
+        // A pending guest with ZERO reminders must render the "not yet" branch —
+        // seeded explicitly because demo residue on real seed rows can leave no
+        // un-reminded pending guest in the list.
+        self::$db->prepare(
+            'INSERT INTO tblguest (booking_id, fullname, guestname, relationship, rsvp_token, rsvp_status) '
+            . 'VALUES (:b, "Probe Dash Fresh", "Dash", "regular", :t, "pending")'
+        )->execute([':b' => self::BOOKING_ID, ':t' => bin2hex(random_bytes(16))]);
+        self::$probeGuestIds[] = (int) self::$db->the_insert_id();
 
         $body = self::http('GET', '/admin/rsvp_dashboard.php?booking_id=' . self::BOOKING_ID . '&user_id=200')['body'];
         self::assertSame(200, 200);

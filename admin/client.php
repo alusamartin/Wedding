@@ -56,22 +56,33 @@
                 </div>
             </div>
         </td>';
-        $html .= '<td>
-            <strong>' . htmlspecialchars($bookWedding->bride ?: 'TBD') . '</strong>
-            <br><span class="text-muted">&</span>
-            <br><strong>' . htmlspecialchars($bookWedding->groom ?: 'TBD') . '</strong>
-        </td>';
+        // Couple names: fall back to the account holder, then a friendly
+        // "to come" — never a bare TBD. A couple that has just signed up
+        // (like the public hero form) has no bride/groom fields yet.
+        $acct_name = trim(($bookWedding->firstname ?? '') . ' ' . ($bookWedding->lastname ?? ''));
+        if ($bookWedding->bride && $bookWedding->groom) {
+            $couple_html = '<strong>' . htmlspecialchars($bookWedding->bride) . '</strong>'
+                . '<br><span class="text-muted">&</span>'
+                . '<br><strong>' . htmlspecialchars($bookWedding->groom) . '</strong>';
+        } elseif ($bookWedding->bride || $bookWedding->groom) {
+            $couple_html = '<strong>' . htmlspecialchars($bookWedding->bride ?: $bookWedding->groom) . '</strong>'
+                . '<br><span class="text-muted">Partner details to come</span>';
+        } else {
+            $couple_html = '<strong>' . htmlspecialchars($acct_name !== '' ? $acct_name : 'Couple') . '</strong>'
+                . '<br><span class="text-muted">Wedding details to come</span>';
+        }
+        $html .= '<td>' . $couple_html . '</td>';
         $html .= '<td>
             <span class="badge badge-info">' . htmlspecialchars($package_name) . '</span>
             <br><small class="text-muted">' . format_ksh($package_price) . '</small>
         </td>';
         $html .= '<td>
             <i class="mdi mdi-phone text-success"></i> ' . htmlspecialchars($bookWedding->phone) . '
-            <br><i class="mdi mdi-map-marker text-muted"></i> ' . htmlspecialchars($bookWedding->city ?: 'TBD') . '
+            <br><i class="mdi mdi-map-marker text-muted"></i> ' . htmlspecialchars($bookWedding->city ?: '—') . '
         </td>';
         $html .= '<td>
-            <strong>' . ($bookWedding->wedding_date ? format_date_kd($bookWedding->wedding_date) : 'TBD') . '</strong>
-            <br><small class="text-muted">' . ($bookWedding->wedding_date ? date('l', strtotime($bookWedding->wedding_date)) : '') . '</small>
+            <strong>' . ($bookWedding->wedding_date ? format_date_kd($bookWedding->wedding_date) : 'Date to be set') . '</strong>
+            <br><small class="text-muted">' . ($bookWedding->wedding_date ? date('l', strtotime($bookWedding->wedding_date)) : 'Pick a date with your planner') . '</small>
         </td>';
         $html .= '<td>
             <div class="mb-1"><i class="mdi mdi-account-multiple text-primary"></i> ' . $guest_count . ' guests</div>

@@ -11,6 +11,9 @@
 # Logs
 *.log
 
+# Regenerable backups from scripts/shift_seed_dates.php
+DATABASE FILE/pre_date_shift_backup.sql
+
 # OS junk
 Thumbs.db
 .DS_Store

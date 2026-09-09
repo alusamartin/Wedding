@@ -24,7 +24,12 @@ final class HumanDatesTest extends TestCase
     private const COUPLE_PASS  = 'Test@1234';
     private const STAFF_EMAIL  = 'wafula@wpms.co.ke';
     private const STAFF_PASS   = 'Admin@2024!';
-    private const BOOKING_ID   = 200; // seeded rich booking (5 ceremonies, wedding 2025-12-20)
+    private const BOOKING_ID   = 200; // seeded rich booking (5 ceremonies; date read live from the DB)
+
+    /** Booking 200's wedding date (Y-m-d), read from the DB in setUpBeforeClass so
+     *  assertions follow the seed data when the date-shift script moves it forward —
+     *  never a pinned calendar year that rots as the demo data ages. */
+    private static ?string $weddingDate = null;
 
     private static ?Database $db = null;
     private static ?string $base = null;
@@ -49,6 +54,11 @@ final class HumanDatesTest extends TestCase
             }
             global $db;
             $db = self::$db = new Database();
+            $wed = $db->fetchOne(
+                'SELECT wedding_date FROM tblweddingbook WHERE booking_id = :b',
+                [':b' => self::BOOKING_ID]
+            );
+            self::$weddingDate = $wed ? date('Y-m-d', strtotime((string) $wed->wedding_date)) : null;
         } catch (Throwable $e) {
             self::$db = null;
         }
@@ -165,7 +175,7 @@ final class HumanDatesTest extends TestCase
         self::loginCouple();
 
         $body = self::http('GET', '/admin/client_manage_account_details.php?booking_id=' . self::BOOKING_ID . '&user_id=200')['body'];
-        self::assertStringContainsString('defaultDate: "2025-12-20"', $body, 'couple calendar must open on the wedding month');
+        self::assertStringContainsString('defaultDate: "' . self::$weddingDate . '"', $body, 'couple calendar must open on the wedding month');
         self::assertStringContainsString('Jump to Wedding Day', $body);
     }
 
@@ -174,15 +184,24 @@ final class HumanDatesTest extends TestCase
     {
         $this->requireHttp();
 
-        // Couple view: booking 200 is past-dated (2025-12-20) and confirmed, so
-        // the banner must say so — never a raw date-only header or a wrong
-        // "pending" state.
+        // Couple view: booking 200 is confirmed. The banner branch follows the
+        // LIVE seed date (future => countdown, past => "Happily married"), the
+        // date is asserted in its human form, and the opposite branch is proven
+        // with a transient row swap — no pinned calendar year anywhere.
+        $wd = self::$weddingDate;
+        self::assertNotEmpty($wd, 'booking 200 must have a wedding date');
         self::loginCouple();
         $body = self::http('GET', '/admin/client_manage_account_details.php?booking_id=' . self::BOOKING_ID . '&user_id=200')['body'];
         self::assertStringContainsString('countdown-banner', $body, 'overview must render the countdown banner');
-        self::assertStringContainsString('Happily married', $body, 'past weddings show the married headline, not a countdown');
-        self::assertStringContainsString('Saturday, 20 December 2025', $body, 'wedding date must be human-formatted in the banner');
+        self::assertStringContainsString(date('l, j F Y', strtotime($wd)), $body, 'wedding date must be human-formatted in the banner');
         self::assertStringContainsString('cd-status-confirmed', $body, 'confirmed account must show the Confirmed pill');
+        self::assertStringContainsString('Your date is locked in', $body);
+        $weddingIsFuture = strtotime($wd) > time();
+        if ($weddingIsFuture) {
+            self::assertMatchesRegularExpression('/\d+ days? to go/', $body, 'future weddings show a live days-to-go countdown');
+        } else {
+            self::assertStringContainsString('Happily married', $body, 'past weddings show the married headline, not a countdown');
+        }
         self::assertStringNotContainsString('Pending Confirmation', $body, 'confirmed account must never show the pending pill');
         self::assertStringContainsString('Your date is locked in', $body);
 
@@ -192,6 +211,21 @@ final class HumanDatesTest extends TestCase
         self::assertMatchesRegularExpression('/\d+ days? to go/', $future, 'future weddings show a live days-to-go countdown');
         self::assertStringContainsString('Pending Confirmation', $future, 'booking without a confirmed account row shows pending');
         self::assertStringContainsString('Awaiting confirmation', $future);
+
+        // Opposite banner branch via a transient past/future date, restored after.
+        $swapTo = $weddingIsFuture ? '2010-01-02' : date('Y-m-d', strtotime('+90 days'));
+        self::swapWeddingDate($swapTo);
+        try {
+            $flipped = self::http('GET', '/admin/client_manage_account_details.php?booking_id=' . self::BOOKING_ID . '&user_id=200')['body'];
+            if ($weddingIsFuture) {
+                self::assertStringContainsString('Happily married', $flipped, 'past weddings show the married headline, not a countdown');
+                self::assertStringContainsString('Saturday, 2 January 2010', $flipped, 'wedding date must be human-formatted in the banner');
+            } else {
+                self::assertMatchesRegularExpression('/\d+ days? to go/', $flipped, 'future weddings show a live days-to-go countdown');
+            }
+        } finally {
+            self::swapWeddingDate($wd);
+        }
     }
 
     #[Group('integration')]
@@ -201,7 +235,7 @@ final class HumanDatesTest extends TestCase
         self::loginStaff();
 
         $body = self::http('GET', '/admin/task_calendar.php?booking_id=' . self::BOOKING_ID . '&user_id=200')['body'];
-        self::assertStringContainsString('defaultDate: "2025-12-20"', $body, 'staff calendar must open on the couple\'s wedding month');
+        self::assertStringContainsString('defaultDate: "' . self::$weddingDate . '"', $body, 'staff calendar must open on the couple\'s wedding month');
         self::assertStringContainsString('Jump to Wedding Day', $body);
     }
 
@@ -212,9 +246,9 @@ final class HumanDatesTest extends TestCase
         self::loginStaff();
 
         $body = self::http('GET', '/admin/client.php')['body'];
-        // Brian & Rebecca's wedding 2025-12-20 must render as the human form,
-        // and the raw ISO form must not appear as a standalone cell value.
-        self::assertStringContainsString('Sat 20 Dec 2025', $body);
+        // Booking 200's wedding must render in the human form, and the raw
+        // ISO form must not appear as a standalone cell value.
+        self::assertStringContainsString(format_date_kd(self::$weddingDate), $body);
         self::assertDoesNotMatchRegularExpression('/>\d{4}-\d{2}-\d{2}</', $body, 'table cells must not render ISO dates');
     }
 
@@ -235,6 +269,14 @@ final class HumanDatesTest extends TestCase
             . 'VALUES (:b, 200, :e, 111.11, 111.11, 0, NULL, "2025-12-18 14:30:00", "2025-12-18 14:30:00")'
         )->execute([':b' => self::BOOKING_ID, ':e' => (int) $event->id]);
         self::$probeLedgerIds[] = (int) $db->the_insert_id();
+    }
+
+    /** Temporarily move booking 200's wedding date (banner past/future branches). */
+    private static function swapWeddingDate(string $date): void
+    {
+        global $db;
+        $db->prepare('UPDATE tblweddingbook SET wedding_date = :d WHERE booking_id = :b')
+           ->execute([':d' => $date, ':b' => self::BOOKING_ID]);
     }
 
     private static function firstCeremony(): ?object

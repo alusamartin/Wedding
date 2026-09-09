@@ -164,11 +164,25 @@ final class CoupleChecklistWebsiteTest extends TestCase
         $this->requireDb();
         self::loginCouple();
 
-        // Booking 200's wedding (2025-12-20) is in the past — an all-open
-        // checklist must render WITHOUT any overdue badge.
-        $page = self::http('GET', '/admin/client_checklist.php?booking_id=' . self::BOOKING_ID . '&user_id=200');
-        self::assertSame(200, $page['status']);
-        self::assertStringNotContainsString('check-item  is-overdue', $page['body'], 'past weddings must never show overdue nagging');
+        // Make the wedding transiently PAST (restore after) — the seed data is
+        // now future-dated by scripts/shift_seed_dates.php, so the test must
+        // create its own past state instead of relying on stale seed dates.
+        global $db;
+        $orig = $db->fetchOne('SELECT wedding_date FROM tblweddingbook WHERE booking_id = :b', [':b' => self::BOOKING_ID]);
+        $origDate = $orig ? date('Y-m-d', strtotime((string) $orig->wedding_date)) : null;
+        self::assertNotEmpty($origDate, 'booking 200 must have a wedding date');
+        $db->prepare('UPDATE tblweddingbook SET wedding_date = :d WHERE booking_id = :b')
+           ->execute([':d' => '2010-01-02', ':b' => self::BOOKING_ID]);
+        try {
+            // A past wedding with an all-open checklist must render WITHOUT
+            // any overdue badge.
+            $page = self::http('GET', '/admin/client_checklist.php?booking_id=' . self::BOOKING_ID . '&user_id=200');
+            self::assertSame(200, $page['status']);
+            self::assertStringNotContainsString('check-item  is-overdue', $page['body'], 'past weddings must never show overdue nagging');
+        } finally {
+            $db->prepare('UPDATE tblweddingbook SET wedding_date = :d WHERE booking_id = :b')
+               ->execute([':d' => $origDate, ':b' => self::BOOKING_ID]);
+        }
     }
 
     // ------------------------------------------------------------------

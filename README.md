@@ -59,6 +59,15 @@ mysql -u root -p dbwedding < kenyan_schema.sql
 #     data + v2.1-only tables (subscriptions, vendors, SMS, session audits)
 mysql -u root -p dbwedding < "DATABASE FILE/seed_v2.1_full_test_KENYA_ONLY.sql"
 
+# (c2) Freshen demo dates — idempotent; shifts every seeded wedding forward in
+#      whole 52-week steps until it is in the future, rebases payment history
+#      to wedding−30d, and recomputes the calendar widget row. Without this,
+#      a fresh import shows past weddings: countdowns, RSVP reminders and
+#      calendars all demo wrong. Safe to re-run any time (k=0 when already
+#      future). A pre-shift backup is written to
+#      DATABASE FILE/pre_date_shift_backup.sql on every run.
+php scripts/shift_seed_dates.php
+
 # (d) Optional but recommended — idempotent v2.1 hardening helpers
 mysql -u root -p dbwedding < migrations/v2.1_phase1_hardening.sql
 ```
@@ -120,6 +129,28 @@ Cron example (every 15 minutes):
 
 ```cron
 */15 * * * * php /path/to/Wedding/scripts/mail_retry.php --quiet
+```
+
+### Notification retention (prune old alerts)
+
+Every deposit alert, vendor enquiry and reminder lands in `tblnotifications`
+and the bell counts the unread ones — without retention a busy demo bell
+drowns in stale alerts. `scripts/notify_prune.php` deletes read notifications
+older than 60 days and unread ones older than 180 (giving the owner time to
+see them), removing any matching orphaned `tbl_mail_logs` rows in the same
+pass. Single-flight lock, `--dry-run`, tunable windows; safe to leave in the
+crontab across environments.
+
+```bash
+php scripts/notify_prune.php --dry-run                 # preview counts
+php scripts/notify_prune.php                           # defaults: 60d read / 180d unread
+php scripts/notify_prune.php --read-days=30 --unread-days=90
+```
+
+Cron example (daily at 04:30):
+
+```cron
+30 4 * * * php /path/to/Wedding/scripts/notify_prune.php --quiet
 ```
 
 ### RSVP reminders (SMS to non-responders)
