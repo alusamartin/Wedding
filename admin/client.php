@@ -46,6 +46,29 @@
         $status_class = $is_confirmed ? 'status-confirmed' : 'status-pending';
         $status_label = $is_confirmed ? 'Confirmed' : 'Pending';
 
+        // Payment progress at a glance — which couples are on pace, and which
+        // need a nudge. Same 30-day vendor-settlement norm as the couple's
+        // overview nudge: inside 30 days with a balance, the bar turns red.
+        $paid_pct = $package_price > 0 ? (int) floor(min(100.0, $budget / $package_price * 100)) : 0;
+        $balance  = max(0.0, $package_price - $budget);
+        $pay_urgent = false;
+        $pace_note  = '';
+        if ($package_price > 0 && $balance > 0 && !empty($bookWedding->wedding_date)
+            && ($wts = strtotime((string) $bookWedding->wedding_date)) !== false) {
+            $ddays = (int) round((strtotime(date('Y-m-d', $wts)) - strtotime(date('Y-m-d'))) / 86400);
+            if ($ddays > 60) {
+                $months    = max(1, (int) ceil(($ddays - 30) / 30));
+                $pace_note = 'pace ~' . format_ksh($balance / $months) . '/mo';
+            } elseif ($ddays > 30) {
+                $pace_note = 'settle by ' . date('j M', strtotime('+' . ($ddays - 30) . ' days'));
+            } elseif ($ddays >= 0) {
+                $pay_urgent = true;
+                $pace_note  = $ddays === 0 ? 'due today' : 'due within ' . $ddays . 'd';
+            } else {
+                $pace_note = 'wedding passed';
+            }
+        }
+
         $html = '<tr>';
         $html .= '<td>
             <div class="d-flex align-items-center">
@@ -85,9 +108,21 @@
             <br><small class="text-muted">' . ($bookWedding->wedding_date ? date('l', strtotime($bookWedding->wedding_date)) : 'Pick a date with your planner') . '</small>
         </td>';
         $html .= '<td>
-            <div class="mb-1"><i class="mdi mdi-account-multiple text-primary"></i> ' . $guest_count . ' guests</div>
-            <div><i class="mdi mdi-cash text-success"></i> ' . format_ksh($budget) . ' paid</div>
-        </td>';
+            <div class="mb-1"><i class="mdi mdi-account-multiple text-primary"></i> ' . $guest_count . ' guests</div>';
+        if ($package_price > 0) {
+            $fill_cls = $balance <= 0 ? ' pay-fill--paid' : ($pay_urgent ? ' pay-fill--urgent' : '');
+            $meta     = $balance <= 0
+                ? '<span class="pay-full">Fully paid</span>'
+                : $paid_pct . '% · ' . format_ksh($balance) . ' left' . ($pace_note !== '' ? ' · ' . htmlspecialchars($pace_note) : '');
+            $html .= '<div class="pay-cell">
+                <div class="pay-line"><i class="mdi mdi-cash text-success"></i> ' . format_ksh($budget) . ' <span class="text-muted">of ' . format_ksh($package_price) . '</span></div>
+                <div class="pay-bar"><div class="pay-fill' . $fill_cls . '" style="width:' . $paid_pct . '%"></div></div>
+                <div class="pay-meta' . ($pay_urgent && $balance > 0 ? ' pay-meta--urgent' : '') . '">' . $meta . '</div>
+            </div>';
+        } else {
+            $html .= '<div><i class="mdi mdi-cash text-success"></i> ' . format_ksh($budget) . ' paid</div>';
+        }
+        $html .= '</td>';
         $html .= '<td><span class="status-badge ' . $status_class . '">' . $status_label . '</span></td>';
         $html .= '<td>
             <div class="btn-group btn-group-sm">';
@@ -241,6 +276,15 @@
             background: #f8d7da;
             color: #721c24;
         }
+        .pay-cell { min-width: 150px; }
+        .pay-line { font-size: 12.5px; }
+        .pay-bar { height: 6px; background: #E2E8F0; border-radius: 999px; overflow: hidden; margin: 4px 0 3px; }
+        .pay-fill { height: 100%; background: #059669; border-radius: 999px; }
+        .pay-fill--paid { background: #059669; }
+        .pay-fill--urgent { background: #DC2626; }
+        .pay-meta { font-size: 11px; color: #64748B; }
+        .pay-meta--urgent { color: #B91C1C; font-weight: 600; }
+        .pay-full { color: #059669; font-weight: 600; }
         .btn-group-sm .btn {
             padding: 4px 8px;
             font-size: 11px;

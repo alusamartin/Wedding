@@ -365,6 +365,77 @@ final class HumanDatesTest extends TestCase
         self::assertDoesNotMatchRegularExpression('/>\d{4}-\d{2}-\d{2}</', $body, 'table cells must not render ISO dates');
     }
 
+    #[Group('integration')]
+    public function testStaffClientTableShowsPaymentProgress(): void
+    {
+        $this->requireHttp();
+        self::loginStaff();
+
+        $body = self::http('GET', '/admin/client.php')['body'];
+
+        // Booking 200's progress cell: figures derived from the live DB (seed:
+        // 245,000 of a 250,000 package → 98%), never pinned calendar math.
+        // SUM(payment) only — payment already includes the cash/credit method
+        // amounts (adding them again double-counts, exactly the bug the
+        // M-Pesa cash-neutrality guard exists for).
+        $paid  = (float) self::$db->fetchValue(
+            'SELECT COALESCE(SUM(payment), 0) FROM tbl_liquidation WHERE booking_id = 200'
+        );
+        $price = (float) self::$db->fetchValue(
+            'SELECT c.price FROM tblweddingbook b JOIN tblweddingcategories c ON c.id = b.wedding_type WHERE b.booking_id = 200'
+        );
+        self::assertGreaterThan(0, $price, 'booking 200 must have a priced package');
+        $pct     = (int) floor(min(100.0, $paid / $price * 100));
+        $balance = max(0.0, $price - $paid);
+        self::assertStringContainsString('of KSh ' . number_format($price), $body, 'the row must show paid against package price');
+        self::assertStringContainsString($pct . '% · KSh ' . number_format($balance) . ' left', $body, 'the row must show percent + balance');
+        self::assertMatchesRegularExpression('/width:' . $pct . '%/', $body, 'the progress bar width must match the paid percentage');
+
+        // Deadline note on 200's row: pace line far out, urgency only near the
+        // date — asserted on 200's OWN row fragment (other bookings, like
+        // 203's ten-day-out wedding, may legitimately be red). The row's <tr>
+        // is the last one before the booking's first link marker; a lazy
+        // regex from the first <tr> would swallow other rows instead.
+        $marker = strpos($body, 'booking_id=200');
+        if ($marker !== false) {
+            $rowStart = strrpos(substr($body, 0, $marker), '<tr>');
+            $rowEnd   = strpos($body, '</tr>', $marker);
+            $rowHtml  = ($rowStart !== false && $rowEnd !== false)
+                ? substr($body, $rowStart, $rowEnd - $rowStart + 5)
+                : '';
+            self::assertStringContainsString('KSh ' . number_format($price), $rowHtml, 'the extracted fragment must be 200\'s row');
+            $days = (int) round((strtotime(self::$weddingDate) - strtotime(date('Y-m-d'))) / 86400);
+            if ($days > 60) {
+                self::assertStringContainsString('/mo', $rowHtml, 'far-out bookings show a monthly pace');
+                self::assertStringNotContainsString('pay-meta--urgent', $rowHtml, 'no red far out');
+            } elseif ($days <= 30 && $days >= 0) {
+                self::assertStringContainsString('pay-meta--urgent', $rowHtml, 'inside 30 days the row shows the urgent accent');
+            }
+        } else {
+            self::fail('booking 200 row not found in the staff client table');
+        }
+
+        // A fully paid booking must show the calm Fully-paid label; the raw
+        // percent form must never render for it. Proven with a transient probe
+        // row on booking 215 (unpriced package → no progress cell at all), so
+        // instead flip booking 200 to fully paid briefly.
+        global $db;
+        $db->prepare(
+            'INSERT INTO tbl_liquidation (booking_id, user_id, event_id, payment, cash, credit, mpesa_code, date_issue, date_modified) '
+            . 'VALUES (200, 200, :e, 5000.00, 0, 0, "QDLPROBE02", NOW(), NOW())'
+        )->execute([':e' => (int) self::firstCeremony()->id]);
+        self::$probeLedgerIds[] = (int) $db->the_insert_id();
+        try {
+            $full = self::http('GET', '/admin/client.php')['body'];
+            self::assertStringContainsString('Fully paid', $full, 'a closed balance must show the Fully-paid label');
+        } finally {
+            self::$db->execute(
+                'DELETE FROM tbl_liquidation WHERE mpesa_code = :c AND booking_id = 200',
+                [':c' => 'QDLPROBE02']
+            );
+        }
+    }
+
     // ------------------------------------------------------------------
     // Fixtures
     // ------------------------------------------------------------------
