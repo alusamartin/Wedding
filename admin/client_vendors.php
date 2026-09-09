@@ -59,6 +59,22 @@
         $packages_by_vendor[$v->id] = Vendor::packages_for((int) $v->id);
     }
 
+    // This couple's enquiries with their live status — the loop-closer so
+    // couples aren't sending enquiries into a void.
+    global $db;
+    $myEnquiries = $db->prepare(
+        'SELECT vb.id, vb.status, vb.event_date, vb.amount, vb.notes, vb.created_at,
+                v.business_name, v.category,
+                p.title AS package_title
+           FROM tblvendor_bookings vb
+           JOIN tblvendors v ON v.id = vb.vendor_id
+           LEFT JOIN tblvendor_packages p ON p.id = vb.package_id
+          WHERE vb.booking_id = :b
+          ORDER BY vb.status = \'pending\' DESC, vb.created_at DESC, vb.id DESC'
+    );
+    $myEnquiries->execute([':b' => $booking_id]);
+    $myEnquiries = $myEnquiries->fetchAll(PDO::FETCH_OBJ);
+
     function vendor_category_icon(string $category): string
     {
         $icons = [
@@ -142,6 +158,41 @@
         </form>
         <?php endif; ?>
     </div>
+
+    <!-- My enquiries: status of everything this couple has sent -->
+    <?php if ($myEnquiries !== []): ?>
+    <div class="card mb-4" style="border: none; border-radius: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08);">
+        <div class="card-body p-3">
+            <h6 class="mb-3" style="font-weight: 700;"><i class="mdi mdi-message-text-clock mr-1" style="color:#065F46;"></i> My enquiries (<?= count($myEnquiries); ?>)</h6>
+            <?php
+            $enq_badges = [
+                'pending'   => ['badge-warning', 'clock-outline', 'Waiting on the vendor — your planner is following up'],
+                'confirmed' => ['badge-success', 'check-decagram', 'Booked! Deal confirmed by your planner'],
+                'completed' => ['badge-primary', 'certificate', 'Services delivered'],
+                'cancelled' => ['badge-secondary', 'close-circle', 'Cancelled — talk to your planner about alternatives'],
+            ];
+            ?>
+            <?php foreach ($myEnquiries as $enq): $b = $enq_badges[$enq->status] ?? ['badge-secondary', 'help-circle', ucfirst((string) $enq->status)]; ?>
+                <div class="d-flex flex-wrap justify-content-between align-items-center py-2" style="border-bottom: 1px dashed #E2E8F0;">
+                    <div class="mr-3">
+                        <strong style="font-size: 13.5px;"><i class="mdi mdi-<?= vendor_category_icon((string) $enq->category); ?> mr-1"></i><?= htmlspecialchars((string) $enq->business_name); ?></strong>
+                        <span class="text-muted" style="font-size: 12px;">
+                            <?= $enq->package_title !== null ? '· ' . htmlspecialchars((string) $enq->package_title) : '· general enquiry'; ?>
+                            <?= !empty($enq->event_date) ? '· ' . htmlspecialchars(format_date_kd((string) $enq->event_date)) : ''; ?>
+                            <?php if ($enq->status === 'confirmed' && (float) $enq->amount > 0): ?>
+                                · <strong style="color:#065F46;"><?= format_ksh((float) $enq->amount); ?></strong>
+                            <?php endif; ?>
+                        </span>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <span class="text-muted mr-2" style="font-size: 11.5px;"><?= htmlspecialchars($b[2]); ?></span>
+                        <span class="badge <?= $b[0]; ?>"><i class="mdi mdi-<?= $b[1]; ?> mr-1"></i><?= ucfirst((string) $enq->status); ?></span>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <!-- Vendors Grid -->
     <div class="row">

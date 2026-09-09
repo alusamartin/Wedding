@@ -1,7 +1,9 @@
 <?php include 'include/init.php'; ?>
 <?php
-    // Staff-only: the notification feed belongs to planners, not couples.
-    if (!is_staff()) {
+    // Any signed-in user: planners get staff alerts, couples get their own
+    // (booking confirmed/cancelled, vendor enquiry updates). Every query is
+    // scoped to the session id, so a couple only ever sees their own feed.
+    if (!isset($_SESSION['id'])) {
         redirect_to("../");
         die();
     }
@@ -19,7 +21,7 @@
         $stmt->execute([':id' => $id, ':uid' => $plannerId]);
         $link = (string) ($stmt->fetchColumn() ?: '');
         Notification::mark_read($id, $plannerId);
-        redirect_to($link !== '' ? $link : 'dashboard.php');
+        redirect_to($link !== '' ? $link : (is_staff() ? 'dashboard.php' : 'client.php'));
         die();
     }
 
@@ -27,7 +29,7 @@
         Notification::mark_all_read($plannerId);
         // Origin-safe return: path (+query) only, never a foreign host.
         $back = (string) ($_SERVER['HTTP_REFERER'] ?? '');
-        $path = parse_url($back, PHP_URL_PATH) ?: 'dashboard.php';
+        $path = parse_url($back, PHP_URL_PATH) ?: (is_staff() ? 'dashboard.php' : 'client.php');
         redirect_to($path);
         die();
     }
@@ -46,6 +48,9 @@
     $offset   = ($pageNo - 1) * $perPage;
     $archiveRows = Notification::page($plannerId, $offset, $perPage, $unreadOnly, $q);
     $unread   = Notification::unread_count($plannerId);
+    // Couples land here from their own bell; staff deep-link from the sidebar.
+    $isStaffView = is_staff();
+    $homeLink    = $isStaffView ? 'dashboard.php' : 'client.php';
     // Filter-preserving pagination links (page is swapped per link).
     $qs = static function (int $p) use ($unreadOnly, $q): string {
         $params = array_filter([
@@ -97,7 +102,7 @@
         <?php if ($unread > 0): ?>
             <a href="notifications.php?action=readall" class="btn btn-sm btn-outline-secondary"><i class="mdi mdi-check-all"></i> Mark all read</a>
         <?php else: ?>
-            <a href="dashboard.php" class="btn btn-sm btn-outline-secondary"><i class="mdi mdi-arrow-left"></i> Back to Dashboard</a>
+            <a href="<?= $homeLink; ?>" class="btn btn-sm btn-outline-secondary"><i class="mdi mdi-arrow-left"></i> Back</a>
         <?php endif; ?>
     </div>
 
@@ -129,7 +134,9 @@
                 <i class="mdi mdi-<?= ($unreadOnly || $q !== '') ? 'magnify' : 'bell-sleep'; ?>" style="font-size: 40px;"></i>
                 <div class="mt-2" style="font-size: 14px;"><?= ($unreadOnly || $q !== '')
                     ? 'Nothing matches this filter — try clearing the search or the unread toggle.'
-                    : 'No notifications yet — deposits from your couples will land here.'; ?></div>
+                    : ($isStaffView
+                        ? 'No notifications yet — deposits from your couples will land here.'
+                        : 'No notifications yet — updates about your wedding will land here.'); ?></div>
             </div>
         <?php else: ?>
             <div class="card-body p-0">
@@ -139,7 +146,7 @@
                         <span class="notif-dot"></span>
                         <div class="notif-body">
                             <div class="msg"><?= htmlspecialchars((string) $notif->message); ?></div>
-                            <div class="meta"><?= htmlspecialchars((string) $notif->created_at); ?></div>
+                            <div class="meta"><?= htmlspecialchars(format_date_kd((string) $notif->created_at, true)); ?></div>
                         </div>
                         <?php if ((int) $notif->is_read === 0): ?>
                             <span class="badge badge-success notif-badge">New</span>

@@ -261,22 +261,11 @@ final class StaffNotificationsPageTest extends TestCase
     {
         $this->requireHttp();
 
-        // Fresh client session must be bounced off the staff archive.
+        // The archive is open to every signed-in user (couples get their own
+        // feed), but ANONYMOUS visitors must still bounce to the site root.
         self::$jar = [];
-        $page = self::http('GET', '/login.php');
-        self::assertSame(200, $page['status']);
-        self::assertMatchesRegularExpression('/name="_token" value="([^"]+)"/', $page['body']);
-        preg_match('/name="_token" value="([^"]+)"/', $page['body'], $m);
-        $post = self::http('POST', '/login.php', [
-            'input_email'    => self::CLIENT_EMAIL,
-            'input_password' => self::CLIENT_PASS,
-            '_token'         => html_entity_decode($m[1], ENT_QUOTES),
-            'login'          => '1',
-        ]);
-        self::assertSame(302, $post['status'], 'client login must succeed for the gate test');
-
         $res = self::http('GET', '/admin/notifications.php');
-        self::assertSame(302, $res['status'], 'clients must be bounced off the staff archive');
+        self::assertSame(302, $res['status'], 'anonymous visitors must bounce off the archive');
         self::assertNotSame('', $res['location'], 'the bounce must carry a redirect target');
         self::assertStringStartsWith('../', $res['location'] ?? '', 'the bounce must stay on-site (site root)');
 

@@ -60,6 +60,15 @@
                 $accounts->save_account();
             }
 
+            // Tell the couple their date is locked in (bell + best-effort email).
+            Notification::create(
+                $user_id,
+                $booking_id,
+                'Great news — your wedding date is confirmed! Your planner will be in touch to plan every detail.'
+                . (!empty($booking_detail->wedding_date) ? ' Wedding day: ' . format_date_kd((string) $booking_detail->wedding_date) . '.' : ''),
+                'client_manage_account_details.php?booking_id=' . $booking_id . '&user_id=' . $user_id
+            );
+
            redirect_to("client.php");
 
             $session->message("
@@ -86,6 +95,16 @@
             $status = "cancel";
             $account_detail->status = $status;
             $account_detail->save_account();
+
+            // Tell the couple (bell + best-effort email) so the tab isn't the
+            // only place they learn their booking was cancelled.
+            Notification::create(
+                $user_id,
+                $booking_id,
+                'Your wedding booking has been cancelled. Please contact your planner to discuss next steps or rebooking.',
+                'client_manage_account_details.php?booking_id=' . $booking_id . '&user_id=' . $user_id
+            );
+
             redirect_to("client.php");
             $session->message("
             <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
@@ -111,6 +130,16 @@ if (isset($_POST['fraud'])) {
         $status = "fraud";
         $account_detail->status = $status;
         $account_detail->save_account();
+
+        // A fraud flag suspends the couple's access — notify them politely so
+        // they know to contact the office (never accuse in writing).
+        Notification::create(
+            $user_id,
+            $booking_id,
+            'There is an issue with your booking that needs attention. Please contact our office to verify your details and restore access.',
+            'contact.php'
+        );
+
         redirect_to("client.php");
         $session->message("
             <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">

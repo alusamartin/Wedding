@@ -113,11 +113,15 @@ final class CoupleVendorMarketplaceTest extends TestCase
         self::assertStringContainsString('KSh 45,000', $page['body'], 'package prices must render in KSh');
         self::assertStringContainsString('client_vendor_enquiry.php', $page['body'], 'enquiries must post to the scoped endpoint');
 
-        // Category filter narrows the grid.
+        // Category filter narrows the GRID (browse cards). The "My enquiries"
+        // summary panel above it intentionally always shows every enquiry the
+        // couple sent — so assert on the grid's Enquire control for the
+        // filtered-out vendor, not the name anywhere in the body.
         $catering = self::http('GET', '/admin/client_vendors.php?booking_id=' . self::BOOKING_ID . '&user_id=200&category=catering');
         self::assertSame(200, $catering['status']);
         self::assertStringContainsString('Nyama Choma Masters', $catering['body']);
-        self::assertStringNotContainsString('Floral Dreams', $catering['body'], 'other categories must be filtered out');
+        self::assertStringNotContainsString('showEnquiry(201', $catering['body'], 'other categories must be filtered out of the browse grid');
+        self::assertStringContainsString('My enquiries', $catering['body'], 'the couple\'s enquiry summary stays visible regardless of filters');
 
         // County filter narrows the grid.
         $nakuru = self::http('GET', '/admin/client_vendors.php?booking_id=' . self::BOOKING_ID . '&user_id=200&county=Nakuru%20County');

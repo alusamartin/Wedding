@@ -61,7 +61,7 @@
             die();
         }
 
-        $stmt = $db->prepare('SELECT vb.*, v.business_name FROM tblvendor_bookings vb JOIN tblvendors v ON v.id = vb.vendor_id WHERE vb.id = :id LIMIT 1');
+        $stmt = $db->prepare('SELECT vb.*, v.business_name, b.user_id AS couple_user_id FROM tblvendor_bookings vb JOIN tblvendors v ON v.id = vb.vendor_id JOIN tblweddingbook b ON b.booking_id = vb.booking_id WHERE vb.id = :id LIMIT 1');
         $stmt->execute([':id' => $id]);
         $row = $stmt->fetch(PDO::FETCH_OBJ);
         if ($row === null) {
@@ -111,6 +111,26 @@
         $session->message('<div class="alert alert-success alert-dismissible fade show" role="alert"><strong><i class="mdi mdi-check"></i></strong> '
             . htmlspecialchars($row->business_name) . ' enquiry marked <strong>' . $to . '</strong>.'
             . '<button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>');
+
+        // Keep the couple in the loop: every status change lands in their bell.
+        $coupleUid = (int) ($row->couple_user_id ?? 0);
+        if ($coupleUid > 0) {
+            $status_copy = [
+                'confirmed' => 'Good news — ' . $row->business_name . ' is confirmed for your wedding'
+                               . ($amount !== null && $amount > 0 ? ' (deal ' . format_ksh($amount) . ')' : '')
+                               . '. Your planner finalized the details.',
+                'completed' => $row->business_name . ' has completed their services for your wedding. Thank you for planning with us.',
+                'cancelled' => 'Your enquiry with ' . $row->business_name . ' was cancelled — your planner will help you find an alternative.',
+                'pending'   => 'Your enquiry with ' . $row->business_name . ' was reopened — your planner is reviewing it again.',
+            ];
+            Notification::create(
+                $coupleUid,
+                (int) $row->booking_id,
+                $status_copy[$to] ?? ($row->business_name . ' enquiry updated to ' . $to . '.'),
+                'client_vendors.php?booking_id=' . (int) $row->booking_id . '&user_id=' . $coupleUid
+            );
+        }
+
         redirect_to("vendor_enquiries.php" . ($status_filter !== '' ? "?status={$status_filter}" : ''));
         die();
     }

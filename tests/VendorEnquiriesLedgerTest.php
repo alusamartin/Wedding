@@ -31,6 +31,8 @@ final class VendorEnquiriesLedgerTest extends TestCase
     private static $serverProc = null;
     /** @var int[] probe enquiry ids created by this run */
     private static array $probeIds = [];
+    /** @var int[] probe notification ids created by this run */
+    private static array $probeNotifIds = [];
 
     public static function setUpBeforeClass(): void
     {
@@ -66,6 +68,41 @@ final class VendorEnquiriesLedgerTest extends TestCase
             }
         }
         self::$probeIds = [];
+        if (self::$db !== null && self::$probeNotifIds !== []) {
+            try {
+                self::$db->execute(
+                    'DELETE FROM tbl_mail_logs WHERE notification_id IN (' . implode(',', self::$probeNotifIds) . ')'
+                );
+                self::$db->execute(
+                    'DELETE FROM tblnotifications WHERE id IN (' . implode(',', self::$probeNotifIds) . ')'
+                );
+            } catch (Throwable $e) {
+                // leave state untouched on failure
+            }
+        }
+        self::$probeNotifIds = [];
+        // Every transition (confirm/complete/cancel/reopen) now alerts the
+        // couple — sweep any vendor-status alert the probes produced on this
+        // booking. Probe enquiries are the only source of Safari Transport
+        // alerts on the seed booking, so this cannot eat real demo content.
+        if (self::$db !== null) {
+            try {
+                self::$db->execute(
+                    "DELETE FROM tbl_mail_logs WHERE notification_id IN (
+                        SELECT id FROM (
+                            SELECT id FROM tblnotifications
+                             WHERE user_id = 200 AND booking_id = 200 AND message LIKE '%Safari Transport%'
+                        ) x
+                    )"
+                );
+                self::$db->execute(
+                    "DELETE FROM tblnotifications
+                      WHERE user_id = 200 AND booking_id = 200 AND message LIKE '%Safari Transport%'"
+                );
+            } catch (Throwable $e) {
+                // leave state untouched on failure
+            }
+        }
 
         if (is_resource(self::$serverProc)) {
             proc_terminate(self::$serverProc);
@@ -147,6 +184,17 @@ final class VendorEnquiriesLedgerTest extends TestCase
         self::assertSame('4000.00', (string) $row->commission, 'commission must be the standard 10%');
         self::assertStringContainsString('confirmed by wafula@wpms.co.ke', (string) $row->notes, 'the notes trail must record who confirmed');
         self::assertStringContainsString('Confirm-flow probe enquiry', (string) $row->notes, 'the original enquiry message must be preserved');
+
+        // The couple's bell must light up too — the enquiry loop now closes
+        // back to the couple who sent it.
+        $coupleNotif = self::$db->fetchOne(
+            "SELECT id, message FROM tblnotifications WHERE booking_id = 200 AND user_id = 200 AND message LIKE '%Safari Transport%'
+              ORDER BY id DESC LIMIT 1",
+            []
+        );
+        self::assertNotNull($coupleNotif, 'confirm must create a couple-facing notification');
+        self::assertStringContainsString('confirmed for your wedding', (string) $coupleNotif->message);
+        self::$probeNotifIds[] = (int) $coupleNotif->id;
 
         // Complete.
         $done = self::http('POST', '/admin/vendor_enquiries.php', [

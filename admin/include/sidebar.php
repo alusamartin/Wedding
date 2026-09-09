@@ -154,9 +154,15 @@
                 </div>
 
                 <div class="form-inline my-2 my-lg-0">
-                    <?php if ($sidebar_user): ?>
                     <?php
-                        $notifUserId = (int) $sidebar_user->id;
+                    // Notification owner: the SESSION user (staff in tblusers,
+                    // couples in tblaccounts). Deriving from the session means
+                    // couples get the bell too — their confirm/cancel/enquiry
+                    // alerts used to have nowhere to land.
+                    $notifUserId = (int) ($_SESSION['id'] ?? 0);
+                    ?>
+                    <?php if ($notifUserId > 0): ?>
+                    <?php
                         $notifCount  = Notification::unread_count($notifUserId);
                         $notifs      = Notification::latest($notifUserId, 8);
                     ?>
@@ -184,7 +190,7 @@
                                    href="notifications.php?action=read&id=<?= (int) $notif->id; ?>"
                                    style="white-space:normal; font-size:13px; border-bottom:1px solid #f1f5f9;">
                                     <?= htmlspecialchars($notif->message); ?>
-                                    <span class="d-block text-muted" style="font-size:11px;"><?= htmlspecialchars($notif->created_at); ?></span>
+                                    <span class="d-block text-muted" style="font-size:11px;"><?= htmlspecialchars(format_date_kd((string) $notif->created_at, true)); ?></span>
                                 </a>
                             <?php endforeach; endif; ?>
                         </div>
