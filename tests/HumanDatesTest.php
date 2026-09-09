@@ -229,6 +229,48 @@ final class HumanDatesTest extends TestCase
     }
 
     #[Group('integration')]
+    public function testOverviewDepositNudgeMatchesPaymentState(): void
+    {
+        $this->requireHttp();
+        self::loginCouple();
+
+        $overview = fn (): string => self::http(
+            'GET',
+            '/admin/client_manage_account_details.php?booking_id=' . self::BOOKING_ID . '&user_id=200'
+        )['body'];
+
+        // Booking 200 carries the seeded 245,000 paid of a 250,000 package —
+        // the final-stretch nudge with the live balance and the M-Pesa deep
+        // link. The balance figure is computed from the DB, not pinned.
+        $body = $overview();
+        self::assertStringContainsString('pay-nudge', $body, 'a package with a balance must render the deposit nudge');
+        self::assertStringContainsString('pay-nudge--final', $body, 'a <=10% remaining balance must render the final-stretch variant');
+        self::assertStringContainsString('client_deposit.php?booking_id=' . self::BOOKING_ID, $body, 'the nudge must deep-link the M-Pesa deposit flow');
+        self::assertStringContainsString('Pay via M-Pesa', $body);
+
+        // Fully-paid branch: a probe M-Pesa deposit closing the balance flips
+        // the nudge to the congrats variant, and its removal restores the
+        // final-stretch state (probe row deleted below).
+        global $db;
+        $db->prepare(
+            'INSERT INTO tbl_liquidation (booking_id, user_id, event_id, payment, cash, credit, mpesa_code, date_issue, date_modified) '
+            . 'VALUES (:b, 200, :e, 5000.00, 0, 0, "QDLPROBE01", NOW(), NOW())'
+        )->execute([':b' => self::BOOKING_ID, ':e' => (int) self::firstCeremony()->id]);
+        self::$probeLedgerIds[] = (int) $db->the_insert_id();
+        try {
+            $paid = $overview();
+            self::assertStringContainsString('pay-nudge--paid', $paid, 'a fully paid package must render the congrats variant');
+            self::assertStringContainsString('Hongera', $paid, 'the congrats variant must celebrate');
+            self::assertStringNotContainsString('Pay via M-Pesa', $paid, 'a fully paid package must not push more deposits');
+        } finally {
+            self::$db->execute(
+                'DELETE FROM tbl_liquidation WHERE mpesa_code = :c AND booking_id = :b',
+                [':c' => 'QDLPROBE01', ':b' => self::BOOKING_ID]
+            );
+        }
+    }
+
+    #[Group('integration')]
     public function testStaffTaskCalendarOpensOnWeddingMonth(): void
     {
         $this->requireHttp();

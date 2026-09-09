@@ -77,6 +77,26 @@
             $wedding_default = date('Y-m-d', strtotime($events[0]['start']));
         }
     }
+
+    // Deposit nudge — the stat cards show the balance; this tells the couple
+    // what to DO about it (first deposit, keep going, final stretch, done)
+    // and deep-links the M-Pesa flow. Couples only: staff have the full
+    // Budget page, and client_deposit.php is couple-scoped anyway.
+    $harambee_pledged = Guest::total_harambee($booking_id);
+    $nudge_kind = ''; // '' | 'pending' | 'progress' | 'final' | 'paid'
+    $nudge_pct  = 0;
+    if ($package_price > 0) {
+        $nudge_pct = (int) floor(min(100.0, $amount_paid / $package_price * 100));
+        if ($balance_due <= 0) {
+            $nudge_kind = 'paid';
+        } elseif ($amount_paid <= 0) {
+            $nudge_kind = 'pending';
+        } elseif ($balance_due <= 0.10 * $package_price) {
+            $nudge_kind = 'final';
+        } else {
+            $nudge_kind = 'progress';
+        }
+    }
 ?>
 <?php $users_profile = Users::find_by_id($_SESSION['id']); ?>
 <!doctype html>
@@ -151,6 +171,19 @@
         .cd-status-confirmed { background: rgba(255,255,255,.22); }
         .cd-status-pending { background: #FBBF24; color: #78350F; }
         .cd-status-note { font-size: 12.5px; opacity: .9; margin-top: 6px; }
+
+        .pay-nudge { background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px;
+                     padding: 14px 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border-left: 4px solid #D97706; }
+        .pay-nudge--paid     { border-left-color: #059669; }
+        .pay-nudge--progress { border-left-color: #D97706; }
+        .pay-nudge--final    { border-left-color: #B45309; }
+        .pay-nudge--pending  { border-left-color: #9CA3AF; }
+        .pay-nudge .pn-head { font-size: 13.5px; color: #334155; }
+        .pay-nudge .pn-bar { height: 8px; background: #E2E8F0; border-radius: 999px; margin: 10px 0 8px; overflow: hidden; }
+        .pay-nudge .pn-fill { height: 100%; background: linear-gradient(90deg, #059669, #0EA5A0); border-radius: 999px; transition: width .6s ease; }
+        .pay-nudge--paid .pn-fill { background: #059669; }
+        .pay-nudge .pn-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+        .pay-nudge .pn-note { font-size: 12.5px; color: #64748B; }
         @media (max-width: 767px) { .countdown-banner { padding: 18px; } .countdown-banner .cd-days { font-size: 27px; } }
 
     </style>
@@ -272,6 +305,38 @@
         </div>
     </div>
 </div>
+
+<?php if (!is_staff() && $nudge_kind !== ''): ?>
+<div class="row">
+    <div class="col-md-12 mb-3">
+        <div class="pay-nudge pay-nudge--<?= $nudge_kind; ?>">
+            <div class="pn-head">
+                <i class="mdi <?= $nudge_kind === 'paid' ? 'mdi-check-decagram' : 'mdi-hand-coin-outline'; ?> mr-1"></i>
+                <?php if ($nudge_kind === 'paid'): ?>
+                    Fully paid — Hongera! Your package is covered; your planner will guide you on any extras.
+                <?php elseif ($nudge_kind === 'pending'): ?>
+                    Ready when you are — your first deposit secures the plan. Balance: <strong><?= format_ksh($balance_due, 2); ?></strong>
+                <?php elseif ($nudge_kind === 'final'): ?>
+                    So close — <?= $nudge_pct; ?>% paid, only <strong><?= format_ksh($balance_due, 2); ?></strong> to go.
+                <?php else: ?>
+                    <?= $nudge_pct; ?>% paid — <strong><?= format_ksh($balance_due, 2); ?></strong> to go.
+                <?php endif; ?>
+            </div>
+            <div class="pn-bar"><div class="pn-fill" style="width: <?= $nudge_pct; ?>%;"></div></div>
+            <?php if ($nudge_kind !== 'paid'): ?>
+            <div class="pn-actions">
+                <a class="btn btn-sm btn-success" href="client_deposit.php?<?= $links; ?>"><i class="mdi mdi-cellphone-arrow-down mr-1"></i>Pay via M-Pesa</a>
+                <?php if ($harambee_pledged > 0): ?>
+                    <span class="pn-note"><i class="mdi mdi-hand-heart mr-1"></i>Your committee has pledged <?= format_ksh($harambee_pledged, 2); ?> toward this balance.</span>
+                <?php elseif ($nudge_kind === 'pending'): ?>
+                    <span class="pn-note">Deposits start from KSh 50 — pay in small, comfortable steps.</span>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 <div class="row">
     <div class="col-md-12 mb-3">
         <ul class="list-group">
