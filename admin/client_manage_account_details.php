@@ -97,6 +97,37 @@
             $nudge_kind = 'progress';
         }
     }
+
+    // Deadline escalation — the same balance reads differently at 8 months
+    // than at 8 days. Before the final two months the nudge suggests a
+    // monthly pace that lands the package fully paid ~30 days early (the
+    // window most Kenyan vendors expect final settlement); inside 30 days it
+    // firms up with a red accent, and after the day it becomes a settle-up
+    // note rather than a push.
+    $nudge_milestone = '';
+    $nudge_urgent    = false;
+    if ($nudge_kind !== '' && $nudge_kind !== 'paid' && $countdown_days !== null) {
+        if ($countdown_days > 60) {
+            $months = max(1, (int) ceil(($countdown_days - 30) / 30));
+            $nudge_milestone = 'Pace yourself: about ' . format_ksh($balance_due / $months)
+                . ' a month clears the balance a month before the big day.';
+        } elseif ($countdown_days > 30) {
+            $nudge_milestone = 'Aim to clear the balance by '
+                . date('j M Y', strtotime('+' . ($countdown_days - 30) . ' days'))
+                . " — most vendors expect final settlement a month out.";
+        } elseif ($countdown_days > 7) {
+            $nudge_urgent    = true;
+            $nudge_milestone = 'Final month — vendors are confirmed and settled now. Clearing '
+                . format_ksh($balance_due) . ' keeps everything on schedule.';
+        } elseif ($countdown_days >= 0) {
+            $nudge_urgent    = true;
+            $nudge_milestone = 'The wedding is ' . ($countdown_days === 0 ? 'today' : 'this week')
+                . ' — the remaining ' . format_ksh($balance_due) . ' needs settling in the next few days.';
+        } else {
+            $nudge_milestone = 'Your big day has passed — settle the remaining '
+                . format_ksh($balance_due) . ' with your planner when you can.';
+        }
+    }
 ?>
 <?php $users_profile = Users::find_by_id($_SESSION['id']); ?>
 <!doctype html>
@@ -178,12 +209,16 @@
         .pay-nudge--progress { border-left-color: #D97706; }
         .pay-nudge--final    { border-left-color: #B45309; }
         .pay-nudge--pending  { border-left-color: #9CA3AF; }
+        .pay-nudge--urgent   { border-left-color: #DC2626; }
+        .pay-nudge--urgent .pn-fill { background: linear-gradient(90deg, #DC2626, #F97316); }
         .pay-nudge .pn-head { font-size: 13.5px; color: #334155; }
         .pay-nudge .pn-bar { height: 8px; background: #E2E8F0; border-radius: 999px; margin: 10px 0 8px; overflow: hidden; }
         .pay-nudge .pn-fill { height: 100%; background: linear-gradient(90deg, #059669, #0EA5A0); border-radius: 999px; transition: width .6s ease; }
         .pay-nudge--paid .pn-fill { background: #059669; }
         .pay-nudge .pn-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
         .pay-nudge .pn-note { font-size: 12.5px; color: #64748B; }
+        .pay-nudge .pn-milestone { font-size: 12.5px; color: #64748B; margin-top: 8px; }
+        .pay-nudge--urgent .pn-milestone { color: #B91C1C; }
         @media (max-width: 767px) { .countdown-banner { padding: 18px; } .countdown-banner .cd-days { font-size: 27px; } }
 
     </style>
@@ -309,7 +344,7 @@
 <?php if (!is_staff() && $nudge_kind !== ''): ?>
 <div class="row">
     <div class="col-md-12 mb-3">
-        <div class="pay-nudge pay-nudge--<?= $nudge_kind; ?>">
+        <div class="pay-nudge pay-nudge--<?= $nudge_kind; ?><?= $nudge_urgent ? ' pay-nudge--urgent' : ''; ?>">
             <div class="pn-head">
                 <i class="mdi <?= $nudge_kind === 'paid' ? 'mdi-check-decagram' : 'mdi-hand-coin-outline'; ?> mr-1"></i>
                 <?php if ($nudge_kind === 'paid'): ?>
@@ -332,6 +367,9 @@
                     <span class="pn-note">Deposits start from KSh 50 — pay in small, comfortable steps.</span>
                 <?php endif; ?>
             </div>
+            <?php endif; ?>
+            <?php if ($nudge_milestone !== ''): ?>
+            <div class="pn-milestone"><i class="mdi mdi-flag-checkered mr-1"></i><?= htmlspecialchars($nudge_milestone); ?></div>
             <?php endif; ?>
         </div>
     </div>

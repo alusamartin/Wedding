@@ -271,6 +271,77 @@ final class HumanDatesTest extends TestCase
     }
 
     #[Group('integration')]
+    public function testOverviewNudgeEscalatesWithDaysToWedding(): void
+    {
+        $this->requireHttp();
+        self::loginCouple();
+
+        $wd = self::$weddingDate;
+        self::assertNotEmpty($wd, 'booking 200 must have a wedding date');
+        $overview = fn (): string => self::http(
+            'GET',
+            '/admin/client_manage_account_details.php?booking_id=' . self::BOOKING_ID . '&user_id=200'
+        )['body'];
+
+        // The nudge panel's own class attribute — the <style> block always
+        // contains the .pay-nudge--urgent CSS rules, so raw body regexes would
+        // false-positive on the stylesheet rather than the element state.
+        $nudgeDiv = fn (string $html): string =>
+            (string) (preg_match('/class="pay-nudge[^"]*"/', $html, $m) ? $m[0] : '');
+
+        // Default future seed (>60 days out): the pace line, no urgency.
+        $days = (int) round((strtotime($wd) - strtotime(date('Y-m-d'))) / 86400);
+        $body = $overview();
+        self::assertStringContainsString('pn-milestone', $body, 'an open balance must carry a milestone line');
+        if ($days > 60) {
+            self::assertStringContainsString('Pace yourself', $body, 'far-out weddings suggest a monthly pace');
+            self::assertStringNotContainsString('pay-nudge--urgent', $nudgeDiv($body), 'no deadline urgency far out');
+            self::assertStringContainsString('a month clears the balance', $body);
+        }
+
+        // 45 days: firm settle-by date, still calm.
+        self::swapWeddingDate(date('Y-m-d', strtotime('+45 days')));
+        try {
+            $b45 = $overview();
+            self::assertStringContainsString('Aim to clear the balance by', $b45, 'inside 60 days the nudge names the settlement date');
+            self::assertStringContainsString('final settlement a month out', $b45);
+            self::assertStringNotContainsString('pay-nudge--urgent', $nudgeDiv($b45), '45 days is firm but not urgent');
+        } finally {
+            self::swapWeddingDate($wd);
+        }
+
+        // 12 days: final-month urgency with the red accent.
+        self::swapWeddingDate(date('Y-m-d', strtotime('+12 days')));
+        try {
+            $b12 = $overview();
+            self::assertStringContainsString('Final month', $b12, 'inside 30 days the nudge escalates to vendor-settlement copy');
+            self::assertStringContainsString('pay-nudge--urgent', $nudgeDiv($b12), 'final month must carry the urgent accent');
+        } finally {
+            self::swapWeddingDate($wd);
+        }
+
+        // This week: same urgency, day-specific copy.
+        self::swapWeddingDate(date('Y-m-d', strtotime('+3 days')));
+        try {
+            $b3 = $overview();
+            self::assertStringContainsString('this week', $b3, 'the final week speaks in days, not months');
+            self::assertStringContainsString('pay-nudge--urgent', $nudgeDiv($b3));
+        } finally {
+            self::swapWeddingDate($wd);
+        }
+
+        // Past the day: a polite settle-up note, never a push.
+        self::swapWeddingDate(date('Y-m-d', strtotime('-6 days')));
+        try {
+            $past = $overview();
+            self::assertStringContainsString('settle the remaining', $past, 'after the wedding the nudge becomes a settle-up note');
+            self::assertStringNotContainsString('pay-nudge--urgent', $nudgeDiv($past), 'no urgency after the day');
+        } finally {
+            self::swapWeddingDate($wd);
+        }
+    }
+
+    #[Group('integration')]
     public function testStaffTaskCalendarOpensOnWeddingMonth(): void
     {
         $this->requireHttp();
