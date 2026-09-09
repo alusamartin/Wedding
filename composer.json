@@ -32,7 +32,8 @@
         "test": "phpunit --testdox",
         "migrate:db-compat": "php scripts/migrate_mysqli_to_pdo.php",
         "lint": "@php scripts/lint.php admin",
-        "smoke": "@php scripts/smoke.php"
+        "smoke": "@php scripts/smoke.php",
+        "demo:reset": "@php scripts/demo_reset.php --yes"
     },
     "config": {
         "optimize-autoloader": true,

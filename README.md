@@ -79,6 +79,21 @@ which reset demo data to the Kenyan seed set.
 purges its US/Philippine-era rows and replaces them with Kenyan counties,
 venues and KSh pricing — don't be surprised if those disappear after (c).
 
+### 3b. One-command demo reset (rebuild + freshen in a single step)
+
+```bash
+composer demo:reset              # rebuilds dbwedding from seed, date-shifts, NO prompt
+composer demo:reset -- --db=demo_scratch   # build a scratch DB instead, live DB untouched
+php scripts/demo_reset.php       # plain invocation: asks you to type the DB name first
+php scripts/demo_reset.php --dry-run       # show the plan, change nothing
+```
+
+This chains the whole install order above (base schema → Kenyan schema →
+Kenyan seed → hardening migration) and finishes with the date-shift so a
+fresh demo always has future weddings. Requires the `mysql` CLI (found in
+PATH or the XAMPP defaults). Every run verifies 5/5 seed weddings are
+future-dated and prints the demo logins; it fails loudly otherwise.
+
 ### 4. Database credentials (no edit needed on XAMPP)
 
 `admin/include/config.php` reads credentials from environment variables and

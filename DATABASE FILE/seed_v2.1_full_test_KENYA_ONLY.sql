@@ -426,7 +426,7 @@ INSERT INTO `tblsms_logs` (`id`,`user_id`,`booking_id`,`phone`,`message`,`status
 -- --------------------------------------------------------------------------
 DELETE FROM `tblwedding_websites` WHERE `booking_id` IN (200,201);
 INSERT INTO `tblwedding_websites` (`id`,`booking_id`,`slug`,`title`,`story`,`venue`,`venue_address`,`wedding_date`,`cover_image`,`is_published`,`views`) VALUES
-(200, 200, 'brian-linda', 'Brian & Linda — 20 Dec 2025', 'Bungoma → Karen journey. Ruracio Nyeri + Church Karen.', 'Karen Gardens', 'Karen Road, Nairobi County', '2025-12-20', 'cover_brian_linda.jpg', 1, 42),
+(200, 200, 'brian-linda', 'Brian & Linda', 'Bungoma → Karen journey. Ruracio Nyeri + Church Karen.', 'Karen Gardens', 'Karen Road, Nairobi County', '2025-12-20', 'cover_brian_linda.jpg', 1, 42),
 (201, 201, 'faith-james', 'Faith & James — Murang''a', 'Kikuyu ruracio story — Githunguri.', 'Githunguri Grounds', 'Githunguri, Kiambu County', '2025-11-15', 'cover_faith.jpg', 0, 0);
 
 -- --------------------------------------------------------------------------
