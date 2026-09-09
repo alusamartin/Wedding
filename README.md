@@ -140,6 +140,12 @@ php scripts/mail_retry.php --limit=100 --max-attempts=5
   is safe to leave in the crontab across environments.
 - A single-flight file lock prevents overlapping cron runs from double-sending.
 
+**Who gets emailed:** notifications address staff from `tblusers` and couples
+from `tblaccounts` — so the couple's deposit receipt (bell + email, subject
+leading with the M-Pesa reference they screenshot and share) lands in the same
+outbox with the same transport rules as staff alerts. Deposit receipts are
+dropped in `client_deposit.php` at the moment the planner records the payment.
+
 Cron example (every 15 minutes):
 
 ```cron

@@ -83,6 +83,26 @@
                         );
                     }
 
+                    // Receipt for the couple (bell + best-effort email): the
+                    // M-Pesa reference is the part they screenshot and share,
+                    // so lead with it and show the new balance.
+                    $newBalance = max(0.0, $balance_due - $result['payment']);
+                    $receiptSubject = 'Payment receipt — ' . format_ksh($result['payment'], 2) . ' received (ref ' . $result['mpesa_code'] . ')';
+                    $receiptMessage = sprintf(
+                        'Asante! We received your M-Pesa payment of %s (ref %s). Your remaining balance is %s.'
+                        . ($newBalance <= 0 ? ' Your package is fully paid — Hongera!' : ''),
+                        format_ksh($result['payment'], 2),
+                        $result['mpesa_code'],
+                        format_ksh($newBalance, 2)
+                    );
+                    Notification::create(
+                        $user_id,
+                        $booking_id,
+                        $receiptMessage,
+                        'client_budget.php?' . $links,
+                        $receiptSubject
+                    );
+
                     $session->message(
                         '<div class="alert alert-success"><strong><i class="mdi mdi-check"></i></strong> ' .
                         'Deposit of <strong>' . format_ksh($result['payment'], 2) . '</strong> recorded. ' .

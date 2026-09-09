@@ -82,6 +82,31 @@ final class ClientDepositFlowTest extends TestCase
             return;
         }
 
+        // Sweep residue from earlier aborted runs of this suite. An assertion
+        // failure aborts the test before its cleanup deletes the created
+        // ledger row, so leaked STK deposits accumulate — and once the
+        // booking's total crosses the package price, the endpoint (correctly)
+        // rejects new deposits as overpaid and the happy path can never run
+        // again. Seed rows never carry the self-serve STK 'QDL' prefix, so
+        // this sweep is safe to run at any time.
+        $leaked = self::$db->fetchAll(
+            "SELECT id, mpesa_code FROM tbl_liquidation WHERE booking_id = :b AND payment = 2500.00 AND mpesa_code LIKE 'QDL%'",
+            [':b' => self::OWN_BOOKING]
+        );
+        foreach ($leaked as $leak) {
+            $leak = is_array($leak) ? (object) $leak : $leak;
+            $staleNotifs = self::$db->fetchAll(
+                'SELECT id FROM tblnotifications WHERE booking_id = :b AND message LIKE :ref',
+                [':b' => self::OWN_BOOKING, ':ref' => '%' . $leak->mpesa_code . '%']
+            );
+            foreach ($staleNotifs as $stale) {
+                $staleId = (int) (is_array($stale) ? $stale['id'] : $stale->id);
+                self::$db->execute('DELETE FROM tbl_mail_logs WHERE notification_id = :nid', [':nid' => $staleId]);
+                self::$db->execute('DELETE FROM tblnotifications WHERE id = :id', [':id' => $staleId]);
+            }
+            self::$db->execute('DELETE FROM tbl_liquidation WHERE id = :id', [':id' => (int) $leak->id]);
+        }
+
         // Public client login round-trip (CSRF token + cookie jar).
         $page = self::http('GET', '/login.php');
         if ($page['status'] !== 200 || !preg_match('/name="_token" value="([^"]+)"/', $page['body'], $m)) {
@@ -354,9 +379,31 @@ final class ClientDepositFlowTest extends TestCase
         self::assertSame('pending', (string) $mail->status, 'Without WPMS_MAIL_ENABLED the row stays pending (logged, not sent)');
         self::assertStringContainsString('WPMS_MAIL_ENABLED', (string) $mail->note, 'The pending note must explain how to enable delivery');
 
-        // Cleanup — restore the seed state (ledger row + notification + outbox row).
+        // The COUPLE must also get a receipt: bell notification + email outbox
+        // row addressed to them (the M-Pesa ref is the part they share).
+        $receipt = self::$db->fetchOne(
+            'SELECT * FROM tblnotifications WHERE booking_id = :b AND user_id = :u ORDER BY id DESC LIMIT 1',
+            [':b' => self::OWN_BOOKING, ':u' => self::OWN_USER]
+        );
+        self::assertNotNull($receipt, 'The couple must receive a deposit receipt notification');
+        self::assertStringContainsString((string) $row->mpesa_code, (string) $receipt->message, 'The receipt must carry the M-Pesa reference');
+        self::assertStringContainsString('Asante', (string) $receipt->message, 'The receipt must open warmly');
+        self::assertStringContainsString('client_budget.php?booking_id=200&user_id=200', (string) $receipt->link, 'The receipt must deep-link to My Payments');
+
+        $receiptMail = self::$db->fetchOne(
+            'SELECT * FROM tbl_mail_logs WHERE notification_id = :nid ORDER BY id DESC LIMIT 1',
+            [':nid' => (int) $receipt->id]
+        );
+        self::assertNotNull($receiptMail, 'The couple receipt must write an email outbox row');
+        self::assertSame('brian.wafula@gmail.com', (string) $receiptMail->to_email, 'The receipt email must address the couple');
+        self::assertStringContainsString((string) $row->mpesa_code, (string) $receiptMail->subject, 'The receipt subject must carry the M-Pesa reference');
+        self::assertSame('pending', (string) $receiptMail->status, 'Receipt email stays pending without the mail transport (dev default)');
+
+        // Cleanup — restore the seed state (ledger row + notifications + outbox rows).
         self::$db->execute('DELETE FROM tbl_mail_logs WHERE id = :id', [':id' => (int) $mail->id]);
         self::$db->execute('DELETE FROM tblnotifications WHERE id = :id', [':id' => (int) $notif->id]);
+        self::$db->execute('DELETE FROM tbl_mail_logs WHERE notification_id = :id', [':id' => (int) $receipt->id]);
+        self::$db->execute('DELETE FROM tblnotifications WHERE id = :id', [':id' => (int) $receipt->id]);
         self::$db->execute('DELETE FROM tbl_liquidation WHERE id = :id', [':id' => (int) $row->id]);
     }
 

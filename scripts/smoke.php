@@ -249,8 +249,9 @@ final class Smoke
      * Restore seed state: the smoke deposit row + its notification + mail log.
      *
      * ALSO sweeps the residue the smoke walk itself creates (vendor enquiry,
-     * invite-stamp and reminder notifications for the planner) so repeated
-     * smoke runs never flood the staff bell again.
+     * invite-stamp and reminder notifications for the planner, plus the
+     * couple's deposit receipt) so repeated smoke runs never flood the staff
+     * bell or the couple's bell again.
      */
     private function dbCleanupDeposit(int $bookingId, float $amount): void
     {
@@ -258,6 +259,23 @@ final class Smoke
         if ($db === null) {
             return;
         }
+        // The couple's M-Pesa receipt (bell row + email leg) is smoke-created
+        // and references the payment row deleted below — sweep it too.
+        $db->execute(
+            "DELETE FROM tbl_mail_logs
+              WHERE notification_id IN (
+                  SELECT id FROM (
+                      SELECT id FROM tblnotifications
+                       WHERE booking_id = :b AND message LIKE 'Asante! We received your M-Pesa payment%'
+                  ) x
+              )",
+            [':b' => $bookingId]
+        );
+        $db->execute(
+            "DELETE FROM tblnotifications
+              WHERE booking_id = :b AND message LIKE 'Asante! We received your M-Pesa payment%'",
+            [':b' => $bookingId]
+        );
         $organizer = $this->dbBookingOrganizer($bookingId);
         if ($organizer > 0) {
             $notif = $db->fetchOne(
@@ -280,6 +298,7 @@ final class Smoke
                            WHERE booking_id = :b AND user_id = :u
                              AND (message LIKE 'Invites marked sent%'
                                   OR message LIKE 'Manual RSVP reminders sent%'
+                                  OR message LIKE 'RSVP reminders dispatched%'
                                   OR message LIKE '%enquired with%')
                       ) x
                   )",
@@ -290,6 +309,7 @@ final class Smoke
                   WHERE booking_id = :b AND user_id = :u
                     AND (message LIKE 'Invites marked sent%'
                          OR message LIKE 'Manual RSVP reminders sent%'
+                         OR message LIKE 'RSVP reminders dispatched%'
                          OR message LIKE '%enquired with%')",
                 [':b' => $bookingId, ':u' => $organizer]
             );

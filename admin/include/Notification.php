@@ -64,17 +64,25 @@ class Notification
     {
         global $db;
 
+        // Recipient: staff live in tblusers; COUPLES live in tblaccounts
+        // (their bell alerts — deposit receipts, confirmations — must reach
+        // their email too, not just the in-app row).
         $stmt = $db->prepare('SELECT email, firstname, lastname FROM tblusers WHERE id = :uid LIMIT 1');
         $stmt->execute([':uid' => $userId]);
-        $planner = $stmt->fetch(PDO::FETCH_OBJ);
-        $to = is_object($planner) ? trim((string) ($planner->email ?? '')) : '';
+        $recipient = $stmt->fetch(PDO::FETCH_OBJ);
+        $to = is_object($recipient) ? trim((string) ($recipient->email ?? '')) : '';
+        $name = is_object($recipient) ? trim((string) ($recipient->firstname ?? '') . ' ' . (string) ($recipient->lastname ?? '')) : '';
+        if ($to === '') {
+            $stmt = $db->prepare('SELECT user_email FROM tblaccounts WHERE user_id = :uid LIMIT 1');
+            $stmt->execute([':uid' => $userId]);
+            $to = trim((string) ($stmt->fetchColumn() ?: ''));
+        }
         if ($to === '') {
             return; // no address on file — the in-app alert is the only channel
         }
 
         $subject ??= 'Everafter Planner notification — booking #' . $bookingId;
-        $name = trim((string) ($planner->firstname ?? '') . ' ' . (string) ($planner->lastname ?? ''));
-        $body = 'Hi ' . ($name !== '' ? $name : 'Planner') . ",\n\n" . $message . "\n\n";
+        $body = 'Hi ' . ($name !== '' ? $name : 'there') . ",\n\n" . $message . "\n\n";
 
         $base = getenv('WPMS_SITE_URL');
         $base = is_string($base) ? trim($base) : '';
