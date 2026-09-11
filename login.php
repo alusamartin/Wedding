@@ -30,11 +30,16 @@
      if ($logged = Accounts::login_user($input_email, $input_password)) {
          // Client account (tblaccounts).
          $session->login($logged);
+         $_SESSION['account_type'] = 'client'; // distinguishes from staff rows with the same access_level 0
      } elseif ($logged = Users::user_account_login($input_email, $input_password)) {
-         // Staff account (tblusers): admin (2) or planner (1).
+         // Staff account (tblusers): admin (2), planner (1) or vendor (0).
          $session->login($logged);
+         $_SESSION['account_type'] = 'staff';
          $level = (int) ($logged->access_level ?? 1);
-         if (!Subscription::get_active((int) $logged->id)) {
+         if ($level === 0) {
+             // Vendor self-service: register first, then their dashboard.
+             $redirect_after_login = vendor_redirect_target((int) $logged->id);
+         } elseif (!Subscription::get_active((int) $logged->id)) {
              $redirect_after_login = 'admin/subscription.php'; // first login / expired
          } else {
              $redirect_after_login = 'admin/dashboard.php';    // both admin + planner
@@ -61,7 +66,11 @@
 // form to someone holding an active session (POST logins above still run
 // first so switching accounts keeps working).
 if ($session->is_signed_in() && isset($_SESSION['id'])) {
-    redirect_to(login_redirect_target(is_staff(), (int) $_SESSION['id']));
+    if (is_vendor()) {
+        redirect_to(vendor_redirect_target((int) $_SESSION['id']));
+    } else {
+        redirect_to(login_redirect_target(is_staff(), (int) $_SESSION['id']));
+    }
     die();
 }
 ?>

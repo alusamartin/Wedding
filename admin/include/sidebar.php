@@ -5,7 +5,7 @@
     $sidebar_user = ($users_profile instanceof Users) ? $users_profile : null;
 ?>
 <nav class="navbar sticky-top p-0" style="width: 16.7%;">
-    <a class="navbar-brand col-sm-3 col-md-2 mr-0" style="color:white;" href="<?= $sidebar_user ? 'dashboard.php' : 'client.php'; ?>">
+    <a class="navbar-brand col-sm-3 col-md-2 mr-0" style="color:white;" href="<?= $sidebar_user ? ((is_vendor() && vendor_profile_of((int) ($_SESSION['id'] ?? 0)) !== null) ? 'vendor_home.php' : 'dashboard.php') : 'client.php'; ?>">
         <!-- <img src="images/admin.png" alt="" style="width: 200px;"> -->
         Everafter Planner
     </a>
@@ -49,6 +49,33 @@
                     <?php if ($sidebar_user): ?>
                     <li class="nav-item"><div class="dropdown-divider"></div></li>
 
+                    <?php if (is_vendor()): ?>
+                    <!-- Vendor self-service navigation (access_level 0) -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="vendor_home.php">
+                            <i class="mdi mdi-handshake-outline mr-3"></i>
+                            My Bookings
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="vendor_profile.php">
+                            <i class="mdi mdi-store-edit mr-3"></i>
+                            My Profile
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="vendor_packages.php">
+                            <i class="mdi mdi-package-variant-closed mr-3"></i>
+                            My Packages
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="vendors.php">
+                            <i class="mdi mdi-store mr-3"></i>
+                            Marketplace
+                        </a>
+                    </li>
+                    <?php else: ?>
                     <li class="nav-item">
                         <a class="nav-link" href="dashboard.php">
                             <i class="mdi mdi-home mr-3"></i>
@@ -138,6 +165,7 @@
                             Task Calendar
                         </a>
                     </li>
+                    <?php endif; /* vendor vs staff nav */ ?>
                     <?php endif; ?>
                 </ul>
             </div>
