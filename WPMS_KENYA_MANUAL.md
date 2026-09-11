@@ -296,12 +296,15 @@ Routing rules:
 
 - **Clients** (`tblaccounts`) always land on `admin/client.php` — their
   bookings dashboard.
-- **Staff** (`tblusers`) land on `admin/dashboard.php`, except on a first
-  login or after a subscription lapses, when they are routed to
-  `admin/subscription.php` to activate before anything else.
-- Vendor accounts (`access_level 0`) currently land on a client-scoped
-  dashboard with no data — vendor self-service is a roadmap gap; manage
-  vendor records from an admin login.
+- **Staff** (`tblusers`, access_level 1/2) land on `admin/dashboard.php`,
+  except on a first login or after a subscription lapses, when they are
+  routed to `admin/subscription.php` to activate before anything else.
+- Vendor accounts (`tblusers`, access_level 0) land on
+  `admin/vendor_home.php` — their own bookings ledger (vendor self-service).
+  A vendor without a vendor profile is routed to `admin/vendor_register.php`
+  first; profile, packages and booking transitions are scoped to their own
+  rows. Staff continue to manage vendor records (approval, premium,
+  commission) from an admin login.
 
 > The legacy template login (`admin@mail.com` / `Password@123`, from the
 > original pre-bcrypt dump) **will not authenticate** on v2.1.
@@ -1247,21 +1250,34 @@ MpesaC2B::verification_enabled()                  // WPMS_MPESA_VERIFY
 
 ## 9.1 Getting Started
 
-### Registration
-1. Visit admin panel → Vendor Marketplace
-2. Click "Register as Vendor"
-3. Fill business information
-4. Select category
-5. Add service packages
-6. Submit for approval
+Vendors are staff accounts with `access_level 0` and sign in through the same
+`login.php` door as everyone else. They land on their own self-service area,
+not the staff dashboard.
 
-### After Approval
-1. Log in to admin panel
-2. Access vendor dashboard
-3. Update profile (logo, photos, description)
-4. Manage packages (add/edit/remove)
-5. Receive booking notifications
-6. Confirm/complete bookings
+### Registration (self-service)
+1. Log in at `login.php` with your vendor account — first-time vendors land
+   on `admin/vendor_register.php` automatically
+2. Fill business information (name, category, phone, location, county)
+3. Add one or more service packages (name + price, KSh)
+4. Submit — the listing enters **pending approval**; an administrator
+   approves it from the staff Vendor Marketplace
+
+While unapproved you can already edit your profile and packages on
+`admin/vendor_profile.php` and `admin/vendor_packages.php`; couples simply
+cannot see or enquire with you yet.
+
+### Your pages
+| Page | What you do there |
+|---|---|
+| `admin/vendor_home.php` | Your bookings ledger: every couple enquiry, with Accept / Decline / Complete transitions and a notes trail |
+| `admin/vendor_profile.php` | Business details + logo. Approval, premium status and ratings are admin-managed and read-only here |
+| `admin/vendor_packages.php` | Add, edit, hide/publish and delete your packages (packages with past bookings are hidden, not deleted, to keep history) |
+| `admin/vendor_register.php` | One-time registration for vendors who have no profile yet |
+
+Everything is ownership-scoped: queries always join on your vendor id, so no
+vendor can view or mutate another vendor's bookings or packages. Confirming
+a booking stamps your agreed amount and notifies the couple's planner; the
+staff ledger still records the 10-15% commission — vendors never touch it.
 
 ## 9.2 Managing Packages
 
@@ -1281,11 +1297,13 @@ MpesaC2B::verification_enabled()                  // WPMS_MPESA_VERIFY
 ## 9.3 Receiving Bookings
 
 ### Booking Notification
-1. Couple browses marketplace
-2. Clicks "Contact Vendor"
-3. Fills event date + message
-4. Vendor receives notification
-5. Vendor responds to confirm
+1. Couple browses marketplace (approved vendors only)
+2. Clicks "Enquire" and picks one of your active packages (or general enquiry)
+3. The enquiry lands as a **pending** row on your `vendor_home.php` ledger and
+   the couple's planner is notified
+4. You accept (entering the agreed amount) or decline; the planner and the
+   couple (bell + best-effort SMS) are told either way
+5. After the wedding, mark the booking completed from the same ledger
 
 ### Commission
 - Everafter Planner takes 10-15% commission

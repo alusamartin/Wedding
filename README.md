@@ -364,7 +364,7 @@ verified against the seed hashes. **All of them sign in through the same door**
 | Couple/client (`tblaccounts`) | Client | `admin/client.php` — their bookings dashboard |
 | `access_level 2` staff | Super Admin | `admin/dashboard.php` |
 | `access_level 1` staff | Wedding Planner | `admin/dashboard.php` — or `admin/subscription.php` first when there is no active subscription |
-| `access_level 0` staff (vendor) | Vendor Lead | `admin/client.php` scoped to an empty account — vendor self-service is a known roadmap gap; manage vendor data from an admin login |
+| `access_level 0` staff (vendor) | Vendor Lead | `admin/vendor_home.php` — their own bookings ledger; unregistered vendors start at `admin/vendor_register.php` (vendor self-service) |
 
 ### Seeded accounts
 
