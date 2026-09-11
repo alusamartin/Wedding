@@ -24,6 +24,22 @@ ADD COLUMN IF NOT EXISTS `rsvp_reminders` TINYINT(3) NOT NULL DEFAULT 0 AFTER `r
 ADD UNIQUE INDEX IF NOT EXISTS `idx_guest_rsvp_token` (`rsvp_token`),
 MODIFY `state` VARCHAR(100) NOT NULL DEFAULT '';
 
+-- 1c. tbl_installment_plans - opt-in month-by-month payment plans
+--     A couple spreads the package balance over N monthly installments; the
+--     overview nudge then tracks their pace against THEIR plan instead of a
+--     generic suggestion. One active plan per booking; deleting the plan
+--     returns the nudge to the generic deadline bands.
+CREATE TABLE IF NOT EXISTS `tbl_installment_plans` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `booking_id` INT NOT NULL UNIQUE,
+  `months` TINYINT(3) NOT NULL,
+  `monthly_amount` DECIMAL(12,2) NOT NULL,
+  `starting_paid` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'amount already paid when the plan was created — progress counts only payments after this',
+  `started_at` DATE NOT NULL,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- 2. tbl_liquidation - M-Pesa Payment Tracking
 ALTER TABLE `tbl_liquidation`
 ADD COLUMN IF NOT EXISTS `mpesa_code` VARCHAR(20) DEFAULT NULL AFTER `credit`;

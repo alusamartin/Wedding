@@ -128,6 +128,11 @@
                 . format_ksh($balance_due) . ' with your planner when you can.';
         }
     }
+
+    // Opt-in installment plan: when the couple committed to a month-by-month
+    // pace, the nudge tracks THEIR plan (installment X of N, next due date)
+    // instead of the generic deadline bands.
+    $plan_nudge = InstallmentPlan::nudge_for($booking_id, $amount_paid, $package_price);
 ?>
 <?php $users_profile = Users::find_by_id($_SESSION['id']); ?>
 <!doctype html>
@@ -219,6 +224,10 @@
         .pay-nudge .pn-note { font-size: 12.5px; color: #64748B; }
         .pay-nudge .pn-milestone { font-size: 12.5px; color: #64748B; margin-top: 8px; }
         .pay-nudge--urgent .pn-milestone { color: #B91C1C; }
+        .pay-nudge .pn-plan { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #E2E8F0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+        .pay-nudge .pn-plan-label { font-size: 12px; font-weight: 700; color: #065F46; letter-spacing: .02em; }
+        .pay-nudge .pn-plan-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+        .pay-nudge .pn-plan-form select { font-size: 12.5px; padding: 4px 8px; border: 1px solid #CBD5E1; border-radius: 8px; }
         @media (max-width: 767px) { .countdown-banner { padding: 18px; } .countdown-banner .cd-days { font-size: 27px; } }
 
     </style>
@@ -341,7 +350,7 @@
     </div>
 </div>
 
-<?php if (!is_staff() && $nudge_kind !== ''): ?>
+<?php if ($nudge_kind !== ''): ?>
 <div class="row">
     <div class="col-md-12 mb-3">
         <div class="pay-nudge pay-nudge--<?= $nudge_kind; ?><?= $nudge_urgent ? ' pay-nudge--urgent' : ''; ?>">
@@ -358,7 +367,7 @@
                 <?php endif; ?>
             </div>
             <div class="pn-bar"><div class="pn-fill" style="width: <?= $nudge_pct; ?>%;"></div></div>
-            <?php if ($nudge_kind !== 'paid'): ?>
+            <?php if ($nudge_kind !== 'paid' && !is_staff()): ?>
             <div class="pn-actions">
                 <a class="btn btn-sm btn-success" href="client_deposit.php?<?= $links; ?>"><i class="mdi mdi-cellphone-arrow-down mr-1"></i>Pay via M-Pesa</a>
                 <?php if ($harambee_pledged > 0): ?>
@@ -368,8 +377,35 @@
                 <?php endif; ?>
             </div>
             <?php endif; ?>
-            <?php if ($nudge_milestone !== ''): ?>
+            <?php if ($plan_nudge !== null): ?>
+            <div class="pn-milestone"><i class="mdi mdi-calendar-check mr-1"></i><?= htmlspecialchars($plan_nudge['head']); ?>
+                <br><span style="font-size:12px; color:#64748B;"><?= htmlspecialchars($plan_nudge['note']); ?></span></div>
+            <?php elseif ($nudge_milestone !== ''): ?>
             <div class="pn-milestone"><i class="mdi mdi-flag-checkered mr-1"></i><?= htmlspecialchars($nudge_milestone); ?></div>
+            <?php endif; ?>
+            <?php if ($nudge_kind !== 'paid' && $package_price > 0 && $balance_due > 0): ?>
+            <div class="pn-plan">
+                <?php $active_plan = InstallmentPlan::for_booking($booking_id); ?>
+                <?php if ($active_plan): ?>
+                    <span class="pn-plan-label"><i class="mdi mdi-split-vertical mr-1"></i>Plan: <?= (int) $active_plan->months; ?> × <?= format_ksh($active_plan->monthly_amount); ?>/mo</span>
+                    <form method="post" action="client_installment_plan.php?<?= $links; ?>" style="display:inline;">
+                        <?= $session->csrf_field(); ?>
+                        <input type="hidden" name="cancel" value="1">
+                        <button type="submit" class="btn btn-sm btn-outline-secondary" style="font-size:11px; padding:2px 10px;">Cancel plan</button>
+                    </form>
+                <?php else: ?>
+                    <span class="pn-plan-label"><i class="mdi mdi-split-vertical mr-1"></i>Spread it monthly:</span>
+                    <form method="post" action="client_installment_plan.php?<?= $links; ?>" class="pn-plan-form">
+                        <?= $session->csrf_field(); ?>
+                        <select name="months" aria-label="Installment months">
+                            <?php foreach (InstallmentPlan::MONTHS_CHOICES as $m): ?>
+                                <option value="<?= $m; ?>"><?= $m; ?> months · <?= format_ksh(ceil($balance_due / $m / 50) * 50); ?>/mo</option>
+                            <?php endforeach; ?>
+                        </select>
+                        <button type="submit" class="btn btn-sm btn-outline-success" style="font-size:11px; padding:2px 10px;">Set my plan</button>
+                    </form>
+                <?php endif; ?>
+            </div>
             <?php endif; ?>
         </div>
     </div>

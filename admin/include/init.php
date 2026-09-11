@@ -15,6 +15,7 @@ require_once(INCLUDES_PATH.DS."Account_Details.php");
 require_once(INCLUDES_PATH.DS."Booking.php");
 require_once(INCLUDES_PATH.DS."Guest.php");
 require_once(INCLUDES_PATH.DS."Checklist.php");
+require_once(INCLUDES_PATH.DS."InstallmentPlan.php");
 require_once(INCLUDES_PATH.DS."Categories.php");
 require_once(INCLUDES_PATH.DS."Features.php");
 require_once(INCLUDES_PATH.DS."EventWedding.php");
@@ -118,7 +119,8 @@ function login_redirect_target(bool $staff, int $user_id, bool $from_admin_dir =
 /**
  * Where a vendor account (tblusers, access_level 0) lands. Registration is
  * optional — an unregistered vendor starts at vendor_register.php; a
- * registered one at their bookings dashboard.
+ * registered one at their bookings dashboard. Subscription rules do NOT
+ * apply to vendors (they are paid via commission, not SaaS).
  */
 function vendor_redirect_target(int $user_id, bool $from_admin_dir = false): string
 {
