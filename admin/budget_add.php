@@ -56,6 +56,21 @@
                     redirect_to("budget_add.php?$links");
                     die();
                 }
+                // Daraja C2B verification: when enabled, the code must match a
+                // real Paybill payment reported to mpesa_c2b.php, with the
+                // amount matching the recorded payment. The account reference
+                // is the booking number when the payer typed one.
+                if (MpesaC2B::verification_enabled()) {
+                    $check = MpesaC2B::verify($mpesa_code, $payment, (string) $booking_id);
+                    if (!$check['verified']) {
+                        MpesaC2B::record_reject($mpesa_code, 'Booking #' . $booking_id . ' payment: ' . $check['reason'], $payment);
+                        $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> M-Pesa payment could not be verified: '
+                            . htmlspecialchars($check['reason']) . '. Check the code and amount, or record the payment and let an administrator review it.</div>');
+                        redirect_to("budget_add.php?$links");
+                        die();
+                    }
+                    $mpesa_callback_id = (int) ($check['callback_id'] ?? 0);
+                }
                 break;
             case 'bank':
                 $cash = 0;
@@ -89,6 +104,12 @@
             $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Payment could not be saved. Please try again.</div>');
             redirect_to("budget_add.php?$links");
             die();
+        }
+
+        // Bind the verified callback to the saved payment so the same code
+        // cannot be reused for a second payment (mark_consumed is race-safe).
+        if (!empty($mpesa_callback_id)) {
+            MpesaC2B::mark_consumed($mpesa_callback_id, 'tbl_liquidation', (int) $db->the_insert_id());
         }
 
         $session->message('<div class="alert alert-success"><strong><i class="mdi mdi-check"></i></strong> Payment of <strong>' . format_ksh($payment, 2) . '</strong> recorded successfully.</div>');

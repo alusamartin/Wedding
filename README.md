@@ -119,6 +119,31 @@ Staff notification emails (the planner deposit alert) use the same pattern:
 | `WPMS_MAIL_FROM` | `no-reply@everafterplanner.co.ke` | From header on notification emails |
 | `WPMS_SITE_URL` | *(empty)* | Base URL used to build absolute deep links in email bodies |
 
+### M-Pesa Daraja C2B verification (automatic code checking)
+
+Subscription purchases (`subscription.php`) and payment recording
+(`budget_add.php`) accept M-Pesa transaction codes. With the callback
+verification enabled, a code is only accepted when it matches a real Paybill
+payment that Safaricom reported to the public callback endpoint
+(`mpesa_c2b.php`) — no admin copy-pasting:
+
+| Env var | Default | Effect |
+|---|---|---|
+| `WPMS_MPESA_VERIFY` | *(off)* | `1` = reject unverified codes at entry (dev/demo stays off) |
+| `WPMS_MPESA_SHORTCODE` | *(any)* | Your Paybill/Till number — callbacks for other short codes are refused |
+| `WPMS_MPESA_CALLBACK_PASS` | *(off)* | Optional shared secret; endpoint must be called as `mpesa_c2b.php?key=<secret>` |
+| `WPMS_MPESA_TOLERANCE` | `0.01` | Amount match tolerance (fraction; default 1%, floor KSh 1) |
+
+Setup: run `migrations/v2.1_phase1_hardening.sql` (creates `tblmpesa_callbacks`
++ `tblmpesa_callback_log`), register `https://your-domain/mpesa_c2b.php` as the
+Validation **and** Confirmation URL on the Daraja portal, set the env vars, and
+done. Codes are matched on TransID + amount (within tolerance) + account
+reference, and a verified payment can only ever be consumed once. Every
+reported payment — matched or not — is visible in the staff **M-Pesa Ledger**
+(`admin/mpesa_ledger.php`), where an admin can also accept a pending payment
+manually after a phone check. With `WPMS_MPESA_VERIFY` off, entry behaves as
+before (dev/demo mode) while the ledger still records everything.
+
 With the transport off (dev/demo default), every `Notification::create()` still
 writes an audit row to the `tbl_mail_logs` outbox (`status = 'pending'` with the
 reason), mirroring how `tblsms_logs` records SMS sends — nothing is silently
@@ -389,6 +414,8 @@ tests/                                PHPUnit tests (DB + session hardening)
   CSRF tokens on login/register, session regeneration + fingerprint binding,
   and audit logging (`tblsession_audits`). Don't regress them.
 - **Live integrations** (Africa's Talking SMS, M-Pesa Paybill/Till) require
-  your own accounts; see the manual before enabling.
+  your own accounts; see the manual before enabling. M-Pesa codes can be
+  verified automatically via the Daraja C2B callback (`mpesa_c2b.php`) —
+  see the configuration section above.
 - This is a starter product, not turnkey production software — review
   `WPMS_KENYA_MANUAL.md` §11 (production checklist) before going live.

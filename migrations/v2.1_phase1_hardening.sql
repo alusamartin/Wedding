@@ -68,7 +68,55 @@ CREATE TABLE IF NOT EXISTS `tblsession_audits` (
 -- SET GLOBAL sql_mode = 'STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION';
 
 -- ----------------------------------------------------------------------
--- 4. Guest relationship vocabulary (Stage 2 audit)
+-- 4a. M-Pesa C2B verification ledger (Daraja callback verification)
+--     Every code entered on subscription.php / budget_add.php is checked
+--     against transactions Daraja reported via the public callback endpoint
+--     (mpesa_c2b.php). NULL verified_at = not yet verified (still usable in
+--     dev where WPMS_MPESA_VERIFY=off); 'rejected' rows are stored so an
+--     admin can see what failed and why.
+--     Idempotent: re-running this file is safe.
+-- ----------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `tblmpesa_callbacks` (
+    `id`            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `trans_type`    ENUM('Pay Bill','Buy Goods') NOT NULL DEFAULT 'Pay Bill',
+    `trans_id`      VARCHAR(20)  NOT NULL COMMENT 'Daraja TransID == the 10-char code users type',
+    `trans_time`    VARCHAR(20)  NOT NULL COMMENT 'Daraja YYYYMMDDHHmmss (EAT)',
+    `amount`        DECIMAL(12,2) NOT NULL,
+    `business_short_code` VARCHAR(12) NOT NULL,
+    `bill_ref_number` VARCHAR(100) DEFAULT NULL COMMENT 'Account number the payer typed',
+    `msisdn`        VARCHAR(15)  NOT NULL COMMENT 'Payer phone, 2547.../2541...',
+    `first_name`    VARCHAR(100) DEFAULT NULL,
+    `middle_name`   VARCHAR(100) DEFAULT NULL,
+    `last_name`     VARCHAR(100) DEFAULT NULL,
+    `org_account_balance` VARCHAR(20) DEFAULT NULL,
+    `invoice_number` VARCHAR(20) DEFAULT NULL,
+    `verified_at`   DATETIME     DEFAULT NULL COMMENT 'NULL = pending review',
+    `ref_table`     VARCHAR(40)  DEFAULT NULL COMMENT 'tblsubscriptions | tbl_liquidation',
+    `ref_id`        INT UNSIGNED DEFAULT NULL,
+    `reject_reason` VARCHAR(255) DEFAULT NULL,
+    `created_at`    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY `uniq_trans` (`trans_type`, `trans_id`),
+    KEY `idx_verified` (`verified_at`),
+    KEY `idx_ref` (`ref_table`, `ref_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `tblmpesa_callback_log` (
+    `id`         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `direction`  VARCHAR(10)  NOT NULL DEFAULT 'in' COMMENT 'in = from Safaricom',
+    `payload`    TEXT         NOT NULL COMMENT 'raw JSON body for forensics',
+    `note`       VARCHAR(255) DEFAULT NULL,
+    `created_at` TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------------------------------------------------
+-- 4b. Optional automatic verification gate (off by default)
+--     Set WPMS_MPESA_VERIFY=1 in the environment (Apache SetEnv, CLI export,
+--     Docker environment:) to make unverified codes rejected at entry.
+-- ----------------------------------------------------------------------
+-- (environment-only switch — documented here, nothing to execute)
+
+-- ----------------------------------------------------------------------
+-- 5. Guest relationship vocabulary (Stage 2 audit)
 --    The guest forms store code keys (family_elder, vc_member, ...) but the
 --    seed inserts human labels ('Family Elder (Mzee)', 'Officiant', ...),
 --    so seeded guests rendered the 'Guest' fallback in the list. Normalise

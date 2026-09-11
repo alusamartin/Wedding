@@ -87,6 +87,250 @@ class Subscription extends DB_Object
 }
 
 /**
+ * M-Pesa C2B verification (Daraja callback verification)
+ *
+ * When a customer pays via Paybill / Buy Goods, Safaricom pushes a validation
+ * & confirmation notification to the endpoint registered on the Daraja portal
+ * (mpesa_c2b.php in this project). Those payloads are stored in
+ * tblmpesa_callbacks; the 10-char TransID is exactly the code users type into
+ * subscription.php and budget_add.php.
+ *
+ * Verification gates a code by checking its callbacks:
+ *   • amount tolerance  — the reported amount must match the expected within
+ *                         WPMS_MPESA_TOLERANCE (default 1%, floor KSh 1)
+ *   • account reference — when the expected ref is known (booking #, WPMS),
+ *                         the bill_ref_number must contain it; empty DB refs
+ *                         pass (payers often leave the reference blank)
+ *   • duplicate use     — a callback already verified for another row is
+ *                         refused (one payment cannot activate two things)
+ *
+ * Rejected payloads are KEPT with verified_at = NULL + a reject_reason so an
+ * admin can see what was refused. The ledger is append-only (UNIQUE(trans_type,
+ * trans_id)) — replays of the same Daraja payload are no-ops.
+ */
+class MpesaC2B
+{
+    /** Current Daraja C2B validation/confirmation schema. */
+    private const ALLOWED_KEYS = [
+        'TransactionType', 'TransID', 'TransTime', 'TransAmount', 'BusinessShortCode',
+        'BillRefNumber', 'InvoiceNumber', 'OrgAccountBalance', 'ThirdPartyTransactionID',
+        'MSISDN', 'FirstName', 'MiddleName', 'LastName',
+    ];
+
+    /** @return array{enabled:bool, tolerance:float} */
+    public static function config(): array
+    {
+        return [
+            'enabled'   => self::verification_enabled(),
+            'tolerance' => self::tolerance(),
+        ];
+    }
+
+    public static function verification_enabled(): bool
+    {
+        return in_array(strtolower(trim((string) getenv('WPMS_MPESA_VERIFY'))), ['1', 'true', 'yes', 'on'], true);
+    }
+
+    /** Amount tolerance fraction: env override, default 1% (KSh 1 absolute floor). */
+    public static function tolerance(): float
+    {
+        $t = filter_var(getenv('WPMS_MPESA_TOLERANCE'), FILTER_VALIDATE_FLOAT);
+        if ($t === false || $t < 0 || $t > 1) {
+            return 0.01;
+        }
+        return $t;
+    }
+
+    /**
+     * Validate + ingest a Daraja callback payload (from mpesa_c2b.php).
+     * Append-only: unique(trans_type, trans_id) makes replays no-ops.
+     *
+     * @return array{ok:bool, id?:int, error?:string}
+     */
+    public static function ingest(array $payload): array
+    {
+        global $db;
+
+        if (!self::keys_allowed($payload)) {
+            return ['ok' => false, 'error' => 'Unknown payload keys — not a Daraja C2B notification'];
+        }
+        $transId   = strtoupper(trim((string) ($payload['TransID'] ?? '')));
+        $time      = trim((string) ($payload['TransTime'] ?? ''));
+        $amount    = filter_var($payload['TransAmount'] ?? null, FILTER_VALIDATE_FLOAT);
+        $shortcode = trim((string) ($payload['BusinessShortCode'] ?? ''));
+        $msisdn    = trim((string) ($payload['MSISDN'] ?? ''));
+        if ($transId === '' || $time === '' || $amount === false || $amount <= 0 || $shortcode === '' || $msisdn === '') {
+            return ['ok' => false, 'error' => 'Missing or invalid required fields (TransID, TransTime, TransAmount, BusinessShortCode, MSISDN)'];
+        }
+        if (!preg_match('/^[A-Z0-9]{6,20}$/', $transId)) {
+            return ['ok' => false, 'error' => 'Malformed TransID'];
+        }
+        if (!preg_match('/^\d{14}$/', $time)) { // Daraja format YYYYMMDDHHmmss
+            return ['ok' => false, 'error' => 'Malformed TransTime (expected YYYYMMDDHHmmss)'];
+        }
+        if (!preg_match('/^\d{6,15}$/', $msisdn)) {
+            return ['ok' => false, 'error' => 'Malformed MSISDN'];
+        }
+
+        $stmt = $db->prepare(
+            'INSERT INTO tblmpesa_callbacks
+                (trans_type, trans_id, trans_time, amount, business_short_code, bill_ref_number,
+                 msisdn, first_name, middle_name, last_name, org_account_balance, invoice_number)
+             VALUES
+                (:ttype, :tid, :ttime, :amount, :shortcode, :billref, :msisdn, :fname, :mname, :lname, :balance, :invoice)'
+        );
+        try {
+            $stmt->execute([
+                ':ttype'     => (($payload['TransactionType'] ?? '') === 'Buy Goods') ? 'Buy Goods' : 'Pay Bill',
+                ':tid'       => $transId,
+                ':ttime'     => $time,
+                ':amount'    => $amount,
+                ':shortcode' => substr($shortcode, 0, 12),
+                ':billref'   => substr(trim((string) ($payload['BillRefNumber'] ?? '')), 0, 100) ?: null,
+                ':msisdn'    => $msisdn,
+                ':fname'     => substr(trim((string) ($payload['FirstName'] ?? '')), 0, 100) ?: null,
+                ':mname'     => substr(trim((string) ($payload['MiddleName'] ?? '')), 0, 100) ?: null,
+                ':lname'     => substr(trim((string) ($payload['LastName'] ?? '')), 0, 100) ?: null,
+                ':balance'   => substr(trim((string) ($payload['OrgAccountBalance'] ?? '')), 0, 20) ?: null,
+                ':invoice'   => substr(trim((string) ($payload['InvoiceNumber'] ?? '')), 0, 20) ?: null,
+            ]);
+        } catch (PDOException $e) {
+            if (stripos($e->getMessage(), 'Duplicate entry') !== false) {
+                return ['ok' => true, 'id' => 0]; // idempotent replay
+            }
+            error_log('[WPMS][MpesaC2B] ingest failed: ' . $e->getMessage());
+            return ['ok' => false, 'error' => 'Storage failure'];
+        }
+        return ['ok' => true, 'id' => (int) $db->the_insert_id()];
+    }
+
+    /**
+     * Verify a user-typed code against stored Daraja callbacks.
+     *
+     * @param string $code       the 10-char M-Pesa transaction code
+     * @param float  $amount     expected amount (KSh)
+     * @param string $accountRef expected account reference ('' = accept any non-empty ref)
+     * @return array{verified:bool, reason:string, callback_id:?int, amount:float|null}
+     */
+    public static function verify(string $code, float $amount, string $accountRef = ''): array
+    {
+        global $db;
+        $code = strtoupper(trim($code));
+
+        $rows = $db->fetchAll(
+            'SELECT * FROM tblmpesa_callbacks WHERE trans_id = :c ORDER BY id ASC',
+            [':c' => $code]
+        );
+        if ($rows === []) {
+            return ['verified' => false, 'reason' => 'No matching M-Pesa transaction was received for this code', 'callback_id' => null, 'amount' => null];
+        }
+
+        foreach ($rows as $row) {
+            // Skip callbacks already consumed by another record — one payment
+            // cannot activate two things. (Multiple callbacks per code are
+            // possible: validation + confirmation replays.)
+            if ($row->verified_at !== null) {
+                continue;
+            }
+            if ((float) $row->amount < $amount * (1 - self::tolerance()) - 0.005) {
+                continue; // underpaid beyond tolerance
+            }
+            if ((float) $row->amount > $amount * (1 + self::tolerance()) + 0.005) {
+                continue; // overpaid beyond tolerance (probably a different purchase)
+            }
+            $ref  = strtoupper(trim((string) $row->bill_ref_number));
+            $want = strtoupper(trim($accountRef));
+            if ($want !== '' && $ref !== '' && strpos($ref, $want) === false) {
+                continue; // wrong account reference
+            }
+            return ['verified' => true, 'reason' => 'Matched M-Pesa payment of ' . format_ksh((float) $row->amount, 2), 'callback_id' => (int) $row->id, 'amount' => (float) $row->amount];
+        }
+        return ['verified' => false, 'reason' => 'M-Pesa payment found but amount or account reference does not match', 'callback_id' => null, 'amount' => null];
+    }
+
+    /**
+     * Mark a callback as consumed by a subscription / payment record.
+     */
+    public static function mark_consumed(int $callback_id, string $ref_table, int $ref_id): bool
+    {
+        global $db;
+        $stmt = $db->prepare(
+            'UPDATE tblmpesa_callbacks SET verified_at = NOW(), ref_table = :t, ref_id = :r WHERE id = :id AND verified_at IS NULL'
+        );
+        return $stmt->execute([':t' => $ref_table, ':r' => $ref_id, ':id' => $callback_id]);
+    }
+
+    /**
+     * Record a failed verification attempt (kept for the admin review queue).
+     */
+    public static function record_reject(string $code, string $reason, float $amount): void
+    {
+        global $db;
+        $stmt = $db->prepare(
+            'INSERT INTO tblmpesa_callbacks (trans_type, trans_id, trans_time, amount, business_short_code, msisdn, reject_reason)
+             VALUES (:ttype, :tid, :ttime, :amount, :shortcode, :msisdn, :reason)'
+        );
+        try {
+            $stmt->execute([
+                ':ttype'     => 'Pay Bill',
+                ':tid'       => strtoupper(trim($code)),
+                ':ttime'     => date('YmdHis'),
+                ':amount'    => $amount,
+                ':shortcode' => substr((string) (getenv('WPMS_MPESA_SHORTCODE') ?: '000000'), 0, 12),
+                ':msisdn'    => '0',
+                ':reason'    => substr($reason, 0, 255),
+            ]);
+        } catch (PDOException $e) {
+            // A duplicate reject is fine — the admin queue shows the first reason.
+        }
+    }
+
+    /**
+     * Pending / rejected rows for the admin review queue (admin/mpesa_ledger.php).
+     */
+    public static function pending_review(int $limit = 100): array
+    {
+        global $db;
+        return $db->fetchAll(
+            'SELECT * FROM tblmpesa_callbacks WHERE verified_at IS NULL ORDER BY created_at DESC LIMIT ' . max(1, min(500, $limit))
+        );
+    }
+
+    /**
+     * @return array{verified:int, pending:int, rejected:int, total_ksh:float}
+     */
+    public static function stats(): array
+    {
+        global $db;
+        $row = $db->fetchOne(
+            "SELECT
+                SUM(CASE WHEN verified_at IS NOT NULL THEN 1 ELSE 0 END) AS verified,
+                SUM(CASE WHEN verified_at IS NULL AND reject_reason IS NULL THEN 1 ELSE 0 END) AS pending,
+                SUM(CASE WHEN verified_at IS NULL AND reject_reason IS NOT NULL THEN 1 ELSE 0 END) AS rejected,
+                COALESCE(SUM(CASE WHEN verified_at IS NOT NULL THEN amount ELSE 0 END), 0) AS total_ksh
+               FROM tblmpesa_callbacks"
+        );
+        return [
+            'verified'  => (int) ($row->verified ?? 0),
+            'pending'   => (int) ($row->pending ?? 0),
+            'rejected'  => (int) ($row->rejected ?? 0),
+            'total_ksh' => (float) ($row->total_ksh ?? 0),
+        ];
+    }
+
+    /** Daraja payload key allow-list — rejects junk/forged POSTs to the callback. */
+    private static function keys_allowed(array $payload): bool
+    {
+        foreach (array_keys($payload) as $key) {
+            if (!in_array($key, self::ALLOWED_KEYS, true)) {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+/**
  * Vendor class for marketplace — PDO edition
  */
 class Vendor extends DB_Object

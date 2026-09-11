@@ -134,6 +134,12 @@
                         <i class="mdi mdi-cash-multiple mr-1"></i> Monetization
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="revenue.php">
+                            <i class="mdi mdi-cash-100 mr-3"></i>
+                            Revenue
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="subscription.php">
                             <i class="mdi mdi-crown mr-3"></i>
                             Subscription Plans

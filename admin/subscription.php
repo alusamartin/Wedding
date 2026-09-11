@@ -31,7 +31,36 @@
             die();
         }
 
+        // Daraja C2B verification: when enabled, the code must match a real
+        // Paybill/Buy-Goods payment Safaricom reported to mpesa_c2b.php.
+        // Amount must match the plan price (within tolerance) and the account
+        // reference must mention WPMS when the payer typed one.
+        if (MpesaC2B::verification_enabled()) {
+            $check = MpesaC2B::verify($mpesa_code, (float) $plan_details->price, 'WPMS');
+            if (!$check['verified']) {
+                MpesaC2B::record_reject($mpesa_code, 'Subscription ' . $plan . ': ' . $check['reason'], (float) $plan_details->price);
+                $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> M-Pesa payment could not be verified: '
+                    . htmlspecialchars($check['reason']) . '. Double-check the code and amount, or contact the administrator.</div>');
+                redirect_to("subscription.php");
+                die();
+            }
+        }
+
         Subscription::create_subscription($user_id, $plan, $plan_details->price, $mpesa_code);
+        if (MpesaC2B::verification_enabled()) {
+            // Bind the matched callback to this subscription so the same code
+            // cannot activate a second plan (mark_consumed is race-safe).
+            $subId = (int) $db->fetchValue(
+                'SELECT id FROM tblsubscriptions WHERE user_id = :u AND mpesa_code = :c ORDER BY id DESC LIMIT 1',
+                [':u' => $user_id, ':c' => $mpesa_code]
+            );
+            if ($subId > 0) {
+                $check = MpesaC2B::verify($mpesa_code, (float) $plan_details->price, 'WPMS');
+                if (!empty($check['callback_id'])) {
+                    MpesaC2B::mark_consumed((int) $check['callback_id'], 'tblsubscriptions', $subId);
+                }
+            }
+        }
         $session->message('<div class="alert alert-success"><strong><i class="mdi mdi-check"></i></strong> Subscription activated! Plan: <strong>' . htmlspecialchars($plan_details->name) . '</strong> — Valid until ' . date('d M Y', strtotime('+30 days')) . '.</div>');
         redirect_to("subscription.php");
     }

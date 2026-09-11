@@ -900,7 +900,10 @@ Liquidation::getTotalsByMethod($booking_id)
 3. User pays via Paybill 123456, Account: WPMS
 4. User enters M-Pesa transaction code (10 chars)
 5. System creates subscription record (30-day validity)
-6. Admin verifies payment (manual for now, Daraja API ready)
+6. Code verified automatically via the Daraja C2B callback
+   (see §7.6 M-Pesa Verification) — with `WPMS_MPESA_VERIFY=1` an
+   unverified/wrong-amount code is refused at entry; without it, entry
+   behaves as before and an admin reviews the M-Pesa Ledger
 
 ### Subscription Check on Login
 Staff landings resolve through the shared helper in `admin/include/init.php`,
@@ -1075,6 +1078,79 @@ WeddingWebsite::increment_views($id)
 ### Key Files
 - `admin/include/Monetization.php` — WeddingWebsite class
 - `site.php` — Public wedding website template
+
+---
+
+## 7.6 M-Pesa Verification (Daraja C2B Callback)
+
+M-Pesa transaction codes entered on `subscription.php` (plan purchases) and
+`budget_add.php` (couple payments) are verified **automatically** against the
+payments Safaricom reports to the public callback endpoint `mpesa_c2b.php` —
+no admin copy-pasting.
+
+### How it works
+```
+Customer pays Paybill 123456 / Account WPMS
+        │
+        ▼
+Safaricom POSTs the payment (TransID, amount, MSISDN, BillRefNumber…)
+        │
+        ▼
+mpesa_c2b.php  — validates + stores it in tblmpesa_callbacks
+        │
+        ▼
+User types the TransID (10-char code) into the app
+        │
+        ▼
+MpesaC2B::verify() — matches code + amount (±1%) + account reference,
+marks the callback consumed, and the subscription/payment is accepted
+```
+
+### Rules
+- **Amount match** within `WPMS_MPESA_TOLERANCE` (default 1%, floor KSh 1) —
+  a KSh 5,000 payment cannot buy a KSh 7,999 plan.
+- **Account reference** — subscriptions expect the ref to mention `WPMS`;
+  booking payments expect the booking number. Empty payer refs pass
+  (payers often leave the account field blank).
+- **Single use** — a verified payment can activate exactly one subscription
+  or payment row; reuse is refused.
+- **Append-only ledger** — every reported payment is kept forever; replays of
+  the same Daraja notification are no-ops.
+
+### Setup
+1. Run `migrations/v2.1_phase1_hardening.sql` (creates `tblmpesa_callbacks`
+   + `tblmpesa_callback_log`).
+2. Register `https://your-domain/mpesa_c2b.php` as the Validation **and**
+   Confirmation URL on the Daraja portal.
+3. Set the environment variables (see README §M-Pesa Daraja C2B verification):
+   `WPMS_MPESA_VERIFY=1`, `WPMS_MPESA_SHORTCODE`, optionally
+   `WPMS_MPESA_CALLBACK_PASS` and `WPMS_MPESA_TOLERANCE`.
+
+### Admin review — the M-Pesa Ledger
+`admin/mpesa_ledger.php` shows every reported payment: **verified** (what it
+activated), **pending** (nobody claimed it yet — an admin can Accept it
+manually after a phone check), **rejected** (the user-typed code failed:
+wrong amount, wrong account, already used, or unknown code). The underlying
+Safaricom payment is never deleted. With `WPMS_MPESA_VERIFY` off (dev/demo),
+entry behaves as before while the ledger still records everything — flip the
+flag in production without a code change.
+
+### Key Methods
+```php
+MpesaC2B::ingest(array $payload)                  // store a Daraja notification
+MpesaC2B::verify(string $code, float $amount, string $ref)  // gate a typed code
+MpesaC2B::mark_consumed(int $callback_id, string $table, int $id)
+MpesaC2B::record_reject(string $code, string $reason, float $amount)
+MpesaC2B::pending_review() / MpesaC2B::stats()
+MpesaC2B::verification_enabled()                  // WPMS_MPESA_VERIFY
+```
+
+### Key Files
+- `mpesa_c2b.php` — public callback endpoint (Daraja contract: HTTP 200 +
+  `ResultCode` JSON; never 500s, so Safaricom never retry-spams)
+- `admin/include/Monetization.php` — MpesaC2B class
+- `admin/mpesa_ledger.php` — staff review queue
+- `tests/MpesaC2BTest.php` — 14 tests (ingest, verify, replay, endpoint)
 
 ---
 
