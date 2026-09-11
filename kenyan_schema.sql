@@ -24,6 +24,13 @@ ADD COLUMN IF NOT EXISTS `rsvp_reminders` TINYINT(3) NOT NULL DEFAULT 0 AFTER `r
 ADD UNIQUE INDEX IF NOT EXISTS `idx_guest_rsvp_token` (`rsvp_token`),
 MODIFY `state` VARCHAR(100) NOT NULL DEFAULT '';
 
+-- 1b. tblweddingbook - payment deadline-band marker (scripts/deadline_sms.php)
+--     Stores the SMALLEST band (in days) already texted to the couple. A band
+--     fires only when the current band is smaller, so date changes and late
+--     registrations never duplicate or skip unfairly.
+ALTER TABLE `tblweddingbook`
+ADD COLUMN IF NOT EXISTS `pay_band_sms_sent` TINYINT(3) DEFAULT NULL AFTER `organizer_id`;
+
 -- 1c. tbl_installment_plans - opt-in month-by-month payment plans
 --     A couple spreads the package balance over N monthly installments; the
 --     overview nudge then tracks their pace against THEIR plan instead of a

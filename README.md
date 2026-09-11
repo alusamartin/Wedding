@@ -199,6 +199,38 @@ Cron example (daily at 09:00):
 0 9 * * * php /path/to/Wedding/scripts/rsvp_reminders.php --quiet
 ```
 
+### Payment deadline-band texts to couples
+
+`scripts/deadline_sms.php` texts the COUPLE (not guests) when a **confirmed**
+booking with a priced package and an open balance crosses a deadline band:
+60, 30 and 7 days before the wedding (configurable `--bands=60,30,7`). Each
+text carries the couple's names, their balance, and the same pace/settlement
+guidance the overview nudge shows — so the SMS and the portal never disagree.
+Kenyan vendors expect final settlement a month out; the copy mirrors that.
+
+One text per band, ever: `tblweddingbook.pay_band_sms_sent` stores the
+smallest band already texted, and a band fires only when the current one is
+smaller — date changes and late registrations never duplicate or re-send
+missed bands. Fully-paid bookings are skipped (marker untouched, so a later
+reversal still gets future bands), as are pending bookings and past weddings.
+
+Delivery rides `SMS::send()` (outbox row in `tblsms_logs`, credits charged to
+the assigned organizer, dev mode logs without sending) plus a couple bell
+notification + email copy via `Notification::create()` — the text is never
+the only channel — and the planner gets one notification per booking texted.
+
+```bash
+php scripts/deadline_sms.php --dry-run            # preview, writes nothing
+php scripts/deadline_sms.php                      # bands 60/30/7
+php scripts/deadline_sms.php --bands=30,14,3 --limit=50
+```
+
+Cron example (daily at 10:00):
+
+```cron
+0 10 * * * php /path/to/Wedding/scripts/deadline_sms.php --quiet
+```
+
 Every send is recorded on the guest (`rsvp_reminded_at` + count, visible on
 the staff RSVP dashboard) **only after** the SMS reports success — a credits
 or gateway failure retries naturally on the next run. Without an Africa's
