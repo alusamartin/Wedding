@@ -97,6 +97,26 @@ function format_ksh($amount, $decimals = 0)
 }
 
 /**
+ * Sanitize one value for a CSV export cell (anti CSV-injection).
+ *
+ * Spreadsheet apps (Excel, Google Sheets, LibreOffice) may execute cells
+ * that begin with = + - @ as formulas — a classic exfiltration vector when
+ * exported rows contain user-typed text ("=HYPERLINK(...)", "+cmd|...").
+ * Such values are prefixed with a single quote so they render as literal
+ * text; control characters (newlines excepted) are stripped.
+ */
+function csv_cell($value): string
+{
+    $value = (string) $value;
+    // Strip control chars except tab/newline/return (fputcsv handles quoting).
+    $value = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/u', '', $value) ?? '';
+    if ($value !== '' && in_array($value[0], ['=', '+', '-', '@'], true)) {
+        return "'" . $value;
+    }
+    return $value;
+}
+
+/**
  * Human, Kenyan-style date: "Sat 20 Dec 2025" (optionally ", 6:00 PM").
  *
  * Every user-facing date should go through this so raw DB values

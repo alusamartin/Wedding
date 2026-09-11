@@ -331,6 +331,184 @@ class MpesaC2B
 }
 
 /**
+ * Revenue dashboard aggregations (admin/revenue.php)
+ *
+ * Three platform revenue streams, month by month:
+ *   1. Subscription payments — tblsubscriptions.created_at is the moment the
+ *      planner paid (create_subscription() stamps it on sign-up/renewal; the
+ *      tblsubscription_payments ledger is seeded but never written by the app,
+ *      so it is intentionally NOT a source).
+ *   2. Vendor commissions — tblvendor_bookings.commission, counted when the
+ *      deal is CONFIRMED (pending enquiries carry no agreed amount yet).
+ *   3. SMS spend — tblsms_logs.cost, counted when the message actually SENT
+ *      (failed/pending rows cost the planner nothing until they go out).
+ */
+class Revenue
+{
+    /** How many recent months the dashboard shows. */
+    public const MONTHS_SHOWN = 12;
+
+    /**
+     * Combined monthly totals for all three streams.
+     *
+     * @return array<int, array{ym:string, subscriptions:float, commissions:float, sms:float, total:float}>
+     */
+    public static function monthly_totals(int $months = self::MONTHS_SHOWN): array
+    {
+        global $db;
+        $months = max(1, min(36, $months));
+
+        // 1. Subscriptions: amount recognized in the month the planner paid.
+        $subs = $db->fetchAll(
+            "SELECT DATE_FORMAT(created_at, '%Y-%m') AS ym, COALESCE(SUM(amount), 0) AS total
+               FROM tblsubscriptions
+              WHERE status IN ('active', 'expired')
+              GROUP BY DATE_FORMAT(created_at, '%Y-%m')"
+        );
+        // 2. Commissions: recognized when the vendor deal is confirmed.
+        $comm = $db->fetchAll(
+            "SELECT DATE_FORMAT(created_at, '%Y-%m') AS ym, COALESCE(SUM(commission), 0) AS total
+               FROM tblvendor_bookings
+              WHERE status IN ('confirmed', 'completed')
+              GROUP BY DATE_FORMAT(created_at, '%Y-%m')"
+        );
+        // 3. SMS spend: only successful sends cost credits.
+        $sms = $db->fetchAll(
+            "SELECT DATE_FORMAT(created_at, '%Y-%m') AS ym, COALESCE(SUM(cost), 0) AS total
+               FROM tblsms_logs
+              WHERE status = 'sent'
+              GROUP BY DATE_FORMAT(created_at, '%Y-%m')"
+        );
+
+        return self::merge_months($months, $subs, $comm, $sms);
+    }
+
+    /**
+     * Lifetime totals per stream (all time, statuses as monthly_totals).
+     *
+     * @return array{subscriptions:float, commissions:float, sms:float, total:float}
+     */
+    public static function lifetime_totals(): array
+    {
+        global $db;
+        $subscriptions = (float) $db->fetchValue(
+            "SELECT COALESCE(SUM(amount), 0) FROM tblsubscriptions WHERE status IN ('active', 'expired')"
+        );
+        $commissions = (float) $db->fetchValue(
+            "SELECT COALESCE(SUM(commission), 0) FROM tblvendor_bookings WHERE status IN ('confirmed', 'completed')"
+        );
+        $sms = (float) $db->fetchValue(
+            "SELECT COALESCE(SUM(cost), 0) FROM tblsms_logs WHERE status = 'sent'"
+        );
+        return [
+            'subscriptions' => $subscriptions,
+            'commissions'   => $commissions,
+            'sms'           => $sms,
+            'total'         => $subscriptions + $commissions + $sms,
+        ];
+    }
+
+    /**
+     * Details for one stream, newest first (drill-down tables).
+     *
+     * @return array<object>
+     */
+    public static function stream_rows(string $stream, int $limit = 100): array
+    {
+        global $db;
+        $limit = max(1, min(500, $limit));
+        switch ($stream) {
+            case 'subscriptions':
+                return $db->fetchAll(
+                    "SELECT s.id, s.plan, s.amount, s.mpesa_code, s.start_date, s.expiry_date, s.status,
+                            u.firstname, u.lastname, u.email
+                       FROM tblsubscriptions s
+                  LEFT JOIN tblusers u ON u.id = s.user_id
+                      WHERE s.status IN ('active', 'expired')
+                      ORDER BY s.created_at DESC
+                      LIMIT {$limit}"
+                );
+            case 'commissions':
+                return $db->fetchAll(
+                    "SELECT vb.id, vb.amount AS deal_amount, vb.commission, vb.status, vb.event_date,
+                            v.business_name, b.bride, b.groom
+                       FROM tblvendor_bookings vb
+                  LEFT JOIN tblvendors v ON v.id = vb.vendor_id
+                  LEFT JOIN tblweddingbook b ON b.booking_id = vb.booking_id
+                      WHERE vb.status IN ('confirmed', 'completed')
+                      ORDER BY vb.created_at DESC
+                      LIMIT {$limit}"
+                );
+            case 'sms':
+                return $db->fetchAll(
+                    "SELECT l.id, l.phone, l.message, l.cost, l.sent_at,
+                            u.firstname, u.lastname
+                       FROM tblsms_logs l
+                  LEFT JOIN tblusers u ON u.id = l.user_id
+                      WHERE l.status = 'sent'
+                      ORDER BY l.created_at DESC
+                      LIMIT {$limit}"
+                );
+        }
+        return [];
+    }
+
+    /**
+     * Fill every month in the window (0.00 where a stream was quiet) so the
+     * dashboard's table/chart has a continuous axis. Months are keyed
+     * 'YYYY-MM', oldest first (newest last).
+     *
+     * @param array<object> $subs       ['ym'=>..., 'total'=>...] rows
+     * @param array<object> $comm       ['ym'=>..., 'total'=>...] rows
+     * @param array<object> $sms        ['ym'=>..., 'total'=>...] rows
+     */
+    private static function merge_months(int $months, array $subs, array $comm, array $sms): array
+    {
+        $toMap = function (array $rows): array {
+            $map = [];
+            foreach ($rows as $row) {
+                $map[(string) $row->ym] = (float) $row->total;
+            }
+            return $map;
+        };
+        $subsMap = $toMap($subs);
+        $commMap = $toMap($comm);
+        $smsMap  = $toMap($sms);
+
+        $out = [];
+        $cursor = new DateTimeImmutable('first day of this month 00:00:00');
+        for ($i = $months - 1; $i >= 0; $i--) {
+            $ym = $cursor->modify("-{$i} months")->format('Y-m');
+            $s = $subsMap[$ym] ?? 0.0;
+            $c = $commMap[$ym] ?? 0.0;
+            $x = $smsMap[$ym] ?? 0.0;
+            $out[$ym] = [
+                'ym'            => $ym,
+                'subscriptions' => $s,
+                'commissions'   => $c,
+                'sms'           => $x,
+                'total'         => $s + $c + $x,
+            ];
+        }
+        return $out;
+    }
+
+    /** @return array{months_ago:int, label:string, total:float} */
+    public static function month_summary(int $monthsAgo): array
+    {
+        $rows = self::monthly_totals();
+        $ym   = (new DateTimeImmutable('first day of this month 00:00:00'))
+            ->modify("-{$monthsAgo} months")->format('Y-m');
+        $row  = $rows[$ym] ?? ['total' => 0.0];
+        return [
+            'months_ago' => $monthsAgo,
+            'label'      => date('F Y', (new DateTimeImmutable("first day of {$ym} 00:00:00"))->getTimestamp()),
+            'total'      => (float) $row['total'],
+        ];
+    }
+}
+
+/**
  * Vendor class for marketplace — PDO edition
  */
 class Vendor extends DB_Object

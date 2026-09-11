@@ -163,6 +163,12 @@
                             SMS Center
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="mpesa_ledger.php">
+                            <i class="mdi mdi-cellphone-arrow-down mr-3"></i>
+                            M-Pesa Ledger
+                        </a>
+                    </li>
                     <li class="nav-item"><div class="dropdown-divider"></div></li>
 
                     <li class="nav-item">
