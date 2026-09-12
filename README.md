@@ -163,6 +163,20 @@ M-Pesa Ledger shows every push and what each fulfilled one created.
 With `WPMS_MPESA_STK` off (dev/demo default) the buttons disappear and the
 code-entry flow behaves exactly as before.
 
+### Login rate limiting (built-in brute-force throttle)
+
+`login.php` throttles failed sign-ins itself — no server modules needed:
+
+| Env var | Default | Effect |
+|---|---|---|
+| `WPMS_LOGIN_THROTTLE_OFF` | *(off)* | `1` = disable all throttling (maintenance / shared test suites) |
+
+Defaults: **5** failed attempts for one (email, IP) pair locks it for
+**15 minutes** (the message names the wait); a per-IP cap of **20** recent
+failures blocks further attempts from that address even for fresh accounts;
+success clears the pair and rows older than 7 days are pruned. Setup: run the
+migration (`tbllogin_throttle`) — that's it. SetEnv works too, e.g.
+`SetEnv WPMS_LOGIN_THROTTLE_OFF 1` in an .htaccess to disable it temporarily.
 
 Setup: run `migrations/v2.1_phase1_hardening.sql` (creates `tblmpesa_callbacks`
 + `tblmpesa_callback_log`), register `https://your-domain/mpesa_c2b.php` as the

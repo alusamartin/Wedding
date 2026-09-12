@@ -11,6 +11,16 @@
             <directory>tests</directory>
         </testsuite>
     </testsuites>
+    <php>
+        <!--
+          The suite deliberately posts bad passwords (guard tests, wrong-CSRF
+          tests, vendor logins...). With throttling live, those attempts would
+          cross-lock the shared seeded accounts and break unrelated classes.
+          LoginThrottleTest unsets this for its own process and strips it from
+          its php -S child so it can test the throttle end-to-end.
+        -->
+        <env name="WPMS_LOGIN_THROTTLE_OFF" value="1"/>
+    </php>
     <source>
         <include>
             <directory>admin/include</directory>

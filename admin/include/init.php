@@ -23,6 +23,7 @@ require_once(INCLUDES_PATH.DS."Gallery.php");
 require_once(INCLUDES_PATH.DS."Users.php");
 require_once(INCLUDES_PATH.DS."Events.php");
 require_once(INCLUDES_PATH.DS."Liquidation.php");
+require_once(INCLUDES_PATH.DS."LoginThrottle.php");
 require_once(INCLUDES_PATH.DS."Monetization.php");
 require_once(INCLUDES_PATH.DS."Notification.php");
 require_once(INCLUDES_PATH.DS."PasswordReset.php");

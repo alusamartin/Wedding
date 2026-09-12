@@ -1443,7 +1443,7 @@ http://localhost/Wedding/site.php?slug=your-names
 | Password Verification | password_verify() |
 | Session Management | PHP sessions with regeneration |
 | Session Fixation | Regenerate ID every 30 minutes |
-| Brute Force | No built-in rate limiting (add via .htaccess) |
+| Brute Force | Built-in throttle on login.php: 5 failed attempts per (email, IP) pair locks it for 15 minutes; per-IP cap of 20 catches distributed guessing; success clears; `WPMS_LOGIN_THROTTLE_OFF=1` disables (§11.7) |
 
 ## 11.2 CSRF Protection
 
@@ -1483,12 +1483,30 @@ http://localhost/Wedding/site.php?slug=your-names
 ## 11.6 Security Recommendations
 
 1. **Enable HTTPS** — Install SSL certificate
-2. **Rate Limiting** — Add login attempt limiting
-3. **Backup** — Daily database backups
-4. **File Uploads** — Validate MIME types, limit size
-5. **Error Display** — Set display_errors=Off in production
-6. **Database User** — Use limited-privilege MySQL user
-7. **Admin Path** — Consider renaming /admin/ to custom path
+2. **Backup** — Daily database backups
+3. **File Uploads** — Validate MIME types, limit size
+4. **Error Display** — Set display_errors=Off in production
+5. **Database User** — Use limited-privilege MySQL user
+6. **Admin Path** — Consider renaming /admin/ to custom path
+
+## 11.7 Login Rate Limiting (built in)
+
+Failed sign-ins on `login.php` are throttled by the app itself (`LoginThrottle`
+class, storage `tbllogin_throttle` — run `migrations/v2.1_phase1_hardening.sql`):
+
+- **5 failed attempts** for one (email, IP) pair locks that pair for
+  **15 minutes**; the login form shows a message naming the wait. The lock is
+  keyed on the email as typed (case-insensitive), so it also covers attempts
+  against accounts that don't exist.
+- **Per-IP cap of 20 recent failures** across all accounts — a host spraying
+  many addresses is locked out too, even for untouched accounts.
+- A **successful sign-in clears** that pair's counters — a user who mistyped a
+  few times is not haunted by stale failures.
+- Rows older than **7 days** are pruned automatically.
+- Set `WPMS_LOGIN_THROTTLE_OFF=1` (environment or `SetEnv`) to disable the
+  whole throttle — maintenance mode or shared test suites. The client IP comes
+  from `REMOTE_ADDR` only; behind a reverse proxy, rate-limit at the proxy or
+  set the kill switch.
 
 ---
 

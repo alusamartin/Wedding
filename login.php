@@ -25,6 +25,30 @@
      $input_email = clean($_POST['input_email']);
      $input_password= clean($_POST['input_password']);
 
+     // Built-in brute-force throttle (tbllogin_throttle): too many failed
+     // sign-ins for this (email, IP) pair — or from this IP overall — short-
+     // circuits the attempt BEFORE any credential lookup. Checked before the
+     // CSRF token too, so the lock can't be probed with tokenless requests.
+     $throttle_wait = LoginThrottle::secondsRemaining($input_email);
+     if ($throttle_wait > 0) {
+         $mins = max(1, (int) ceil($throttle_wait / 60));
+         error_log(sprintf(
+             '[WPMS][LoginThrottle] blocked attempt email=%s ip=%s wait=%ds',
+             $input_email,
+             LoginThrottle::clientIp(),
+             $throttle_wait
+         ));
+         redirect_to("login.php");
+         $session->message("
+            <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
+              <strong><i class='mdi mdi-lock-alert'></i></strong>  Too many failed login attempts. Please try again in {$mins} minute" . ($mins === 1 ? '' : 's') . ".
+              <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
+                <span aria-hidden=\"true\">&times;</span>
+              </button>
+            </div>");
+         die();
+     }
+
      $redirect_after_login = 'admin/client.php'; // sensible default: a couple
 
      if ($logged = Accounts::login_user($input_email, $input_password)) {
@@ -47,11 +71,13 @@
      }
 
      if ($logged) {
+         LoginThrottle::clear($input_email); // legit user — drop the fail counters
          session_regenerate_id(true); // fresh ID at the privilege boundary
          redirect_to($redirect_after_login);
          die();
      }
 
+     LoginThrottle::recordFailure($input_email);
      redirect_to("login.php");
      $session->message("
         <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">

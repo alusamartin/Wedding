@@ -149,6 +149,26 @@ CREATE TABLE IF NOT EXISTS `tblmpesa_stk_pushes` (
 -- ----------------------------------------------------------------------
 -- (environment-only switch — documented here, nothing to execute)
 
+-- ----------------------------------------------------------------------
+-- 4c. Login rate limiting (built-in brute-force throttle for login.php)
+--     One row per (email, IP) pair: consecutive failed attempts, refreshed
+--     on every failure. >= MAX_FAILURES within the lockout window blocks
+--     further attempts for that pair; a per-IP total catches distributed
+--     guessing across many accounts. Success clears the pair; prune()
+--     removes aged rows. Idempotent: re-running this file is safe.
+-- ----------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `tbllogin_throttle` (
+    `id`            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `throttle_email` VARCHAR(191) NOT NULL COMMENT 'the email ATTEMPTED (as typed, lowercased) — regardless of whether the account exists',
+    `throttle_ip`   VARCHAR(45)  NOT NULL COMMENT 'client IP (IPv6-capable)',
+    `fail_count`    INT UNSIGNED NOT NULL DEFAULT 0,
+    `updated_at`    DATETIME     NOT NULL COMMENT 'last failed attempt — the lockout clock resets with it',
+    UNIQUE KEY `uniq_throttle_pair` (`throttle_email`, `throttle_ip`),
+    KEY `idx_throttle_ip` (`throttle_ip`),
+    KEY `idx_throttle_updated` (`updated_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------------------------------------------------
 -- 5. Guest relationship vocabulary (Stage 2 audit)
 --    The guest forms store code keys (family_elder, vc_member, ...) but the
 --    seed inserts human labels ('Family Elder (Mzee)', 'Officiant', ...),
