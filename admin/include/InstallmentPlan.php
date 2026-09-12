@@ -124,16 +124,20 @@ class InstallmentPlan extends DB_Object
 
         // Next due: started_at + done months (the first installment anchors
         // at the plan's start date; each subsequent one a month later).
+        // A due date that has already passed means the couple is behind pace:
+        // it is kept as-is ("due NOW") so the nudge can say so, instead of
+        // silently clamping to today and erasing the signal.
         $nextDue = null;
+        $behind  = false;
         if ($done < $total) {
             $nextDue = date('Y-m-d', strtotime((string) $this->started_at . ' +' . $done . ' months'));
-            // If that date already passed mid-month, the installment is due NOW.
             if ($nextDue < date('Y-m-d')) {
+                $behind  = true;
                 $nextDue = date('Y-m-d');
             }
         }
 
-        $onTrack = $nextDue === null || strtotime($nextDue) >= strtotime(date('Y-m-d'));
+        $onTrack = $nextDue !== null && !$behind;
 
         return [
             'done'          => $done,

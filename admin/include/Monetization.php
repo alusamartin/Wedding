@@ -131,7 +131,11 @@ class MpesaC2B
         return in_array(strtolower(trim((string) getenv('WPMS_MPESA_VERIFY'))), ['1', 'true', 'yes', 'on'], true);
     }
 
-    /** Amount tolerance fraction: env override, default 1% (KSh 1 absolute floor). */
+    /**
+     * Amount tolerance fraction: env override, default 1%. Matches are
+     * additionally guarded by a ±0.005 absolute epsilon in verify(), so
+     * cent-level drift never blocks a payment.
+     */
     public static function tolerance(): float
     {
         $t = filter_var(getenv('WPMS_MPESA_TOLERANCE'), FILTER_VALIDATE_FLOAT);
@@ -171,6 +175,14 @@ class MpesaC2B
         if (!preg_match('/^\d{6,15}$/', $msisdn)) {
             return ['ok' => false, 'error' => 'Malformed MSISDN'];
         }
+        // Defense in depth: when a short code is pinned (WPMS_MPESA_SHORTCODE),
+        // refuse payments reported for a different till/paybill — the endpoint
+        // already answers ResultCode 1 for these, ingest() refuses them too so
+        // every path into the ledger is pinned, not just HTTP.
+        $expectedSC = trim((string) getenv('WPMS_MPESA_SHORTCODE'));
+        if ($expectedSC !== '' && $shortcode !== $expectedSC) {
+            return ['ok' => false, 'error' => 'Unexpected business short code'];
+        }
 
         $stmt = $db->prepare(
             'INSERT INTO tblmpesa_callbacks
@@ -207,7 +219,11 @@ class MpesaC2B
     /**
      * Verify a user-typed code against stored Daraja callbacks.
      *
-     * @param string $code       the 10-char M-Pesa transaction code
+     * Only genuine, unconsumed callbacks can verify: rows stamped by
+     * record_reject() (a user-typed attempt that failed review) are excluded,
+     * so a code can never be "verified" against its own failed attempt.
+     *
+     * @param string $code       the 10-char M-Pesa transaction code (case-insensitive)
      * @param float  $amount     expected amount (KSh)
      * @param string $accountRef expected account reference ('' = accept any non-empty ref)
      * @return array{verified:bool, reason:string, callback_id:?int, amount:float|null}
@@ -218,7 +234,9 @@ class MpesaC2B
         $code = strtoupper(trim($code));
 
         $rows = $db->fetchAll(
-            'SELECT * FROM tblmpesa_callbacks WHERE trans_id = :c ORDER BY id ASC',
+            'SELECT * FROM tblmpesa_callbacks
+              WHERE trans_id = :c AND verified_at IS NULL AND reject_reason IS NULL
+              ORDER BY id ASC',
             [':c' => $code]
         );
         if ($rows === []) {
@@ -226,12 +244,9 @@ class MpesaC2B
         }
 
         foreach ($rows as $row) {
-            // Skip callbacks already consumed by another record — one payment
-            // cannot activate two things. (Multiple callbacks per code are
-            // possible: validation + confirmation replays.)
-            if ($row->verified_at !== null) {
-                continue;
-            }
+            // Multiple callbacks per code are possible (a Pay Bill and a Buy
+            // Goods row can share a TransID) — take the first that matches.
+            // Consumed and rejected rows never reach this loop.
             if ((float) $row->amount < $amount * (1 - self::tolerance()) - 0.005) {
                 continue; // underpaid beyond tolerance
             }
@@ -257,7 +272,10 @@ class MpesaC2B
         $stmt = $db->prepare(
             'UPDATE tblmpesa_callbacks SET verified_at = NOW(), ref_table = :t, ref_id = :r WHERE id = :id AND verified_at IS NULL'
         );
-        return $stmt->execute([':t' => $ref_table, ':r' => $ref_id, ':id' => $callback_id]);
+        $stmt->execute([':t' => $ref_table, ':r' => $ref_id, ':id' => $callback_id]);
+        // rowCount(), not execute(): a callback already consumed must report
+        // failure, not success-with-zero-rows (race-safe re-binding guard).
+        return $stmt->rowCount() > 0;
     }
 
     /**

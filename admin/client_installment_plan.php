@@ -42,7 +42,12 @@ if (isset($_POST['cancel'])) {
         . '<button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>');
 } else {
     $months = (int) ($_POST['months'] ?? 0);
-    $plan   = $months > 0 ? InstallmentPlan::create_plan($booking_id, $months) : null;
+    // Validate against the supported lengths instead of silently clamping:
+    // a 1- or 13-month request is a mangled form, not a wish for 2/12.
+    $plan = null;
+    if (in_array($months, InstallmentPlan::MONTHS_CHOICES, true)) {
+        $plan = InstallmentPlan::create_plan($booking_id, $months);
+    }
     if ($plan) {
         $session->message('<div class="alert alert-success alert-dismissible fade show" role="alert"><strong><i class="mdi mdi-check"></i></strong> Your plan is set: '
             . $plan->months . ' × KSh ' . number_format($plan->monthly_amount)

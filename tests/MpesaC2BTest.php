@@ -19,10 +19,14 @@ require_once __DIR__ . '/../admin/include/Monetization.php';
  *
  * Covered:
  *  1. ingest() — full payload round-trip, junk keys refused, replay no-op
- *  2. verify() — amount tolerance, account reference, duplicate-use refusal
- *  3. mark_consumed() — binds a callback to a subscription/payment row
- *  4. record_reject() — rejected attempts land in the review queue
- *  5. mpesa_c2b.php — accepts a real Daraja-shaped POST, rejects unknown keys,
+ *  2. verify() — amount tolerance (under AND over), account reference,
+ *     duplicate-use refusal, case-insensitive codes
+ *  3. Short-code pinning — ingest refuses other tills when WPMS_MPESA_SHORTCODE is set
+ *  4. Reject-row safety — a failed attempt can never be verified against itself
+ *  5. mark_consumed() — binds a callback to a subscription/payment row (and
+ *     refuses to bind one twice)
+ *  6. record_reject() — rejected attempts land in the review queue
+ *  7. mpesa_c2b.php — accepts a real Daraja-shaped POST, rejects unknown keys,
  *     and always answers with the Daraja contract shape (ResultCode)
  */
 final class MpesaC2BTest extends TestCase
@@ -257,6 +261,73 @@ final class MpesaC2BTest extends TestCase
         self::assertTrue(MpesaC2B::mark_consumed($id, 'tblsubscriptions', 999), 'fresh callback must be consumable');
         $v = MpesaC2B::verify($p['TransID'], 7999.00, 'WPMS');
         self::assertFalse($v['verified'], 'a consumed payment cannot verify again');
+    }
+
+    #[Group('integration')]
+    public function testVerifyRejectsOverpaymentBeyondTolerance(): void
+    {
+        $this->requireDb();
+        // A KSh 12,000 payment cannot silently buy a KSh 7,999 plan — it is
+        // probably a different purchase and must be reviewed, not auto-matched.
+        $p = self::payload(['TransAmount' => '12000.00']);
+        self::ingest($p);
+        $v = MpesaC2B::verify($p['TransID'], 7999.00, 'WPMS');
+        self::assertFalse($v['verified'], 'overpayment beyond tolerance must not auto-verify');
+        self::assertStringContainsString('amount or account reference does not match', $v['reason']);
+    }
+
+    #[Group('integration')]
+    public function testVerifyMatchesCodesCaseInsensitively(): void
+    {
+        $this->requireDb();
+        // Users type codes in any case; Daraja reports uppercase.
+        $p = self::payload();
+        self::ingest($p);
+        $v = MpesaC2B::verify(strtolower($p['TransID']), 7999.00, 'wpms');
+        self::assertTrue($v['verified'], 'lowercased code + reference must still match: ' . $v['reason']);
+    }
+
+    #[Group('integration')]
+    public function testVerifyNeverMatchesItsOwnRejectRow(): void
+    {
+        $this->requireDb();
+        // Regression: record_reject() stores failed attempts under the typed
+        // code with verified_at NULL. verify() must exclude those rows, or a
+        // user could fail a check once and pass on retry against their own
+        // reject row (amount matches by construction, empty ref passes).
+        $code = 'QTSTRJX' . strtoupper(bin2hex(random_bytes(2)));
+        self::$probeCodes[] = $code;
+        MpesaC2B::record_reject($code, 'regression probe: wrong amount', 7999.00);
+        $v = MpesaC2B::verify($code, 7999.00, '');
+        self::assertFalse($v['verified'], 'a reject row must never satisfy verify()');
+    }
+
+    #[Group('integration')]
+    public function testIngestRefusesPinnedShortcodeMismatch(): void
+    {
+        $this->requireDb();
+        putenv('WPMS_MPESA_SHORTCODE=123456');
+        try {
+            $r = MpesaC2B::ingest(self::payload(['BusinessShortCode' => '999888']));
+            self::assertFalse($r['ok'], 'payments for another till must be refused at ingest');
+            self::assertTrue(MpesaC2B::ingest(self::payload(['BusinessShortCode' => '123456']))['ok']);
+        } finally {
+            putenv('WPMS_MPESA_SHORTCODE');
+        }
+    }
+
+    #[Group('integration')]
+    public function testMarkConsumedReportsFailureOnSecondBind(): void
+    {
+        $this->requireDb();
+        $p = self::payload();
+        self::ingest($p);
+        $stmt = self::$pdo->prepare('SELECT id FROM tblmpesa_callbacks WHERE trans_id = :c');
+        $stmt->execute([':c' => $p['TransID']]);
+        $id = (int) $stmt->fetchColumn();
+
+        self::assertTrue(MpesaC2B::mark_consumed($id, 'tblsubscriptions', 1001), 'first bind must succeed');
+        self::assertFalse(MpesaC2B::mark_consumed($id, 'tbl_liquidation', 2002), 'second bind of the same callback must report failure');
     }
 
     // ------------------------------------------------------------------

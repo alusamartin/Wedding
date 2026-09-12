@@ -27,6 +27,9 @@ final class InstallmentPlanTest extends TestCase
 
     private static ?PDO $pdo = null;
 
+    /** Shared cookie jar — cleared at the start of each HTTP test so tests are order-independent. */
+    private static string $cookie = '';
+
     public static function setUpBeforeClass(): void
     {
         require_once __DIR__ . '/../admin/include/config.php';
@@ -204,6 +207,7 @@ final class InstallmentPlanTest extends TestCase
     public function testPlanEndpointSetsAndCancelsOverHttp(): void
     {
         self::seedFixture();
+        self::$cookie = '';
 
         $port = 32000 + random_int(0, 8999);
         $proc = proc_open(
@@ -274,13 +278,121 @@ final class InstallmentPlanTest extends TestCase
         }
     }
 
+    #[Group('integration')]
+    public function testEndpointRefusesUnsupportedMonthCounts(): void
+    {
+        self::seedFixture();
+        self::$cookie = '';
+
+        $port = 32000 + random_int(0, 8999);
+        $proc = proc_open(
+            [PHP_BINARY, '-S', '127.0.0.1:' . $port, '-t', realpath(__DIR__ . '/..')],
+            [0 => ['file', 'NUL', 'r'], 1 => ['file', 'NUL', 'w'], 2 => ['file', 'NUL', 'w']],
+            $pipes,
+            realpath(__DIR__ . '/..')
+        );
+        self::assertIsResource($proc);
+        $base = 'http://127.0.0.1:' . $port;
+        $up = false;
+        for ($i = 0; $i < 40; $i++) {
+            usleep(100_000);
+            if (@fsockopen('127.0.0.1', $port, $errno, $errstr, 0.2)) {
+                $up = true;
+                break;
+            }
+        }
+        self::assertTrue($up, 'test server must boot');
+        try {
+            $page = self::http($base, 'GET', '/login.php');
+            self::assertSame(200, $page['status']);
+            self::assertSame(1, preg_match('/name="_token" value="([^"]+)"/', $page['body'], $m));
+            $post = self::http($base, 'POST', '/login.php', [
+                'input_email'    => 'wafula@wpms.co.ke',
+                'input_password' => 'Admin@2024!',
+                '_token'         => html_entity_decode($m[1], ENT_QUOTES),
+                'login'          => '1',
+            ]);
+            self::assertSame(302, $post['status'], 'staff login must succeed');
+            $token = html_entity_decode($m[1], ENT_QUOTES);
+
+            // Mangled form values must not silently become 2- or 12-month plans.
+            foreach (['0', '1', '13', '99', '-3'] as $bad) {
+                self::http($base, 'POST', '/admin/client_installment_plan.php?booking_id=' . self::FIX_BOOK . '&user_id=' . self::FIX_USER, [
+                    '_token' => $token,
+                    'months' => $bad,
+                ]);
+                self::assertNull(InstallmentPlan::for_booking(self::FIX_BOOK), "months=$bad must not create a plan");
+            }
+
+            // A supported length still works.
+            self::http($base, 'POST', '/admin/client_installment_plan.php?booking_id=' . self::FIX_BOOK . '&user_id=' . self::FIX_USER, [
+                '_token' => $token,
+                'months' => '4',
+            ]);
+            $plan = InstallmentPlan::for_booking(self::FIX_BOOK);
+            self::assertNotNull($plan, 'a supported month count must create the plan');
+            self::assertSame(4, (int) $plan->months);
+        } finally {
+            proc_terminate($proc);
+            proc_close($proc);
+        }
+    }
+
+    #[Group('integration')]
+    public function testProgressFloorsPartialsAndNeverGoesNegative(): void
+    {
+        self::seedFixture();
+        $plan = InstallmentPlan::create_plan(self::FIX_BOOK, 4);
+        self::assertNotNull($plan);
+        $per = (float) $plan->monthly_amount;
+        $start = (float) $plan->starting_paid;
+
+        // Half an installment is 0 installments done — but the paid-into-plan
+        // figure keeps the true amount so the nudge can show it.
+        $prog = $plan->progress($start + 0.5 * $per);
+        self::assertSame(0, $prog['done'], 'a partial installment must floor, not round up');
+        self::assertEqualsWithDelta(0.5 * $per, $prog['paid_into_plan'], 0.001);
+
+        // 2.9 installments = 2 done, not 3.
+        $prog = $plan->progress($start + 2.9 * $per);
+        self::assertSame(2, $prog['done']);
+        self::assertEqualsWithDelta(2.9 * $per, $prog['paid_into_plan'], 0.001);
+    }
+
+    #[Group('integration')]
+    public function testProgressFlagsBehindPaceOnStaleStartDate(): void
+    {
+        self::seedFixture();
+        $plan = InstallmentPlan::create_plan(self::FIX_BOOK, 5);
+        self::assertNotNull($plan);
+        $per = (float) $plan->monthly_amount;
+
+        // Simulate a plan set 3 months ago with nothing paid since: the first
+        // installment came due long ago and must NOT be silently clamped into
+        // looking on-track.
+        self::$pdo->prepare('UPDATE tbl_installment_plans SET started_at = DATE_SUB(CURDATE(), INTERVAL 3 MONTH) WHERE booking_id = :b')
+                  ->execute([':b' => self::FIX_BOOK]);
+        $stale = InstallmentPlan::for_booking(self::FIX_BOOK);
+        self::assertNotNull($stale);
+
+        $prog = $stale->progress((float) $stale->starting_paid);
+        self::assertSame(0, $prog['done']);
+        self::assertSame(date('Y-m-d'), $prog['next_due'], 'the overdue installment is due NOW');
+        self::assertFalse($prog['on_track'], 'an installment past its date must flag behind pace');
+
+        // A fresh plan (due date in the future) stays on track.
+        $fresh = InstallmentPlan::create_plan(self::FIX_BOOK, 5); // supersedes, started today
+        self::assertNotNull($fresh);
+        self::assertTrue($fresh->progress((float) $fresh->starting_paid)['on_track']);
+    }
+
     /**
      * Minimal curl-free HTTP client with a cookie jar (redirects not followed).
      * @return array{status:int, body:string}
      */
     private static function http(string $base, string $method, string $path, array $post = []): array
     {
-        static $cookie = '';
+        $cookie = self::$cookie;
         $body = $post === [] ? '' : http_build_query($post);
         $header = 'Host: 127.0.0.1' . "\r\n"
             . ($cookie !== '' ? "Cookie: $cookie\r\n" : '')
@@ -294,7 +406,7 @@ final class InstallmentPlanTest extends TestCase
         $response = @file_get_contents($base . $path, false, $ctx);
         foreach ($http_response_header ?? [] as $h) {
             if (stripos($h, 'Set-Cookie:') === 0) {
-                $cookie = trim(explode(';', substr($h, 11))[0]);
+                self::$cookie = trim(explode(';', substr($h, 11))[0]);
             }
         }
         $status = 0;
