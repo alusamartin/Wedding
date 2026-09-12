@@ -1155,6 +1155,7 @@ MpesaC2B::verification_enabled()                  // WPMS_MPESA_VERIFY
 - `admin/mpesa_ledger.php` — staff review queue
 - `tests/MpesaC2BTest.php` — 14 tests (ingest, verify, replay, endpoint)
 
+---
 
 ## 7.7 M-Pesa STK Push (Initiated-from-App Payments)
 
@@ -1223,7 +1224,6 @@ MpesaStk::enabled(): bool
 - `tests/MpesaStkTest.php` — 10 tests (initiate, fulfilment, replays, endpoint)
 
 ---
-
 
 ## 7.5 Revenue Summary
 
@@ -1507,6 +1507,14 @@ class, storage `tbllogin_throttle` — run `migrations/v2.1_phase1_hardening.sql
   whole throttle — maintenance mode or shared test suites. The client IP comes
   from `REMOTE_ADDR` only; behind a reverse proxy, rate-limit at the proxy or
   set the kill switch.
+- Staff monitor it under **Login Security** (`admin/login_activity.php`, staff
+  sidebar): currently **locked pairs** with their remaining cool-down and a
+  one-click **Unlock** (forgives that pair's counters — use for a genuine user
+  you recognize, not an attacker mid-campaign), **IP pressure** per source
+  address toward the cap with **Release** for shared-office NATs, the raw
+  **recent failed attempts** list, and a **Prune** button for idle rows. Every
+  unlock/release is written to the PHP error log with the acting admin's
+  email. With `WPMS_LOGIN_THROTTLE_OFF=1` the page becomes read-only.
 
 ---
 

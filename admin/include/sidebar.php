@@ -169,6 +169,12 @@
                             M-Pesa Ledger
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="login_activity.php">
+                            <i class="mdi mdi-shield-lock-outline mr-3"></i>
+                            Login Security
+                        </a>
+                    </li>
                     <li class="nav-item"><div class="dropdown-divider"></div></li>
 
                     <li class="nav-item">

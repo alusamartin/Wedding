@@ -178,6 +178,11 @@ success clears the pair and rows older than 7 days are pruned. Setup: run the
 migration (`tbllogin_throttle`) — that's it. SetEnv works too, e.g.
 `SetEnv WPMS_LOGIN_THROTTLE_OFF 1` in an .htaccess to disable it temporarily.
 
+Staff can watch it live under **Login Security** (`admin/login_activity.php`):
+locked pairs with their remaining cool-down (one-click unlock), per-IP
+pressure toward the cap (with release for shared-office NATs), the recent
+failed-attempt list, and a prune button for idle rows.
+
 Setup: run `migrations/v2.1_phase1_hardening.sql` (creates `tblmpesa_callbacks`
 + `tblmpesa_callback_log`), register `https://your-domain/mpesa_c2b.php` as the
 Validation **and** Confirmation URL on the Daraja portal, set the env vars, and
