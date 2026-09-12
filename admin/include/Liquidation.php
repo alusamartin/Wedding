@@ -164,7 +164,7 @@ class Liquidation extends DB_Object
                     ':now1' => $now,
                     ':now2' => $now,
                 ]);
-                return ['ok' => true, 'mpesa_code' => $code, 'payment' => $amount];
+                return ['ok' => true, 'mpesa_code' => $code, 'payment' => $amount, 'id' => (int) $db->the_insert_id()];
             } catch (PDOException $e) {
                 if (stripos($e->getMessage(), 'Duplicate entry') === false) {
                     throw $e;

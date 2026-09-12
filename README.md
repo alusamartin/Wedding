@@ -132,7 +132,37 @@ payment that Safaricom reported to the public callback endpoint
 | `WPMS_MPESA_VERIFY` | *(off)* | `1` = reject unverified codes at entry (dev/demo stays off) |
 | `WPMS_MPESA_SHORTCODE` | *(any)* | Your Paybill/Till number — callbacks for other short codes are refused |
 | `WPMS_MPESA_CALLBACK_PASS` | *(off)* | Optional shared secret; endpoint must be called as `mpesa_c2b.php?key=<secret>` |
-| `WPMS_MPESA_TOLERANCE` | `0.01` | Amount match tolerance (fraction; default 1%, floor KSh 1) |
+| `WPMS_MPESA_TOLERANCE` | `0.01` | Amount match tolerance (fraction; default 1%) |
+
+### M-Pesa STK push (pay without leaving the app)
+
+Beyond passively verifying typed codes, the app can **initiate** payments:
+Daraja prompts the customer's phone ("Enter M-Pesa PIN"), the customer pays,
+and Daraja reports the result to `mpesa_stk_callback.php`. The result is
+applied exactly once — a successful push creates the subscription or books
+the booking deposit automatically, with the Daraja receipt as the reference.
+Planners get a **Pay by M-Pesa prompt** button on the subscription page;
+couples get **Pay now** on their deposit page.
+
+| Env var | Default | Effect |
+|---|---|---|
+| `WPMS_MPESA_STK` | *(off)* | `1` = show the STK buttons and enable `MpesaStk::initiate()` |
+| `WPMS_MPESA_STK_CONSUMER_KEY` / `_SECRET` | *(off)* | Daraja app credentials; **without them the transport is simulated** (dev/demo: rows behave identically, no phone is really prompted) |
+| `WPMS_MPESA_STK_SHORTCODE` | falls back to `WPMS_MPESA_SHORTCODE` | Business short code the prompt collects into |
+| `WPMS_MPESA_STK_PASSKEY` | *(off)* | Daraja Lipa na M-Pesa Online passkey |
+| `WPMS_MPESA_STK_ENV` | `sandbox` | `production` switches to `api.safaricom.co.ke` |
+| `WPMS_MPESA_STK_CALLBACK_PASS` | *(off)* | Optional shared secret; callback must be called as `mpesa_stk_callback.php?key=<secret>` |
+
+Setup: run the migration (`tblmpesa_stk_pushes`), set the credentials, and
+register `https://your-domain/mpesa_stk_callback.php` as the push CallBackURL
+(the app sends it per-request). Pending pushes that are never answered are
+swept to `timeout` (5 minutes) — but a success callback arriving after a
+sweep is still honoured and fulfilled: money actually moved. The staff
+M-Pesa Ledger shows every push and what each fulfilled one created.
+
+With `WPMS_MPESA_STK` off (dev/demo default) the buttons disappear and the
+code-entry flow behaves exactly as before.
+
 
 Setup: run `migrations/v2.1_phase1_hardening.sql` (creates `tblmpesa_callbacks`
 + `tblmpesa_callback_log`), register `https://your-domain/mpesa_c2b.php` as the

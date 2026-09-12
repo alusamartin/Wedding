@@ -109,13 +109,46 @@ CREATE TABLE IF NOT EXISTS `tblmpesa_callback_log` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------
+-- 4a-bis. STK push (initiated-from-app payment) ledger
+--     The app asks Daraja to prompt the customer's phone (STK push); Daraja
+--     answers asynchronously on the callback URL with the result. Push rows
+--     are the promise, callback rows the verdict; only success+unconsumed
+--     fulfils the linked subscription or booking payment — exactly once.
+--     Idempotent: re-running this file is safe.
+-- ----------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `tblmpesa_stk_pushes` (
+    `id`             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `checkout_request_id` VARCHAR(50)  NOT NULL COMMENT 'Daraja CheckoutRequestID — the handle for the async result',
+    `merchant_request_id` VARCHAR(50)  DEFAULT NULL,
+    `purpose`        ENUM('subscription','deposit') NOT NULL,
+    `plan`           VARCHAR(30)  DEFAULT NULL COMMENT 'subscription purpose: plan slug',
+    `booking_id`     INT UNSIGNED DEFAULT NULL COMMENT 'deposit purpose: booking number',
+    `event_id`       INT UNSIGNED DEFAULT NULL COMMENT 'deposit purpose: ceremony the payment settles against',
+    `user_id`        INT UNSIGNED NOT NULL COMMENT 'who the push was raised for (staff or couple)',
+    `phone`          VARCHAR(15)  NOT NULL COMMENT 'E.164 without +, 2547.../2541... — the phone prompted',
+    `amount`         DECIMAL(12,2) NOT NULL,
+    `status`         ENUM('pending','success','failed','cancelled','timeout') NOT NULL DEFAULT 'pending',
+    `result_code`    INT          DEFAULT NULL COMMENT 'Daraja ResultCode: 0 = success',
+    `result_desc`    VARCHAR(255) DEFAULT NULL,
+    `mpesa_receipt`  VARCHAR(20)  DEFAULT NULL COMMENT 'MpesaReceiptNumber from a successful callback',
+    `ref_table`      VARCHAR(40)  DEFAULT NULL COMMENT 'fulfilment target: tblsubscriptions | tbl_liquidation',
+    `ref_id`         INT UNSIGNED DEFAULT NULL COMMENT 'fulfilled row id (NULL until success)',
+    `requested_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `answered_at`    DATETIME     DEFAULT NULL,
+    `created_at`     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY `uniq_checkout` (`checkout_request_id`),
+    KEY `idx_stk_user` (`user_id`),
+    KEY `idx_stk_status` (`status`, `requested_at`),
+    KEY `idx_stk_ref` (`ref_table`, `ref_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------------------------------------------------
 -- 4b. Optional automatic verification gate (off by default)
 --     Set WPMS_MPESA_VERIFY=1 in the environment (Apache SetEnv, CLI export,
 --     Docker environment:) to make unverified codes rejected at entry.
 -- ----------------------------------------------------------------------
 -- (environment-only switch — documented here, nothing to execute)
 
--- ----------------------------------------------------------------------
 -- 5. Guest relationship vocabulary (Stage 2 audit)
 --    The guest forms store code keys (family_elder, vc_member, ...) but the
 --    seed inserts human labels ('Family Elder (Mzee)', 'Officiant', ...),

@@ -204,6 +204,65 @@
         A rejected entry only means the <em>user-typed code</em> failed verification; the underlying Safaricom
         payment above it is never deleted.
     </p>
+
+    <?php if (MpesaStk::enabled()): ?>
+    <?php
+        global $db;
+        $stkRecent = $db->fetchAll('SELECT * FROM tblmpesa_stk_pushes ORDER BY id DESC LIMIT 15');
+        $stkStats = $db->fetchOne(
+            "SELECT
+                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+                SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS success,
+                SUM(CASE WHEN status IN ('failed','cancelled','timeout') THEN 1 ELSE 0 END) AS failed,
+                COALESCE(SUM(CASE WHEN status = 'success' THEN amount ELSE 0 END), 0) AS total_ksh
+               FROM tblmpesa_stk_pushes"
+        );
+    ?>
+    <h5 class="mt-4 mb-3"><i class="mdi mdi-cellphone-vibrate mr-1"></i> STK pushes</h5>
+    <div class="row mb-3">
+        <div class="col-md-3"><div class="stat-card"><h6>Pending</h6><div class="value"><?= (int) ($stkStats->pending ?? 0); ?></div></div></div>
+        <div class="col-md-3"><div class="stat-card" style="border-left-color:#059669"><h6>Succeeded</h6><div class="value"><?= (int) ($stkStats->success ?? 0); ?></div></div></div>
+        <div class="col-md-3"><div class="stat-card" style="border-left-color:#DC2626"><h6>Failed / cancelled</h6><div class="value"><?= (int) ($stkStats->failed ?? 0); ?></div></div></div>
+        <div class="col-md-3"><div class="stat-card" style="border-left-color:#0F172A"><h6>Collected</h6><div class="value mono"><?= format_ksh((float) ($stkStats->total_ksh ?? 0)); ?></div></div></div>
+    </div>
+    <div class="card shadow-sm" style="border:none; border-radius:14px;">
+        <div class="card-body">
+            <?php if (empty($stkRecent)): ?>
+                <p class="text-muted mb-0" style="font-size:13px;">No STK pushes yet — they appear the moment a customer is prompted.</p>
+            <?php else: ?>
+            <div class="table-responsive">
+            <table class="table table-sm table-borderless mb-0" style="font-size:13px;">
+                <thead><tr><th>#</th><th>Purpose</th><th>Phone</th><th class="text-right">Amount</th><th>Status</th><th>Receipt</th><th>Fulfilled as</th><th>Requested</th></tr></thead>
+                <tbody>
+                <?php foreach ($stkRecent as $r): ?>
+                    <tr>
+                        <td><?= (int) $r->id; ?></td>
+                        <td><?= $r->purpose === 'subscription'
+                                ? 'Subscription (' . htmlspecialchars((string) $r->plan) . ')'
+                                : 'Booking #' . (int) $r->booking_id; ?></td>
+                        <td><?= htmlspecialchars((string) $r->phone); ?></td>
+                        <td class="text-right"><?= format_ksh((float) $r->amount, 2); ?></td>
+                        <td><span class="pill <?= $r->status === 'success' ? 'badge-success' : ($r->status === 'pending' ? 'badge-warning' : 'badge-danger'); ?>"><?= htmlspecialchars((string) $r->status); ?></span></td>
+                        <td><?= htmlspecialchars((string) ($r->mpesa_receipt ?? '—')); ?></td>
+                        <td style="font-size:12px;">
+                            <?php if ($r->ref_table === 'tblsubscriptions'): ?>
+                                <span class="text-success">subscription #<?= (int) $r->ref_id; ?></span>
+                            <?php elseif ($r->ref_table === 'tbl_liquidation'): ?>
+                                <span class="text-success">payment #<?= (int) $r->ref_id; ?></span>
+                            <?php elseif ($r->status === 'success'): ?>
+                                <span class="text-warning">pending binding</span>
+                            <?php else: ?>—<?php endif; ?>
+                        </td>
+                        <td><?= htmlspecialchars(format_date_kd((string) $r->requested_at, true)); ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
+    <?php endif; ?>
 </div>
 
 <?php include_once 'include/footer.php'; ?>

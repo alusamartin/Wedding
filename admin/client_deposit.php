@@ -30,11 +30,32 @@
 
     $couple = trim(($booking->bride ?? '') . ' & ' . ($booking->groom ?? ''));
 
-    $error = '';
+    $error = '';        // STK push: ask Daraja to prompt the couple's phone directly.
+        if (isset($_POST['stk_pay'])) {
+            if (!$session->verify_csrf()) {
+                $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Invalid security token. Please try again.</div>');
+                redirect_to("client_deposit.php?$links");
+                die();
+            }
+            if (!MpesaStk::enabled()) {
+                redirect_to("client_deposit.php?$links");
+                die();
+            }
+            $amount   = (float) ($_POST['amount'] ?? 0);
+            $event_id = (int) ($_POST['event_id'] ?? 0);
+            $phone    = clean($_POST['phone'] ?? '');
+            $result   = MpesaStk::initiate('deposit', (int) $user_id, $phone, $amount, ['booking_id' => $booking_id, 'event_id' => $event_id]);
+            if (!$result['ok']) {
+                $error = $result['error'] ?? 'Could not send the M-Pesa prompt.';
+            } else {
+                redirect_to($result['status_url']);
+                die();
+            }
+        }
 
-    if (isset($_POST['submit'])) {
-        // CSRF
-        if (!$session->verify_csrf()) {
+        if (isset($_POST['submit'])) {
+            // CSRF
+            if (!$session->verify_csrf()) {
             $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Invalid security token. Please try again.</div>');
             redirect_to("client_deposit.php?$links");
             die();
@@ -106,8 +127,7 @@
                     $session->message(
                         '<div class="alert alert-success"><strong><i class="mdi mdi-check"></i></strong> ' .
                         'Deposit of <strong>' . format_ksh($result['payment'], 2) . '</strong> recorded. ' .
-                        'M-Pesa reference <strong>' . htmlspecialchars($result['mpesa_code']) . '</strong> ' .
-                        '(simulated STK — no money moved).</div>'
+                        'M-Pesa reference <strong>' . htmlspecialchars($result['mpesa_code']) . '</strong>.</div>'
                     );
                     redirect_to("client_budget.php?$links");
                     die();
@@ -191,8 +211,7 @@
                             </div>
                             <div class="mpesa-note mt-2">
                                 <i class="mdi mdi-information-outline mr-1"></i>
-                                Demo mode — this is a simulated STK push. No real money moves; a fictional
-                                M-Pesa reference is recorded on your ledger.
+                                Demo mode — no real money moves; payments are recorded against simulated references.
                             </div>
                         </div>
 
@@ -225,8 +244,13 @@
                             </small>
                         </div>
 
-                        <button type="submit" name="submit" class="btn btn-success" <?= $balance_due <= 0 ? 'disabled' : ''; ?>>
-                            <i class="mdi mdi-cellphone-arrow-down mr-1"></i> Initiate M-Pesa Deposit
+                        <?php if (MpesaStk::enabled()): ?>
+                        <button type="submit" name="stk_pay" class="btn btn-success" <?= $balance_due <= 0 ? 'disabled' : ''; ?>>
+                            <i class="mdi mdi-cellphone-vibrate mr-1"></i> Pay now — enter PIN on the M-Pesa prompt
+                        </button>
+                        <?php endif; ?>
+                        <button type="submit" name="submit" class="btn <?= MpesaStk::enabled() ? 'btn-outline-success' : 'btn-success'; ?>" <?= $balance_due <= 0 ? 'disabled' : ''; ?>>
+                            <i class="mdi mdi-cellphone-arrow-down mr-1"></i> <?= MpesaStk::enabled() ? 'I paid via Paybill — enter it manually' : 'Initiate M-Pesa Deposit'; ?>
                         </button>
                         <a href="client_budget.php?<?= $links; ?>" class="btn btn-outline-secondary">Cancel</a>
                     </form>

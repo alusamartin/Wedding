@@ -349,6 +349,408 @@ class MpesaC2B
 }
 
 /**
+ * M-Pesa STK push (initiated-from-app payment, Daraja Lipa na M-Pesa Online)
+ *
+ * The app asks Daraja to prompt the customer's phone ("An OTP-style prompt on
+ * their phone"); the customer enters their PIN and Daraja reports the result
+ * asynchronously on the callback URL (mpesa_stk_callback.php). A push is a
+ * PROMISE, not a payment — only a successful callback fulfils it.
+ *
+ * Transport: without Daraja credentials (WPMS_MPESA_STK_CONSUMER_KEY/SECRET)
+ * the transport is SIMULATED — the push row is created exactly as production
+ * would, the phone prompt simply never happens in the real world, and tests
+ * / demos apply callbacks directly via apply_callback(). With credentials the
+ * real OAuth + STK endpoints are called; the callback flow is identical.
+ *
+ * Fulfilment is exactly-once per push (status gate + the C2B single-use
+ * ledger via MpesaC2B::mark_consumed on the push row id), mirroring the
+ * replay-safety of the C2B ingest path.
+ */
+class MpesaStk
+{
+    /** What a completed push reports. */
+    public const RESULT_OK          = 0;     // Daraja: accepted, payment made
+    public const RESULT_CANCELLED   = 1032;  // customer cancelled / dismissed the prompt
+    public const RESULT_TIMEOUT     = 1037;  // prompt timed out unanswered
+
+    /** How long a pending push may sit before cancel_stale() gives up on it. */
+    public const STALE_MINUTES = 5;
+
+    /** @return array{enabled:bool, credentials:bool} */
+    public static function config(): array
+    {
+        return [
+            'enabled'     => self::enabled(),
+            'credentials' => trim((string) getenv('WPMS_MPESA_STK_CONSUMER_KEY')) !== ''
+                          && trim((string) getenv('WPMS_MPESA_STK_CONSUMER_SECRET')) !== '',
+        ];
+    }
+
+    /** Master switch: when off, the STK UI is hidden and initiate() refuses. */
+    public static function enabled(): bool
+    {
+        return in_array(strtolower(trim((string) getenv('WPMS_MPESA_STK'))), ['1', 'true', 'yes', 'on'], true);
+    }
+
+    /**
+     * Ask Daraja to prompt $phone for $amount.
+     *
+     * @param string $purpose 'subscription' (plan slug) or 'deposit' (booking + event)
+     * @return array{ok:bool, error?:string, push?:object, status_url?:string}
+     */
+    public static function initiate(string $purpose, int $userId, string $phone, float $amount, array $context = []): array
+    {
+        global $db;
+        if (!self::enabled()) {
+            return ['ok' => false, 'error' => 'STK push is not enabled on this installation'];
+        }
+        $phone = SMS::format_phone($phone);
+        if (!preg_match('/^254[17]\d{8}$/', $phone)) {
+            return ['ok' => false, 'error' => 'Please enter a valid Kenyan M-Pesa number (e.g. 0712 345 678).'];
+        }
+        if ($amount < 1) {
+            return ['ok' => false, 'error' => 'Amount must be at least KSh 1.'];
+        }
+        if ($purpose === 'subscription') {
+            $plan = (string) ($context['plan'] ?? '');
+            if (Subscription::get_plan($plan) === false || Subscription::get_plan($plan) === null) {
+                return ['ok' => false, 'error' => 'Unknown plan.'];
+            }
+            $bookingId = null;
+            $eventId   = null;
+        } elseif ($purpose === 'deposit') {
+            $bookingId = (int) ($context['booking_id'] ?? 0);
+            $eventId   = (int) ($context['event_id'] ?? 0);
+            $booking   = Booking::find_by_booking_id($bookingId);
+            if (!$booking) {
+                return ['ok' => false, 'error' => 'Booking not found.'];
+            }
+            $category = Category::find_by_id((int) $booking->wedding_type);
+            $price    = (float) ($category->price ?? 0);
+            $paid     = (float) (Liquidation::getTotalsByMethod($bookingId)['grand_total'] ?? 0);
+            $balance  = max(0.0, $price - $paid);
+            if ($balance <= 0) {
+                return ['ok' => false, 'error' => 'Your package is fully paid — there is no balance due.'];
+            }
+            if ($amount < 50 || $amount > $balance) {
+                return ['ok' => false, 'error' => 'Amount must be between KSh 50 and your balance due of ' . format_ksh($balance, 2) . '.'];
+            }
+            $plan = null;
+        } else {
+            return ['ok' => false, 'error' => 'Unknown STK purpose.'];
+        }
+
+        // Row first (the promise), real Daraja ids stamped after the answer.
+        // The placeholder keeps uniq(checkout_request_id) satisfied if the
+        // transport dies before returning an id; it is replaced immediately.
+        $placeholder = 'STKPENDING-' . bin2hex(random_bytes(12));
+        $stmt = $db->prepare(
+            'INSERT INTO tblmpesa_stk_pushes
+                (checkout_request_id, purpose, plan, booking_id, event_id, user_id, phone, amount, status)
+             VALUES (:cr, :p, :plan, :bid, :eid, :uid, :ph, :amt, :st)'
+        );
+        $stmt->execute([
+            ':cr' => $placeholder, ':p' => $purpose, ':plan' => $plan,
+            ':bid' => $bookingId, ':eid' => $eventId, ':uid' => $userId,
+            ':ph' => $phone, ':amt' => $amount, ':st' => 'pending',
+        ]);
+        $id   = (int) $db->the_insert_id();
+        $push = self::find($id);
+        if ($push === null) {
+            return ['ok' => false, 'error' => 'Could not start the payment prompt.'];
+        }
+
+        $transport = self::transport($phone, (int) round($amount), $purpose);
+        if (!$transport['ok']) {
+            $db->execute("UPDATE tblmpesa_stk_pushes SET status = 'failed', result_desc = :d WHERE id = :id",
+                [':d' => substr((string) ($transport['error'] ?? 'transport error'), 0, 255), ':id' => $id]);
+            return ['ok' => false, 'error' => $transport['error'] ?? 'The M-Pesa prompt could not be sent.'];
+        }
+
+        $db->execute(
+            'UPDATE tblmpesa_stk_pushes SET checkout_request_id = :cr, merchant_request_id = :mr WHERE id = :id',
+            [
+                ':cr' => substr((string) $transport['checkout_request_id'], 0, 50),
+                ':mr' => substr((string) ($transport['merchant_request_id'] ?? ''), 0, 50),
+                ':id' => $id,
+            ]
+        );
+        return [
+            'ok'         => true,
+            'push'       => self::find($id),
+            'status_url' => 'stk_status.php?id=' . $id,
+        ];
+    }
+
+    /**
+     * Ask Daraja to prompt the phone. Without credentials this SIMULATES a
+     * successful dispatch — the prompt never happens in the real world, but
+     * the ledger and callback flow behave exactly as production.
+     *
+     * @return array{ok:bool, checkout_request_id?:string, merchant_request_id?:string, error?:string}
+     */
+    private static function transport(string $phone, int $amount, string $purpose): array
+    {
+        $key    = trim((string) getenv('WPMS_MPESA_STK_CONSUMER_KEY'));
+        $secret = trim((string) getenv('WPMS_MPESA_STK_CONSUMER_SECRET'));
+        $shortcode = trim((string) (getenv('WPMS_MPESA_STK_SHORTCODE') ?: getenv('WPMS_MPESA_SHORTCODE') ?: ''));
+        $passkey   = trim((string) getenv('WPMS_MPESA_STK_PASSKEY'));
+
+        if ($key === '' || $secret === '' || $shortcode === '' || $passkey === '') {
+            // Simulated dispatch (dev/demo + tests).
+            return [
+                'ok'                  => true,
+                'checkout_request_id' => 'ws_CO_SIM-' . strtoupper(bin2hex(random_bytes(8))),
+                'merchant_request_id' => 'SIM-' . strtoupper(bin2hex(random_bytes(6))),
+            ];
+        }
+
+        // --- Real Daraja Lipa na M-Pesa Online ---------------------------
+        $base    = getenv('WPMS_MPESA_STK_ENV') === 'production'
+            ? 'https://api.safaricom.co.ke'
+            : 'https://sandbox.safaricom.co.ke';
+        $token = self::oauth_token($base, $key, $secret);
+        if ($token === null) {
+            return ['ok' => false, 'error' => 'M-Pesa authentication failed — check the STK credentials.'];
+        }
+        $timestamp = date('YmdHis');
+        $ch = curl_init($base . '/mpesa/stkpush/v1/processrequest');
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 20,
+            CURLOPT_HTTPHEADER     => ['Authorization: Bearer ' . $token, 'Content-Type: application/json'],
+            CURLOPT_POSTFIELDS     => json_encode([
+                'BusinessShortCode' => $shortcode,
+                'Password'          => base64_encode($shortcode . $passkey . $timestamp),
+                'Timestamp'         => $timestamp,
+                'TransactionType'   => 'CustomerPayBillOnline',
+                'Amount'            => $amount,
+                'PartyA'            => $phone,
+                'PartyB'            => $shortcode,
+                'PhoneNumber'       => $phone,
+                'CallBackURL'       => rtrim((string) (getenv('WPMS_SITE_URL') ?: ''), '/') . '/mpesa_stk_callback.php',
+                'AccountReference'  => 'WPMS',
+                'TransactionDesc'   => $purpose === 'subscription' ? 'Planner subscription' : 'Wedding deposit',
+            ]),
+        ]);
+        $response = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        $body = is_string($response) ? (json_decode($response, true) ?: []) : [];
+        if ($httpCode !== 200 || empty($body['CheckoutRequestID'])) {
+            error_log('[WPMS][MpesaStk] push rejected: HTTP ' . $httpCode . ' ' . substr((string) $response, 0, 300));
+            return ['ok' => false, 'error' => (string) ($body['errorMessage'] ?? 'The M-Pesa prompt could not be sent.')];
+        }
+        return [
+            'ok'                  => true,
+            'checkout_request_id' => (string) $body['CheckoutRequestID'],
+            'merchant_request_id' => (string) ($body['MerchantRequestID'] ?? ''),
+        ];
+    }
+
+    /** Daraja OAuth token (cached for its ~3600s lifetime in-process). */
+    private static function oauth_token(string $base, string $key, string $secret): ?string
+    {
+        static $cache = [];
+        $k = md5($base . $key);
+        if (isset($cache[$k])) {
+            return $cache[$k];
+        }
+        $ch = curl_init($base . '/oauth/v1/generate?grant_type=client_credentials');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_USERPWD        => $key . ':' . $secret,
+        ]);
+        $response = curl_exec($ch);
+        curl_close($ch);
+        $body = is_string($response) ? (json_decode($response, true) ?: []) : [];
+        if (empty($body['access_token'])) {
+            return null;
+        }
+        return $cache[$k] = (string) $body['access_token'];
+    }
+
+    /** One push row by id (or null). */
+    public static function find(int $id): ?object
+    {
+        global $db;
+        return $db->fetchOne('SELECT * FROM tblmpesa_stk_pushes WHERE id = :id', [':id' => $id]);
+    }
+
+    /** Most recent push for a user (the status page polls this). */
+    public static function latest_for_user(int $userId): ?object
+    {
+        global $db;
+        return $db->fetchOne(
+            'SELECT * FROM tblmpesa_stk_pushes WHERE user_id = :u ORDER BY id DESC LIMIT 1',
+            [':u' => $userId]
+        );
+    }
+
+    /** Ownership check for the status page: staff may view any, owners their own. */
+    public static function find_for_user(int $id, int $userId, bool $isStaff): ?object
+    {
+        $push = self::find($id);
+        if ($push === null) {
+            return null;
+        }
+        return ($isStaff || (int) $push->user_id === $userId) ? $push : null;
+    }
+
+    /**
+     * Apply a Daraja STK result callback (from mpesa_stk_callback.php).
+     * Replay-safe: an already-answered push is a no-op success.
+     *
+     * Expected Daraja Body structure (both success and failure arrive here):
+     *   { Body: { stkCallback: { CheckoutRequestID, ResultCode, ResultDesc,
+     *             CallbackMetadata: { Item: [ {Name, Value}... ] } } } }
+     *
+     * @return array{ok:bool, replay?:bool, error?:string, status?:string}
+     */
+    public static function apply_callback(string $checkoutRequestId, int $resultCode, string $resultDesc, ?string $mpesaReceipt = null): array
+    {
+        global $db;
+        $push = $db->fetchOne(
+            'SELECT * FROM tblmpesa_stk_pushes WHERE checkout_request_id = :c',
+            [':c' => $checkoutRequestId]
+        );
+        if ($push === null) {
+            return ['ok' => false, 'error' => 'Unknown CheckoutRequestID'];
+        }
+        // Replays are no-ops. The single exception: a SUCCESS callback that
+        // arrives after cancel_stale() timed the push out — money actually
+        // moved, so the push is re-opened and fulfilled (only when nothing
+        // was fulfilled before; a bound ref means it already happened).
+        $reopen = false;
+        if ($push->status !== 'pending') {
+            if ($push->status === 'timeout' && $resultCode === self::RESULT_OK && $push->ref_table === null) {
+                $reopen = true;
+            } else {
+                return ['ok' => true, 'replay' => true, 'status' => (string) $push->status];
+            }
+        }
+
+        $status = match (true) {
+            $resultCode === self::RESULT_OK        => 'success',
+            $resultCode === self::RESULT_CANCELLED => 'cancelled',
+            $resultCode === self::RESULT_TIMEOUT   => 'timeout',
+            default                                 => 'failed',
+        };
+        $db->execute(
+            'UPDATE tblmpesa_stk_pushes
+                SET status = :s, result_code = :rc, result_desc = :rd, mpesa_receipt = :mr, answered_at = NOW()
+              WHERE id = :id AND status = :st',
+            [
+                ':s' => $status, ':rc' => $resultCode,
+                ':rd' => substr($resultDesc, 0, 255),
+                ':mr' => $mpesaReceipt !== null ? substr($mpesaReceipt, 0, 20) : null,
+                ':id' => (int) $push->id, ':st' => $reopen ? 'timeout' : 'pending',
+            ]
+        );
+        $push = self::find((int) $push->id);
+        if ($push === null) {
+            return ['ok' => false, 'error' => 'Push row vanished mid-callback'];
+        }
+
+        if ($status === 'success') {
+            $fulfilled = self::fulfil($push);
+            if (!$fulfilled['ok']) {
+                return $fulfilled; // surfaces fulfilment errors to the callback log
+            }
+        }
+        return ['ok' => true, 'status' => $status];
+    }
+
+    /**
+     * Turn a successful push into the real thing: a subscription row or a
+     * booking deposit — exactly once (guarded by the status gate + ref binding).
+     *
+     * @return array{ok:bool, error?:string}
+     */
+    private static function fulfil(object $push): array
+    {
+        global $db;
+        if ($push->purpose === 'subscription') {
+            $plan = Subscription::get_plan((string) $push->plan);
+            if (!$plan) {
+                return ['ok' => false, 'error' => 'Plan vanished before fulfilment'];
+            }
+            $receipt = (string) ($push->mpesa_receipt ?: 'STK-' . $push->id);
+            Subscription::create_subscription((int) $push->user_id, (string) $push->plan, (float) $plan->price, $receipt);
+            $subId = (int) $db->fetchValue(
+                'SELECT id FROM tblsubscriptions WHERE user_id = :u AND mpesa_code = :c ORDER BY id DESC LIMIT 1',
+                [':u' => (int) $push->user_id, ':c' => $receipt]
+            );
+            $db->execute("UPDATE tblmpesa_stk_pushes SET ref_table = 'tblsubscriptions', ref_id = :r WHERE id = :id",
+                [':r' => $subId, ':id' => (int) $push->id]);
+            Notification::create(
+                (int) $push->user_id,
+                0,
+                'Your ' . ucfirst((string) $push->plan) . ' subscription payment of ' . format_ksh((float) $push->amount, 2)
+                    . ' went through (ref ' . $receipt . '). The plan is active.',
+                'subscription.php',
+                'Subscription activated — ' . format_ksh((float) $push->amount, 2)
+            );
+            return ['ok' => true];
+        }
+
+        // Deposit purpose: book the payment on the couple's ledger and mark
+        // the push consumed (single-use — the C2B single-use discipline).
+        $result = Liquidation::create_mpesa_deposit(
+            (int) $push->booking_id,
+            (int) $push->user_id,
+            (int) $push->event_id,
+            (float) $push->amount
+        );
+        if (!$result['ok']) {
+            return ['ok' => false, 'error' => 'Fulfilment failed: ' . ($result['error'] ?? '?')];
+        }
+        $db->execute("UPDATE tblmpesa_stk_pushes SET ref_table = 'tbl_liquidation', ref_id = :r WHERE id = :id",
+            [':r' => (int) $result['id'], ':id' => (int) $push->id]);
+
+        $booking = Booking::find_by_booking_id((int) $push->booking_id);
+        $links   = 'booking_id=' . (int) $push->booking_id . '&user_id=' . (int) $push->user_id;
+        Notification::create(
+            (int) $push->user_id,
+            (int) $push->booking_id,
+            'Asante! Your M-Pesa payment of ' . format_ksh((float) $push->amount, 2)
+                . ' went through (ref ' . ($push->mpesa_receipt ?: $result['mpesa_code']) . ').',
+            'client_budget.php?' . $links,
+            'Payment received — ' . format_ksh((float) $push->amount, 2)
+        );
+        $plannerId = (int) ($booking->organizer_id ?? 0);
+        if ($plannerId > 0) {
+            Notification::create(
+                $plannerId,
+                (int) $push->booking_id,
+                'STK M-Pesa deposit of ' . format_ksh((float) $push->amount, 2)
+                    . ' received (ref ' . ($push->mpesa_receipt ?: $result['mpesa_code']) . ') — booking #' . (int) $push->booking_id,
+                'budget.php?' . $links,
+                'New M-Pesa deposit — booking #' . (int) $push->booking_id
+            );
+        }
+        return ['ok' => true];
+    }
+
+    /** Close out pushes that were never answered (Daraja never called back). */
+    public static function cancel_stale(int $minutes = self::STALE_MINUTES): int
+    {
+        global $db;
+        $minutes = max(1, $minutes);
+        $stmt = $db->execute(
+            "UPDATE tblmpesa_stk_pushes
+                SET status = 'timeout', result_code = " . self::RESULT_TIMEOUT . ",
+                    result_desc = 'No callback received', answered_at = NOW()
+              WHERE status = 'pending'
+                AND requested_at < DATE_SUB(NOW(), INTERVAL {$minutes} MINUTE)"
+        );
+        return $stmt->rowCount();
+    }
+}
+
+/**
  * Revenue dashboard aggregations (admin/revenue.php)
  *
  * Three platform revenue streams, month by month:

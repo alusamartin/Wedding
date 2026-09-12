@@ -1155,7 +1155,75 @@ MpesaC2B::verification_enabled()                  // WPMS_MPESA_VERIFY
 - `admin/mpesa_ledger.php` — staff review queue
 - `tests/MpesaC2BTest.php` — 14 tests (ingest, verify, replay, endpoint)
 
+
+## 7.7 M-Pesa STK Push (Initiated-from-App Payments)
+
+Beyond verifying typed codes, the app can start the payment itself: Daraja
+prompts the customer's phone, the customer enters their M-Pesa PIN, and
+Daraja reports the result to `mpesa_stk_callback.php`. No code typing at all.
+
+### How it works
+```
+User clicks "Pay by M-Pesa prompt" (subscription) / "Pay now" (deposit)
+        │
+        ▼
+MpesaStk::initiate() — row in tblmpesa_stk_pushes (status pending,
+                        the PROMISE) + Daraja processrequest call
+        │
+        ▼
+Customer's phone shows the prompt → they enter their PIN
+        │
+        ▼
+Daraja POSTs the result to mpesa_stk_callback.php
+        │
+        ▼
+MpesaStk::apply_callback() — stamps status + receipt, and on success
+FULFILS: creates the subscription row (purpose=subscription) or books the
+deposit on the couple's ledger (purpose=deposit) — exactly once
+```
+
+The push is a promise, not a payment. Only a success callback (ResultCode 0)
+moves anything. Cancelled (1032), timed-out (1037) and failed prompts are
+recorded and fulfil nothing.
+
+### Rules
+- **Exactly once** — fulfilment is guarded by the push status; replays of the
+  same Daraja callback are no-ops.
+- **Late success wins** — if the sweeper timed a push out (5 min, no callback)
+  and Daraja then reports success, the push is reopened and fulfilled: the
+  money actually moved, so the payment is never dropped.
+- **Balance-guarded deposits** — a deposit push can't exceed the booking's
+  remaining balance, and events are validated to belong to the booking.
+- **Transport simulation** — without Daraja credentials the ledger and
+  callback flow behave identically, but no phone is really prompted
+  (dev/demo/test mode).
+
+### Setup
+1. Run `migrations/v2.1_phase1_hardening.sql` (creates `tblmpesa_stk_pushes`).
+2. Set `WPMS_MPESA_STK=1` plus the Daraja credentials
+   (`WPMS_MPESA_STK_CONSUMER_KEY`/`_SECRET`, `WPMS_MPESA_STK_PASSKEY`,
+   shortcode via `WPMS_MPESA_STK_SHORTCODE`) — see README §M-Pesa STK push.
+3. The CallBackURL is sent per request; it must be reachable at
+   `https://your-domain/mpesa_stk_callback.php`.
+
+### Key Methods
+```php
+MpesaStk::initiate(string $purpose, int $userId, string $phone, float $amount, array $context)
+MpesaStk::apply_callback(string $checkoutRequestId, int $resultCode, string $resultDesc, ?string $mpesaReceipt)
+MpesaStk::find(int $id) / latest_for_user(int $userId) / find_for_user(...)
+MpesaStk::cancel_stale(int $minutes = 5): int
+MpesaStk::enabled(): bool
+```
+
+### Key Files
+- `mpesa_stk_callback.php` — public result callback (Daraja contract, never 500s)
+- `admin/include/Monetization.php` — MpesaStk class
+- `admin/stk_status.php` — polling status page ("Check your phone")
+- `admin/mpesa_ledger.php` — STK pushes section (stats + recent pushes)
+- `tests/MpesaStkTest.php` — 10 tests (initiate, fulfilment, replays, endpoint)
+
 ---
+
 
 ## 7.5 Revenue Summary
 

@@ -64,6 +64,37 @@
         $session->message('<div class="alert alert-success"><strong><i class="mdi mdi-check"></i></strong> Subscription activated! Plan: <strong>' . htmlspecialchars($plan_details->name) . '</strong> — Valid until ' . date('d M Y', strtotime('+30 days')) . '.</div>');
         redirect_to("subscription.php");
     }
+
+    // Handle STK push purchase: prompt the phone, then redirect to the
+    // status page that polls for the async Daraja result.
+    if (isset($_POST['stk_buy'])) {
+        if (!$session->verify_csrf()) {
+            $session->message('<div class="alert alert-danger">Invalid security token. Please try again.</div>');
+            redirect_to("subscription.php");
+            die();
+        }
+        if (!MpesaStk::enabled()) {
+            redirect_to("subscription.php");
+            die();
+        }
+        $plan   = clean($_POST['plan'] ?? '');
+        $phone  = clean($_POST['phone'] ?? '');
+        $plan_details = Subscription::get_plan($plan);
+        if (!$plan_details) {
+            $session->message('<div class="alert alert-danger">Invalid plan selected.</div>');
+            redirect_to("subscription.php");
+            die();
+        }
+        $result = MpesaStk::initiate('subscription', (int) $user_id, $phone, (float) $plan_details->price, ['plan' => $plan]);
+        if (!$result['ok']) {
+            $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> '
+                . htmlspecialchars($result['error'] ?? 'Could not send the M-Pesa prompt.') . '</div>');
+            redirect_to("subscription.php");
+            die();
+        }
+        redirect_to($result['status_url']);
+        die();
+    }
 ?>
 <?php $users_profile = Users::find_by_id($user_id); ?>
 <!doctype html>
@@ -145,6 +176,12 @@
                         <button class="btn btn-block btn-danger" onclick="showPurchase('<?= $plan->plan_slug; ?>', '<?= htmlspecialchars($plan->name); ?>', <?= $plan->price; ?>)">
                             <i class="mdi mdi-arrow-right"></i> Upgrade
                         </button>
+                        <?php if (MpesaStk::enabled()): ?>
+                        <button class="btn btn-block btn-outline-success mt-2"
+                                onclick="showStk('<?= $plan->plan_slug; ?>', '<?= htmlspecialchars($plan->name); ?>', <?= $plan->price; ?>)">
+                            <i class="mdi mdi-cellphone-vibrate"></i> Pay by M-Pesa prompt
+                        </button>
+                        <?php endif; ?>
                     <?php endif; ?>
                 </div>
             </div>
@@ -185,6 +222,40 @@
             </div>
         </div>
     </div>
+
+    <!-- STK push purchase modal (pay without leaving the app) -->
+    <?php if (MpesaStk::enabled()): ?>
+    <div class="modal fade" id="stkModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form method="post">
+                    <?= $session->csrf_field(); ?>
+                    <input type="hidden" name="plan" id="stk_plan">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="stk_title">Pay via M-Pesa prompt</h5>
+                        <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-success mb-3">
+                            <strong>No code needed:</strong> M-Pesa sends a prompt to the phone below —
+                            enter your PIN and the plan activates itself.
+                        </div>
+                        <div class="form-group">
+                            <label class="required">M-Pesa Number</label>
+                            <input type="tel" name="phone" class="form-control" placeholder="e.g. 0712 345 678"
+                                   value="<?= htmlspecialchars((string) ($users_profile->phone ?? '')); ?>" required>
+                            <small class="form-text text-muted">Amount: <strong id="stk_amount_display"></strong></small>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                        <button type="submit" name="stk_buy" class="btn btn-success"><i class="mdi mdi-cellphone-vibrate"></i> Send prompt</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <!-- Subscription History -->
     <h5 class="mt-4 mb-3"><i class="mdi mdi-history"></i> Subscription History</h5>
@@ -234,6 +305,14 @@
         document.getElementById('modal_amount_display').textContent = 'KSh ' + amount.toLocaleString();
         $('#purchaseModal').modal('show');
     }
+    <?php if (MpesaStk::enabled()): ?>
+    function showStk(slug, name, amount) {
+        document.getElementById('stk_plan').value = slug;
+        document.getElementById('stk_title').textContent = 'Pay by prompt: ' + name;
+        document.getElementById('stk_amount_display').textContent = 'KSh ' + amount.toLocaleString();
+        $('#stkModal').modal('show');
+    }
+    <?php endif; ?>
 </script>
 </body>
 </html>

@@ -410,7 +410,11 @@ tblpostwedding (real-weddings blog)
 - **M-Pesa verification is automatic (C2B callback)** — codes typed on
   subscription/payment forms are checked against payments Safaricom reports
   to `mpesa_c2b.php` (Daraja C2B) when `WPMS_MPESA_VERIFY=1`; see manual §7.6.
-  STK push (initiated-from-app payments) remains a future upgrade.
+- **STK push is built** — the app can also *initiate* payments: Daraja
+  prompts the phone, the customer enters their PIN, and the result callback
+  (`mpesa_stk_callback.php`) fulfils the subscription or books the deposit
+  automatically, exactly once (manual §7.7). Without Daraja credentials the
+  transport is simulated (dev/demo).
 - **No built-in login rate limiting** — add via .htaccess / fail2ban before
   production.
 - **White-label and analytics revenue** are priced in the manual but not yet
