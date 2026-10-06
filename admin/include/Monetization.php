@@ -39,7 +39,9 @@ class Subscription extends DB_Object
     public static function get_all_for_user(mixed $user_id): array
     {
         global $db;
-        $sql  = "SELECT * FROM " . static::$db_table . " WHERE user_id = :uid ORDER BY created_at DESC";
+        // id DESC as the tiebreaker: renewal clones are created in the same
+        // second as their parent (TIMESTAMP granularity) and must sort after.
+        $sql  = "SELECT * FROM " . static::$db_table . " WHERE user_id = :uid ORDER BY created_at DESC, id DESC";
         $stmt = $db->prepare($sql);
         $stmt->execute([':uid' => (int) $user_id]);
         return $stmt->fetchAll(PDO::FETCH_OBJ);
@@ -65,6 +67,539 @@ class Subscription extends DB_Object
             ':start'  => $start,
             ':expiry' => $expiry,
         ]);
+    }
+
+    /** Trial length in days (env: WPMS_TRIAL_DAYS, default 14). */
+    public static function trial_days(): int
+    {
+        $d = filter_var(getenv('WPMS_TRIAL_DAYS'), FILTER_VALIDATE_INT);
+        return ($d === false || $d < 1) ? 14 : $d;
+    }
+
+    /**
+     * Start a self-serve trial: a zero-amount 'trial' subscription row.
+     * Called once by register_planner(); a user with any live subscription
+     * (trial included) is refused — one trial per account, ever.
+     *
+     * @return object|false|null the created row, false when one already exists
+     */
+    public static function start_trial(mixed $user_id): object|false|null
+    {
+        global $db;
+        $uid = (int) $user_id;
+        if (self::get_active($uid) !== null || self::get_trial($uid) !== null) {
+            return false; // already has a live subscription (paid or trial)
+        }
+        $days   = self::trial_days();
+        $expiry = date('Y-m-d', strtotime('+' . $days . ' days'));
+        $stmt = $db->prepare(
+            "INSERT INTO tblsubscriptions (user_id, plan, amount, mpesa_code, start_date, expiry_date, status, auto_renew)
+             VALUES (:uid, 'trial', 0.00, 'TRIAL', :start, :expiry, 'trial', 0)"
+        );
+        $ok = $stmt->execute([
+            ':uid'    => $uid,
+            ':start'  => date('Y-m-d'),
+            ':expiry' => $expiry,
+        ]);
+        return $ok ? self::sub_by_id((int) $db->the_insert_id()) : null;
+    }
+
+    /**
+     * Activation for the self-serve funnel: open the 14-day trial for an
+     * account whose mailbox has just been proven (SignupGuard::verify). The
+     * one choke point so the verify page and tests can never drift apart.
+     *
+     * @return object|false|null the new trial row, false when one already
+     *         exists, null on insert failure
+     */
+    public static function activate_trial(int $user_id): object|false|null
+    {
+        return self::start_trial($user_id);
+    }
+
+    /** True when the given subscription row is a trial row. */
+    public static function is_trial_row(mixed $sub): bool
+    {
+        return $sub !== null
+            && strtolower((string) ($sub->plan ?? '')) === 'trial'
+            && strtolower((string) ($sub->status ?? '')) === 'trial';
+    }
+
+    /** The user's trial row (plan+status 'trial'), or null. */
+    public static function get_trial(mixed $user_id): ?object
+    {
+        global $db;
+        return $db->fetchOne(
+            "SELECT * FROM tblsubscriptions WHERE user_id = :u AND plan = 'trial' AND status = 'trial' ORDER BY id DESC LIMIT 1",
+            [':u' => (int) $user_id]
+        );
+    }
+
+    /** Grace-window length in days (env: WPMS_SUB_GRACE_DAYS, default 7). */
+    public static function grace_days(): int
+    {
+        $d = filter_var(getenv('WPMS_SUB_GRACE_DAYS'), FILTER_VALIDATE_INT);
+        return ($d === false || $d < 0) ? 7 : $d;
+    }
+
+    /** Whether the grace window (and its SMS dunning) is switched on. */
+    public static function grace_enabled(): bool
+    {
+        return in_array(strtolower(trim((string) getenv('WPMS_SUB_GRACE'))), ['1', 'true', 'yes', 'on'], true);
+    }
+
+    /** Whether the cron auto-renewal (STK prompt before expiry) is switched on. */
+    public static function auto_renew_enabled(): bool
+    {
+        return in_array(strtolower(trim((string) getenv('WPMS_SUB_AUTO_RENEW'))), ['1', 'true', 'yes', 'on'], true);
+    }
+
+    /** Whether the trial nurture emails (cron LEG 3) are switched on. */
+    public static function trial_nurture_enabled(): bool
+    {
+        return in_array(strtolower(trim((string) getenv('WPMS_TRIAL_NURTURE'))), ['1', 'true', 'yes', 'on'], true);
+    }
+
+    /**
+     * ONE answer for every gate/banner/renderer: where is this staff member
+     * relative to their subscription right now?
+     *
+     *  - 'active'  : an active row exists (expiry in the future)
+     *  - 'grace'   : the newest row lapsed within the last N days and the
+     *                newest row predates the grace feature (no renewal-clone),
+     *                OR a renewal clone exists that has not paid yet
+     *  - 'locked'  : no row, or the newest lapsed beyond grace
+     *
+     * The gate (require_staff / login_redirect_target) and every banner call
+     * this so the dashboard, subscription page and redirect can never
+     * disagree about the state.
+     *
+     * @return array{state:string, sub:?object, days_left:int, grace_days_left:int}
+     */
+    public static function state(mixed $user_id): array
+    {
+        global $db;
+        $uid = (int) $user_id;
+        $today = new DateTimeImmutable('today');
+
+        $rows = self::get_all_for_user($uid);
+        if ($rows === []) {
+            return ['state' => 'locked', 'sub' => null, 'days_left' => 0, 'grace_days_left' => 0, 'trial' => false];
+        }
+
+        // Newest row decides. Rows are ORDER BY created_at DESC already.
+        $newest = $rows[0];
+        $isClone = ((int) ($newest->auto_renew ?? 1)) === 2;
+        $expiry  = new DateTimeImmutable((string) $newest->expiry_date);
+
+        if ($expiry >= $today) {
+            return [
+                'state'           => 'active',
+                'sub'             => $newest,
+                'days_left'       => (int) $today->diff($expiry)->days,
+                'grace_days_left' => 0,
+                'trial'           => self::is_trial_row($newest),
+            ];
+        }
+
+        $lapsedDays = (int) $expiry->diff($today)->days; // days past expiry
+        $inWindow = self::grace_enabled() && $lapsedDays <= self::grace_days();
+        if ($inWindow || $isClone) {
+            return [
+                'state'           => 'grace',
+                'sub'             => $newest,
+                'days_left'       => 0,
+                'grace_days_left' => max(0, self::grace_days() - $lapsedDays),
+                'trial'           => self::is_trial_row($newest),
+            ];
+        }
+        return ['state' => 'locked', 'sub' => null, 'days_left' => 0, 'grace_days_left' => 0, 'trial' => false];
+    }
+
+    /**
+     * The next renewal candidate for one staff member, or null:
+     *   - during grace: a pending renewal clone if one exists (else null —
+     *     the clone is created the day after expiry by the cron)
+     *   - otherwise: the active row when it is inside the renewal window
+     *     (expiry within the next WPMS_SUB_RENEW_DAYS days, default 3)
+     * Only auto_renew=1 rows are ever renewed.
+     *
+     * @return object|null row from tblsubscriptions
+     */
+    public static function renewal_candidate(mixed $user_id): ?object
+    {
+        $uid = (int) $user_id;
+        $today = new DateTimeImmutable('today');
+        $window = max(1, (int) (getenv('WPMS_SUB_RENEW_DAYS') ?: 3));
+
+        $rows = self::get_all_for_user($uid);
+        // Newest PAID row and newest pending promise, by id (rows are
+        // created_at DESC, but ids are the tiebreaker that never lies).
+        $newestPaid  = null;
+        $newestClone = null;
+        foreach ($rows as $row) {
+            $isClone = ((int) ($row->auto_renew ?? 1)) === 2;
+            if ($isClone && strtolower((string) $row->status) === 'pending_renewal') {
+                if ($newestClone === null) {
+                    $newestClone = $row;
+                }
+                continue;
+            }
+            if ($newestPaid === null) {
+                $newestPaid = $row;
+            }
+        }
+        // A promise newer than any payment IS the live renewal attempt —
+        // even when a newer manual purchase exists ABOVE it is impossible
+        // (paid row would have a higher id). Promise OLDER than a paid row
+        // means the planner paid manually after the prompt died: ignore it.
+        if ($newestClone !== null
+            && ($newestPaid === null || (int) $newestClone->id > (int) $newestPaid->id)) {
+            return $newestClone;
+        }
+        if ($newestPaid !== null
+            && strtolower((string) $newestPaid->status) === 'active'
+            && strtolower((string) $newestPaid->plan) !== 'trial' // never "renew" a trial
+            && ((int) ($newestPaid->auto_renew ?? 1)) === 1) {
+            $expiry = new DateTimeImmutable((string) $newestPaid->expiry_date);
+            if ($expiry >= $today && (int) $expiry->diff($today)->days <= $window) {
+                return $newestPaid; // active row inside the renewal window
+            }
+        }
+        return null;
+    }
+
+    /**
+     * All staff whose NEWEST subscription row is an active auto-renew row
+     * inside the renewal window (cron candidates for the STK prompt).
+     * Users with a pending promise are excluded — one prompt at a time.
+     *
+     * @return array<object> tblsubscriptions rows (newest per user)
+     */
+    public static function auto_renew_candidates(int $windowDays): array
+    {
+        global $db;
+        $windowDays = max(0, $windowDays);
+        return $db->fetchAll(
+            "SELECT t.* FROM tblsubscriptions t
+              JOIN (SELECT user_id, MAX(id) AS max_id FROM tblsubscriptions GROUP BY user_id) m
+                ON m.user_id = t.user_id AND m.max_id = t.id
+              WHERE t.status = 'active'
+                AND t.plan != 'trial'   -- a trial is never renewed
+                AND t.auto_renew = 1
+                AND t.expiry_date >= CURDATE()
+                AND DATEDIFF(t.expiry_date, CURDATE()) <= {$windowDays}
+                AND NOT EXISTS (
+                    SELECT 1 FROM tblsubscriptions c
+                     WHERE c.user_id = t.user_id AND c.status = 'pending_renewal' AND c.auto_renew = 2
+                )"
+        );
+    }
+
+    /**
+     * Delete dead promises: pending clones with no live push behind them and
+     * more than a day old. Covers the prompt that timed out, the initiate
+     * that failed, the planner who paid manually afterwards, and the one who
+     * turned auto-renew off. Without this sweep an unpaid promise would pin
+     * state() to 'grace' forever (the clone never expires forward).
+     *
+     * @return int rows deleted
+     */
+    public static function sweep_pending_renewals(): int
+    {
+        global $db;
+        $clones = $db->fetchAll(
+            "SELECT * FROM tblsubscriptions
+              WHERE status = 'pending_renewal' AND auto_renew = 2
+                AND created_at < DATE_SUB(NOW(), INTERVAL 1 DAY)"
+        );
+        $deleted = 0;
+        foreach ($clones as $clone) {
+            $livePush = (int) $db->fetchValue(
+                "SELECT COUNT(*) FROM tblmpesa_stk_pushes
+                  WHERE user_id = :u AND purpose = 'subscription' AND status = 'pending'
+                    AND requested_at >= :c",
+                [':u' => (int) $clone->user_id, ':c' => (string) $clone->created_at]
+            );
+            if ($livePush > 0) {
+                continue; // the prompt is still being answered on stk_status.php
+            }
+            $db->execute("DELETE FROM tblsubscriptions WHERE id = :i AND status = 'pending_renewal'",
+                [':i' => (int) $clone->id]);
+            $deleted++;
+        }
+        return $deleted;
+    }
+
+    /**
+     * Clone the newest subscription row as a PENDING renewal (the STK
+     * "promise") so a crash mid-renewal never leaves the account without a
+     * trace of what was attempted. The clone carries auto_renew=2, which:
+     *   - keeps state() in 'grace' if expiry passes before payment lands,
+     *   - is invisible to get_active() (expiry in the past).
+     * Called by the cron BEFORE prompting; fulfilled by MpesaStk::fulfil()
+     * via extend_renewal(), which flips the clone back to auto_renew=1.
+     */
+    public static function create_renewal_clone(mixed $user_id, string $plan, mixed $amount): ?object
+    {
+        global $db;
+        $uid     = (int) $user_id;
+        // Idempotent: one live promise per user — a second call (cron overlap,
+        // retry) returns the existing one instead of stacking promises.
+        $existing = $db->fetchOne(
+            "SELECT * FROM tblsubscriptions WHERE user_id = :u AND status = 'pending_renewal' AND auto_renew = 2 ORDER BY id DESC LIMIT 1",
+            [':u' => $uid]
+        );
+        if ($existing !== null) {
+            return $existing;
+        }
+        // Base = the newest PAID row by id (never get_active()'s expiry
+        // ordering — with any two live rows the id is the only truth).
+        $base = $db->fetchOne(
+            "SELECT * FROM tblsubscriptions
+              WHERE user_id = :u AND NOT (status = 'pending_renewal' AND auto_renew = 2)
+              ORDER BY id DESC LIMIT 1",
+            [':u' => $uid]
+        );
+        if ($base === null) {
+            return null;
+        }
+        $start  = date('Y-m-d', max(strtotime((string) $base->expiry_date), strtotime('today')));
+        $expiry = date('Y-m-d', strtotime($start . ' +30 days'));
+        $stmt = $db->prepare(
+            "INSERT INTO tblsubscriptions (user_id, plan, amount, mpesa_code, start_date, expiry_date, status, auto_renew)
+             VALUES (:uid, :plan, :amount, :code, :start, :expiry, 'pending_renewal', 2)"
+       );
+        $ok = $stmt->execute([
+            ':uid'    => $uid,
+            ':plan'   => $plan,
+            ':amount' => $amount,
+            ':code'   => 'PENDING-' . strtoupper(bin2hex(random_bytes(5))),
+            ':start'  => $start,
+            ':expiry' => $expiry,
+        ]);
+        if (!$ok) {
+            return null;
+        }
+        return self::sub_by_id((int) $db->the_insert_id());
+    }
+
+    /**
+     * Turn a paid renewal into the real thing: mark the promise paid and
+     * extend the SAME subscription's expiry by 30 days from its own expiry
+     * (not from today — a payment that lands mid-grace must not shorten the
+     * entitlement the planner already had). Exactly-once: only a row still
+     * stamped pending_renewal/auto_renew=2 is extended.
+     */
+    public static function extend_renewal(mixed $user_id, string $plan, mixed $amount, string $mpesa_code): bool
+    {
+        global $db;
+        $uid = (int) $user_id;
+        // The promise: newest pending clone for this user+plan.
+        $clone = $db->fetchOne(
+            "SELECT * FROM tblsubscriptions
+              WHERE user_id = :u AND plan = :p AND status = 'pending_renewal' AND auto_renew = 2
+              ORDER BY id DESC LIMIT 1",
+            [':u' => $uid, ':p' => $plan]
+        );
+        if ($clone === null) {
+            return false; // nothing pending — a stale/late callback arrives here
+        }
+        // The promise becomes the live row…
+        $stmt = $db->prepare(
+            "UPDATE tblsubscriptions
+                SET amount = :a, mpesa_code = :c, status = 'active', auto_renew = 1,
+                    renewal_sms_band = NULL
+              WHERE id = :id AND status = 'pending_renewal' AND auto_renew = 2"
+        );
+        $ok = $stmt->execute([
+            ':a' => $amount, ':c' => $mpesa_code, ':id' => (int) $clone->id,
+        ]);
+        if (!$ok || $stmt->rowCount() === 0) {
+            return false; // raced — another caller extended it already
+        }
+        // …and the row it renews is superseded: mark it expired so the user
+        // always has exactly ONE live subscription (renewals extend in
+        // place, never stack a second active row beside the old one).
+        $db->execute(
+            "UPDATE tblsubscriptions SET status = 'expired'
+              WHERE user_id = :u AND plan = :p AND status = 'active' AND id < :id",
+            [':u' => $uid, ':p' => $plan, ':id' => (int) $clone->id]
+        );
+        return true;
+    }
+
+    /** One subscription row by id, or null. (Named to avoid the DB_Object::find_by_id signature.) */
+    public static function sub_by_id(int $id): ?object
+    {
+        global $db;
+        return $db->fetchOne('SELECT * FROM tblsubscriptions WHERE id = :i', [':i' => $id]);
+    }
+
+    /** Toggle auto-renew for the staff member's CURRENT live row. */
+    public static function set_auto_renew(mixed $user_id, bool $on): bool
+    {
+        global $db;
+        $stmt = $db->prepare("UPDATE tblsubscriptions SET auto_renew = :v WHERE user_id = :u AND status = 'active'");
+        return $stmt->execute([':v' => $on ? 1 : 0, ':u' => (int) $user_id]);
+    }
+
+    /**
+     * Dunning targets: staff whose newest subscription row is (a) active
+     * inside an SMS band, or (b) lapsed within the grace window. Newest row
+     * per user only — history rows are never texted.
+     *
+     * @return array<object{user_id, plan, price, phone, days_left, grace_days_left, state}>
+     */
+    public static function dunning_targets(array $bands): array
+    {
+        global $db;
+        $out = [];
+        $today = new DateTimeImmutable('today');
+        $grace = self::grace_enabled() ? self::grace_days() : 0;
+
+        $rows = $db->fetchAll(
+            "SELECT t.* FROM tblsubscriptions t
+              JOIN (SELECT user_id, MAX(id) AS max_id FROM tblsubscriptions GROUP BY user_id) m
+                ON m.user_id = t.user_id AND m.max_id = t.id"
+        );
+        foreach ($rows as $row) {
+            if (((int) ($row->auto_renew ?? 1)) === 2) {
+                // A pending renewal clone IS the promise — the STK leg owns
+                // this user this run; the dunning text would be noise.
+                continue;
+            }
+            $expiry = new DateTimeImmutable((string) $row->expiry_date);
+            $state  = $expiry >= $today ? 'active' : 'grace';
+            $daysLeft = 0;
+            $graceLeft = 0;
+            if ($state === 'active' && strtolower((string) $row->plan) === 'trial') {
+                // Trials get ONE expiry-eve text (band 0 handled by the cron
+                // with trial copy), not the full 7/3/0 band ladder.
+                $daysLeft = (int) $expiry->diff($today)->days;
+                if ($daysLeft !== 0 || !in_array(0, $bands, true)) {
+                    continue;
+                }
+                $out[] = ['sub' => $row, 'state' => 'trial', 'days_left' => 0, 'grace_days_left' => 0];
+                continue;
+            }
+            if ($state === 'active') {
+                $daysLeft = (int) $expiry->diff($today)->days;
+                // Manual-renew planners (auto_renew = 0) need the reminder
+                // most — do not filter them out here.
+                if (!in_array($daysLeft, $bands, true)) {
+                    continue;
+                }
+            } else {
+                if ($grace <= 0) {
+                    continue;
+                }
+                $lapsed = (int) $expiry->diff($today)->days;
+                if ($lapsed > $grace) {
+                    continue;
+                }
+                $graceLeft = $grace - $lapsed;
+            }
+            $out[] = [
+                'sub'             => $row,
+                'state'           => $state,
+                'days_left'       => $daysLeft,
+                'grace_days_left' => $graceLeft,
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Trial nurture-email targets (cron LEG 3): the newest row per user,
+     * trial-status rows only, each matched against the nurture bands —
+     * [check-in, last-call] in days-left. Defaults follow the trial length:
+     * halfway point and the day before expiry (7 and 1 for WPMS_TRIAL_DAYS
+     * = 14). Converted planners cannot appear: their newest row is paid.
+     *
+     * @param array<int,int>|null $bands override; null = derive from trial length
+     * @return array<array{sub:object, days_left:int, band:int}>
+     */
+    public static function trial_nurture_targets(?array $bands = null): array
+    {
+        global $db;
+        $today = new DateTimeImmutable('today');
+        if ($bands === null) {
+            $d = self::trial_days();
+            $bands = [max(1, intdiv($d, 2)), 1];
+        }
+        $bands = array_values(array_unique(array_map('intval', $bands)));
+        sort($bands);
+
+        $rows = $db->fetchAll(
+            "SELECT t.*, u.email AS user_email, u.firstname AS user_firstname
+             FROM tblsubscriptions t
+              JOIN (SELECT user_id, MAX(id) AS max_id FROM tblsubscriptions GROUP BY user_id) m
+                ON m.user_id = t.user_id AND m.max_id = t.id
+              JOIN tblusers u ON u.id = t.user_id"
+        );
+        $out = [];
+        foreach ($rows as $row) {
+            if (strtolower((string) $row->status) !== 'trial') {
+                continue; // trials only — converted planners never appear
+            }
+            $expiry = new DateTimeImmutable((string) $row->expiry_date);
+            if ($expiry < $today) {
+                continue; // lapsed — the trial is over, no nurture
+            }
+            $daysLeft = (int) $expiry->diff($today)->days;
+            if (!in_array($daysLeft, $bands, true)) {
+                continue;
+            }
+            $out[] = ['sub' => $row, 'days_left' => $daysLeft, 'band' => $daysLeft];
+        }
+        return $out;
+    }
+
+    /** Smallest nurture band already emailed for one row (PHP_INT_MAX when none). */
+    public static function sent_nurture_band(mixed $sub): int
+    {
+        $v = $sub->trial_nurture_band ?? null;
+        return $v === null ? PHP_INT_MAX : (int) $v;
+    }
+
+    /** Stamp the smallest nurture band emailed (marker-first, like stamp_band). */
+    public static function stamp_nurture_band(int $sub_id, int $band): void
+    {
+        global $db;
+        $db->execute(
+            'UPDATE tblsubscriptions SET trial_nurture_band = :b WHERE id = :i',
+            [':b' => $band, ':i' => $sub_id]
+        );
+    }
+
+    /** Smallest dunning band already texted for one row (PHP_INT_MAX when none). */
+    public static function sent_band(mixed $sub): int
+    {
+        return $sub->renewal_sms_band === null ? PHP_INT_MAX : (int) $sub->renewal_sms_band;
+    }
+
+    /** Stamp the smallest dunning band texted (marker-first, like pay_band_sms_sent). */
+    public static function stamp_band(int $sub_id, int $band): void
+    {
+        global $db;
+        $db->execute('UPDATE tblsubscriptions SET renewal_sms_band = :b WHERE id = :i', [':b' => $band, ':i' => $sub_id]);
+    }
+
+    /** Phone on file for a staff member ('' when none — callers skip the text). */
+    public static function staff_phone(mixed $user_id): string
+    {
+        global $db;
+        $phone = $db->fetchValue('SELECT phone FROM tblusers WHERE id = :u', [':u' => (int) $user_id]);
+        return trim((string) ($phone ?? ''));
+    }
+
+    /** Set the staff member's phone (subscription page toggle form). */
+    public static function set_staff_phone(mixed $user_id, string $phone): bool
+    {
+        global $db;
+        $stmt = $db->prepare('UPDATE tblusers SET phone = :p WHERE id = :u');
+        return $stmt->execute([':p' => substr(trim($phone), 0, 20), ':u' => (int) $user_id]);
     }
 
     public static function get_plan(string $plan_slug): object|false|null
@@ -678,6 +1213,30 @@ class MpesaStk
                 return ['ok' => false, 'error' => 'Plan vanished before fulfilment'];
             }
             $receipt = (string) ($push->mpesa_receipt ?: 'STK-' . $push->id);
+            // Renewal first: when a pending renewal clone exists for this
+            // user+plan, this push IS the renewal — extend in place instead
+            // of stacking a second live row beside the lapsed one.
+            if (Subscription::extend_renewal((int) $push->user_id, (string) $push->plan, (float) $plan->price, $receipt)) {
+                $subId = (int) $db->fetchValue(
+                    "SELECT id FROM tblsubscriptions
+                      WHERE user_id = :u AND plan = :p AND status = 'active' AND auto_renew = 1
+                      ORDER BY id DESC LIMIT 1",
+                    [':u' => (int) $push->user_id, ':p' => (string) $push->plan]
+                );
+                $db->execute("UPDATE tblmpesa_stk_pushes SET ref_table = 'tblsubscriptions', ref_id = :r WHERE id = :id",
+                    [':r' => $subId, ':id' => (int) $push->id]);
+                $renewed = Subscription::sub_by_id($subId);
+                $until   = $renewed !== null ? date('d M Y', strtotime((string) $renewed->expiry_date)) : date('d M Y', strtotime('+30 days'));
+                Notification::create(
+                    (int) $push->user_id,
+                    0,
+                    'Asante! Your ' . ucfirst((string) $push->plan) . ' renewal payment of ' . format_ksh((float) $push->amount, 2)
+                        . ' went through (ref ' . $receipt . '). Valid until ' . $until . '.',
+                    'subscription.php',
+                    'Subscription renewed — ' . format_ksh((float) $push->amount, 2)
+                );
+                return ['ok' => true];
+            }
             Subscription::create_subscription((int) $push->user_id, (string) $push->plan, (float) $plan->price, $receipt);
             $subId = (int) $db->fetchValue(
                 'SELECT id FROM tblsubscriptions WHERE user_id = :u AND mpesa_code = :c ORDER BY id DESC LIMIT 1',
@@ -1073,6 +1632,50 @@ class SMS
         }
 
         return $response;
+    }
+
+    /**
+     * Send a system SMS that is NOT billed to anyone's credit balance
+     * (cost 0.00). Used for security alerts the platform owes its users —
+     * e.g. login lockout notifications — which must not depend on some staff
+     * member having bought credits. Still writes a tblsms_logs audit row;
+     * in dev mode (no Africa's Talking key) the row is recorded as sent so
+     * tests and demos see a complete trail.
+     *
+     * $ownerUserId attributes the row: tblsms_logs.user_id has a FK to
+     * tblusers, so pass the RECIPIENT's tblusers id (0 when unknown — callers
+     * resolving couples should translate to the owner staff id instead).
+     */
+    public static function send_system(string $phone, string $message, int $ownerUserId = 0): bool
+    {
+        global $db;
+
+        $phone = trim($phone);
+        if ($phone === '') {
+            return false;
+        }
+        try {
+            $phone = self::format_phone($phone);
+            $db->execute(
+                "INSERT INTO tblsms_logs (user_id, booking_id, phone, message, cost, status)
+                 VALUES (:uid, 0, :phone, :msg, 0.00, 'pending')",
+                [':uid' => $ownerUserId, ':phone' => $phone, ':msg' => $message]
+            );
+            $smsId = (int) $db->the_insert_id();
+
+            $response = self::africastalking_send($phone, $message);
+            $db->execute(
+                "UPDATE tblsms_logs SET status = :st, sent_at = NOW() WHERE id = :id",
+                [
+                    ':st'  => !empty($response['success']) ? 'sent' : 'failed',
+                    ':id'  => $smsId,
+                ]
+            );
+            return !empty($response['success']);
+        } catch (Throwable $e) {
+            error_log('[WPMS][Sms] send_system failed: ' . $e->getMessage());
+            return false;
+        }
     }
 
     /**

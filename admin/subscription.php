@@ -7,6 +7,37 @@
     $plans = Subscription::get_all_plans();
     $sub_history = Subscription::get_all_for_user($user_id);
 
+    // Auto-renew toggle (opt-out): flips auto_renew on the CURRENT live row.
+    // Works in every state — a planner in grace may want it OFF before a
+    // planned pause, and one ON again when they come back.
+    if (isset($_POST['toggle_auto_renew'])) {
+        if (!$session->verify_csrf()) {
+            $session->message('<div class="alert alert-danger">Invalid security token. Please try again.</div>');
+            redirect_to("subscription.php");
+            die();
+        }
+        $on = (($_POST['auto_renew'] ?? '') === '1');
+        Subscription::set_auto_renew((int) $user_id, $on);
+        $session->message('<div class="alert alert-success"><strong><i class="mdi mdi-check"></i></strong> Auto-renewal '
+            . ($on ? 'enabled — we will M-Pesa prompt you before each expiry.' : 'disabled — you will be texted before expiry, but must pay manually.') . '</div>');
+        redirect_to("subscription.php");
+    }
+
+    // Phone on file — where the renewal prompt + dunning texts go.
+    if (isset($_POST['save_phone'])) {
+        if (!$session->verify_csrf()) {
+            $session->message('<div class="alert alert-danger">Invalid security token. Please try again.</div>');
+            redirect_to("subscription.php");
+            die();
+        }
+        Subscription::set_staff_phone((int) $user_id, clean($_POST['phone'] ?? ''));
+        $session->message('<div class="alert alert-success"><strong><i class="mdi mdi-check"></i></strong> M-Pesa number saved.</div>');
+        redirect_to("subscription.php");
+    }
+
+    $sub_state   = Subscription::state((int) $user_id);
+    $staff_phone = Subscription::staff_phone((int) $user_id);
+
     // Handle subscription purchase
     if (isset($_POST['purchase'])) {
         if (!$session->verify_csrf()) {
@@ -140,6 +171,53 @@
 
     <?php if ($session->message()): ?>
         <div class="alert alert-dismissible fade show"><?= $session->message(); ?><button type="button" class="close" data-dismiss="alert"><span>&times;</span></button></div>
+    <?php endif; ?>
+
+    <?php if ($sub_state['state'] === 'active' && !empty($sub_state['trial'])): ?>
+        <?php $tleft = (int) $sub_state['days_left']; ?>
+        <div class="alert <?= $tleft <= 1 ? 'alert-danger' : 'alert-warning'; ?> text-center" role="alert">
+            <strong><i class="mdi mdi-gift-outline"></i> Free trial</strong> —
+            <?= $tleft === 0 ? 'it ends TODAY.' : ($tleft === 1 ? 'it ends TOMORROW.' : $tleft . ' day(s) left.'); ?>
+            Activate a plan below any time to keep full access after it ends.
+        </div>
+    <?php endif; ?>
+
+    <?php if ($sub_state['state'] === 'grace'): ?>
+        <div class="alert alert-danger text-center" role="alert">
+            <strong>Your subscription has lapsed.</strong> You have <?= max(0, $sub_state['grace_days_left']); ?> day(s) of read-only grace left —
+            pay below before then to keep full access.
+        </div>
+    <?php endif; ?>
+
+    <!-- Auto-renewal preference (a trial has nothing to renew) -->
+    <?php if (empty($sub_state['trial'])): ?>
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="plan-card" style="padding: 18px 22px;">
+                <div class="d-flex justify-content-between align-items-center flex-wrap">                        <div>
+                        <h5 style="margin-bottom: 4px;"><i class="mdi mdi-autorenew"></i> Auto-renewal</h5>
+                        <p style="font-size: 13px; color: #555; margin-bottom: 6px;">
+                            Before your plan expires, we send an M-Pesa prompt to the phone below — enter your PIN and the plan renews itself.
+                            <?php if (!MpesaStk::enabled()): ?>
+                                <em>(M-Pesa prompts are currently switched off on this installation — you will be texted instead.)</em>
+                            <?php endif; ?>
+                        </p>
+                        <form method="post" class="form-inline mt-2" style="gap: 8px;">
+                            <?= $session->csrf_field(); ?>
+                            <label class="mr-2" style="font-size: 13px;">M-Pesa number</label>
+                            <input type="tel" name="phone" class="form-control form-control-sm mr-2" style="width: 180px;"
+                                   value="<?= htmlspecialchars($staff_phone); ?>" placeholder="e.g. 0712 345 678">
+                            <button type="submit" name="save_phone" value="1" class="btn btn-sm btn-outline-secondary">Save number</button>
+                            <button type="submit" name="toggle_auto_renew" value="1" class="btn btn-sm <?= ($current_sub && (int) ($current_sub->auto_renew ?? 1) === 1) ? 'btn-outline-danger' : 'btn-success'; ?>">
+                                <?= ($current_sub && (int) ($current_sub->auto_renew ?? 1) === 1) ? 'Turn OFF auto-renewal' : 'Turn ON auto-renewal'; ?>
+                            </button>
+                            <input type="hidden" name="auto_renew" value="<?= ($current_sub && (int) ($current_sub->auto_renew ?? 1) === 1) ? '0' : '1'; ?>">
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
     <?php endif; ?>
 
     <!-- Plans Row -->
