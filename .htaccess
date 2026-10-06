@@ -1,0 +1,46 @@
+# Everafter Planner — production root configuration
+# Safe under mod_php, FastCGI and PHP-FPM (no module-only directives outside
+# their <IfModule> guards), so it will not 500 on shared/cPanel hosting.
+
+# --- Force HTTPS once the certificate is active -----------------------
+# Handles both plain Apache and hosts that terminate SSL on a proxy
+# (X-Forwarded-Proto). Localhost / 127.0.0.1 is exempt so a local XAMPP
+# copy (no certificate) keeps working over plain http.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+    RewriteCond %{HTTP_HOST} !^localhost [NC]
+    RewriteCond %{HTTP_HOST} !^127\.0\.0\.1$ [NC]
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</IfModule>
+
+# --- Never serve secrets or internal files ----------------------------
+<FilesMatch "(^\.env|\.env\.|~$|\.(sql|md|lock|json|xml|ini|sh|bak|log)$)">
+    Require all denied
+</FilesMatch>
+
+# --- Security headers ---------------------------------------------------
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+    # HSTS only after HTTPS is confirmed stable for the whole domain:
+    # Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+</IfModule>
+
+# --- Sensible caching for static assets --------------------------------
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/jpeg "access plus 30 days"
+    ExpiresByType image/png "access plus 30 days"
+    ExpiresByType image/svg+xml "access plus 30 days"
+    ExpiresByType image/webp "access plus 30 days"
+    ExpiresByType text/css "access plus 7 days"
+    ExpiresByType application/javascript "access plus 7 days"
+</IfModule>
+
+# --- Custom error pages (optional: create these two files) -------------
+# ErrorDocument 404 /404.php
+# ErrorDocument 500 /500.php

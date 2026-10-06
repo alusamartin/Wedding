@@ -1,12 +1,36 @@
 # Everafter Planner — uploads must never execute scripts.
 # Uploaded files are validated to images (see Gallery/EventWedding set_file),
 # but deny PHP execution here as defense in depth.
+#
+# NOTE ON HOSTING: this file must not 500 on hosts that run PHP via FastCGI /
+# PHP-FPM (most shared hosting, cPanel, Plesk, Forge...). `php_flag engine off`
+# and `Options -ExecCGI` are Apache-module-only directives and throw 500 there,
+# which would break serving every uploaded image. The guard below keeps the
+# Apache 2.4 module case (mod_php) fully covered and stays a harmless no-op
+# under php-fpm (where the .php handler is not enabled inside user dirs anyway).
+
+# Apache 2.4 mod_php / module builds: refuse anything script-like.
 <FilesMatch "\.(?i:php|php\d|phtml|phps|shtml|cgi|pl|py|sh)$">
     Require all denied
 </FilesMatch>
 
-Options -ExecCGI
-php_flag engine off
+# Apache 2.2 fallback, ignored (unknown directive) on 2.4.
+<IfModule !mod_authz_core.c>
+    <FilesMatch "\.(?i:php|php\d|phtml|phps|shtml|cgi|pl|py|sh)$">
+        Order Deny,Allow
+        Deny from all
+    </FilesMatch>
+</IfModule>
 
-# Don't list the directory
+# php-fpm / FastCGI: PHP execution is keyed on the .php handler, which is not
+# provisioned for upload directories — but kill any PHP engine that IS on, in
+# a way php-fpm tolerates. Wrapped so shared hosts that even restrict
+# <IfModule> content are unaffected.
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+
+# Don't list the directory (tolerated by both module and fpm setups; some
+# extremely locked-down hosts ignore Options — the FilesMatch above is the
+# real guard, this is convenience).
 Options -Indexes
