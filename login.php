@@ -12,7 +12,6 @@
  */
  if (isset($_POST['login'])) {
      if (!$session->verify_csrf()) {
-         redirect_to("login.php");
          $session->message("
             <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
               <strong><i class='mdi mdi-alert'></i></strong>  Invalid security token. Please try again.
@@ -20,6 +19,7 @@
                 <span aria-hidden=\"true\">&times;</span>
               </button>
             </div>");
+         redirect_to("login.php");
          die();
      }
      $input_email = clean($_POST['input_email']);
@@ -32,43 +32,77 @@
      $throttle_wait = LoginThrottle::secondsRemaining($input_email);
      if ($throttle_wait > 0) {
          $mins = max(1, (int) ceil($throttle_wait / 60));
+         // Repeat offenders serve longer windows — say "1 hour 5 min", not "65 minutes".
+         $wait_text = $mins >= 60
+             ? intdiv($mins, 60) . ' hour' . (intdiv($mins, 60) === 1 ? '' : 's') . ($mins % 60 > 0 ? ' ' . ($mins % 60) . ' min' : '')
+             : $mins . ' minute' . ($mins === 1 ? '' : 's');
          error_log(sprintf(
              '[WPMS][LoginThrottle] blocked attempt email=%s ip=%s wait=%ds',
              $input_email,
              LoginThrottle::clientIp(),
              $throttle_wait
          ));
-         redirect_to("login.php");
          $session->message("
             <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
-              <strong><i class='mdi mdi-lock-alert'></i></strong>  Too many failed login attempts. Please try again in {$mins} minute" . ($mins === 1 ? '' : 's') . ".
+              <strong><i class='mdi mdi-lock-alert'></i></strong>  Too many failed login attempts. Please try again in {$wait_text}.
               <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
                 <span aria-hidden=\"true\">&times;</span>
               </button>
             </div>");
+         redirect_to("login.php");
          die();
      }
 
      $redirect_after_login = 'admin/client.php'; // sensible default: a couple
 
+     // Timing/eumeration guard: an unknown email must cost the same as a
+     // known one. Without this, a real account's path includes a bcrypt
+     // verify (~100ms) that a miss doesn't — response latency would confirm
+     // which addresses are registered. $dummy_target is a fixed hash of a
+     // constant string; verify() still fails, the cost is paid either way.
+     // (A fixed dummy is deliberately a REAL bcrypt hash of the constant
+     // string, so verify() pays the full bcrypt cost before failing.)
+     $dummy_target = '$2y$10$DrX57xsHArMM1XyjxvVe3e.jI.v3hXKrvDkYuWHpnlwqVrN3WH83O';
+     $known = Accounts::email_exists($input_email) || Users::email_exists($input_email);
+     if (!$known) {
+         password_verify('timing-guard', $dummy_target);
+     }
+
      if ($logged = Accounts::login_user($input_email, $input_password)) {
+
          // Client account (tblaccounts).
          $session->login($logged);
          $_SESSION['account_type'] = 'client'; // distinguishes from staff rows with the same access_level 0
-     } elseif ($logged = Users::user_account_login($input_email, $input_password)) {
-         // Staff account (tblusers): admin (2), planner (1) or vendor (0).
-         $session->login($logged);
-         $_SESSION['account_type'] = 'staff';
-         $level = (int) ($logged->access_level ?? 1);
-         if ($level === 0) {
-             // Vendor self-service: register first, then their dashboard.
-             $redirect_after_login = vendor_redirect_target((int) $logged->id);
-         } elseif (!Subscription::get_active((int) $logged->id)) {
-             $redirect_after_login = 'admin/subscription.php'; // first login / expired
-         } else {
-             $redirect_after_login = 'admin/dashboard.php';    // both admin + planner
-         }
-     }
+    } elseif ($logged = Users::user_account_login($input_email, $input_password)) {
+        // Staff account (tblusers): admin (2), planner (1) or vendor (0).
+        if ((int) ($logged->email_verified ?? 1) !== 0) {
+            $session->login($logged);
+            $_SESSION['account_type'] = 'staff';
+            $level = (int) ($logged->access_level ?? 1);
+            if ($level === 0) {
+                // Vendor self-service: register first, then their dashboard.
+                $redirect_after_login = vendor_redirect_target((int) $logged->id);
+            } else {
+                // Trial/grace/lockout-aware routing (login_redirect_target):
+                // subscription.php on a trial's final day or when locked,
+                // dashboard.php otherwise (banners tell the story).
+                $redirect_after_login = login_redirect_target(true, (int) $logged->id, false);
+            }
+        } else {
+            // Right password, unverified mailbox (v2.4 signup flow): no
+            // session and NO throttle failure — the credentials were CORRECT.
+            // The verify page carries the resend form.
+            $session->message("
+                <div class=\"alert alert-info alert-dismissible fade show\" role=\"alert\">
+                  <strong><i class='mdi mdi-email-lock'></i></strong>  One more step: verify your email to activate your free trial — we can resend the link.
+                  <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
+                    <span aria-hidden=\"true\">&times;</span>
+                  </button>
+                </div>");
+            redirect_to('verify_planner.php?sent=1&email=' . urlencode($input_email));
+            die();
+        }
+    }
 
      if ($logged) {
          LoginThrottle::clear($input_email); // legit user — drop the fail counters
@@ -78,7 +112,6 @@
      }
 
      LoginThrottle::recordFailure($input_email);
-     redirect_to("login.php");
      $session->message("
         <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
           <strong><i class='mdi mdi-alert'></i></strong>  Invalid email and password. Please try again
@@ -86,6 +119,7 @@
             <span aria-hidden=\"true\">&times;</span>
           </button>
         </div>");
+     redirect_to("login.php");
  }
 
 // Already signed in? Straight to this user's role home — never show the
@@ -254,6 +288,7 @@ if ($session->is_signed_in() && isset($_SESSION['id'])) {
         <i class="mdi mdi-login-variant mr-1"></i> Login
     </button>
     <p class="mt-3 mb-0" style="font-size:13px;"><a href="forgot_password.php">Forgot your password?</a></p>
+    <p class="mt-3 mb-0" style="font-size:13px;">Are you a <strong>wedding planner</strong>? <a href="planner_register.php">Start your 14-day free trial &rarr;</a></p>
     <p class="mt-4 mb-0 text-muted">&copy; <?php echo date('Y')?> Everafter Planner</p>
 </form>
 <script src="js/jquery-3.2.1.slim.min.js"></script>
