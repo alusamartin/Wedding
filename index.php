@@ -130,6 +130,8 @@
                             <button type="submit" name="register" class="btn btn-danger btn-sm text-uppercase fb"
                                     style="margin-top: -5px;">Sign Up
                             </button>
+                            <p style="font-size: 12px;color:white; margin-top:10px;">Are you a <strong>wedding planner</strong>?
+                                <a href="planner_register.php" style="color:#FDE68A; font-weight:600;">Start your 14-day free trial &rarr;</a></p>
                         </div>
                     </form>
                 </div>

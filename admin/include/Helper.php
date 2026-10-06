@@ -5,8 +5,20 @@
  * Date: 2/9/2018
  * Time: 9:32 PM
  */
-function redirect_to($location) {
+/**
+ * Send a Location header AND STOP EXECUTION.
+ *
+ * The historical version only sent the header, so every caller that forgot a
+ * trailing die() kept running: gated pages leaked their full HTML into the
+ * redirect response body (a logged-out visitor curl-ing an admin URL saw the
+ * page), and POST handlers continued past their redirect into further writes.
+ * Terminating here makes every call site safe by construction. Flash messages
+ * must therefore be set BEFORE calling this — Session::message() writes to
+ * $_SESSION immediately, so message-then-redirect is the house order now.
+ */
+function redirect_to($location): never {
     header("Location: {$location}");
+    exit;
 }
 
 function clean($string) {
@@ -378,4 +390,187 @@ function register_client(
         error_log('[WPMS][Register] ' . $e->getMessage());
         return ['ok' => false, 'error' => 'Registration could not be completed. Please try again.'];
     }
+}
+
+/**
+ * Self-serve planner registration: create the staff account UNVERIFIED, in
+ * ONE transaction. The 14-day trial does NOT start here — it starts when the
+ * planner proves the mailbox with the verification token (SignupGuard +
+ * verify_planner.php), so trial farming needs one working inbox per account.
+ *
+ * Guards: name/email/password required, valid email format, password >= 8
+ * chars, email unique across BOTH tables (clients and staff share the login
+ * door — the same address must never exist twice with two passwords).
+ *
+ * Password hashing is bcrypt via password_hash() — the account is created
+ * self-serve, never through the legacy seed path.
+ *
+ * @return array{ok:bool, user_id?:int, error?:string}
+ */
+function register_planner(string $firstname, string $lastname, string $email, string $phone, string $password): array
+{
+    global $db;
+    $firstname = trim($firstname);
+    $lastname  = trim($lastname);
+    $email     = strtolower(trim($email));
+    $phone     = trim($phone);
+
+    if ($firstname === '' || $lastname === '') {
+        return ['ok' => false, 'error' => 'Please enter your first and last name.'];
+    }
+    if (mb_strlen($firstname) > 32 || mb_strlen($lastname) > 32) {
+        return ['ok' => false, 'error' => 'Names are limited to 32 characters.'];
+    }
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return ['ok' => false, 'error' => 'Please enter a valid email address.'];
+    }
+    if (strlen($password) < 8) {
+        return ['ok' => false, 'error' => 'Password must be at least 8 characters.'];
+    }
+    if (Accounts::email_exists($email) || Users::email_exists($email)) {
+        return ['ok' => false, 'error' => 'That email is already registered. Sign in instead, or reset your password.'];
+    }
+
+    try {
+        $db->execute('START TRANSACTION');
+
+        // Staff row: access_level 1 (planner), bcrypt password, phone saved
+        // so the renewal prompt + dunning texts can reach them from day one.
+        // email_verified = 0: no trial and no sign-in until the mailbox is
+        // proven via the SignupGuard token.
+        $stmt = $db->prepare(
+            'INSERT INTO tblusers (firstname, lastname, gender, username, password, email, designation, address, access_level, profile_picture, date_created, phone, email_verified)
+             VALUES (:fn, :ln, :g, :un, :pw, :em, :des, :ad, :lvl, :pic, NOW(), :ph, 0)'
+        );
+        $stmt->execute([
+            ':fn'  => $firstname,
+            ':ln'  => $lastname,
+            ':g'   => 'f',
+            ':un'  => 'planner_' . strtolower(bin2hex(random_bytes(4))),
+            ':pw'  => password_hash($password, PASSWORD_DEFAULT),
+            ':em'  => $email,
+            ':des' => 'Wedding Planner',
+            ':ad'  => '',
+            // access_level is a STRING enum ('0','1','2') — binding an int
+            // makes MySQL interpret it as the enum INDEX and store '0'.
+            ':lvl' => '1',
+            ':pic' => '',
+            ':ph'  => substr($phone, 0, 20),
+        ]);
+        $userId = (int) $db->the_insert_id();
+
+        $db->execute('COMMIT');
+        return ['ok' => true, 'user_id' => $userId];
+    } catch (Throwable $e) {
+        try {
+            $db->execute('ROLLBACK');
+        } catch (Throwable $ignored) {
+        }
+        error_log('[WPMS][PlannerRegister] ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Registration could not be completed. Please try again.'];
+    }
+}
+
+/** The session user's trial row, or null (convenience for banners/pages). */
+function trial_for_session(): ?object
+{
+    if (!isset($_SESSION['id']) || !is_staff()) {
+        return null;
+    }
+    return Subscription::get_trial((int) $_SESSION['id']);
+}
+
+/**
+ * Where does this staff member stand on their subscription right now?
+ * ONE answer for the login redirect, the gate and every banner:
+ *   'active' — an active row exists
+ *   'grace'  — lapsed within the grace window (or an unpaid renewal promise
+ *              exists): READ-ONLY banners, no hard lockout yet
+ *   'locked' — no subscription / grace expired → hard redirect
+ *
+ * The gate (require_staff_subscribed / login_redirect_target) and every
+ * banner call this so the dashboard, subscription page and redirect can
+ * never disagree about the state. Lives in Helper.php (loaded by init.php
+ * AND composer's files autoload) so CLI scripts and tests get it too.
+ */
+function subscription_state_for_session(): string
+{
+    $s = Subscription::state((int) ($_SESSION['id'] ?? 0));
+    return $s['state'];
+}
+
+/** True when the session user's plan is lapsed but still inside the grace window. */
+function subscription_in_grace(): bool
+{
+    return subscription_state_for_session() === 'grace';
+}
+
+/**
+ * Staff gate WITH the grace window: a lapsed staff member inside grace is
+ * let through (pages render read-only banners); past grace or never paid,
+ * they are diverted to the subscription page as before. Skipped on the
+ * subscription page itself (and the STK status page) so a 'grace' user can
+ * always reach the payment screen.
+ */
+function require_staff_subscribed(): void
+{
+    if (!is_staff()) {
+        redirect_to('../');
+        exit;
+    }
+    $page = basename($_SERVER['PHP_SELF'] ?? '');
+    if ($page === 'subscription.php' || $page === 'stk_status.php') {
+        return; // always reachable — this is where a lapsed user pays
+    }
+    if (subscription_state_for_session() === 'locked') {
+        redirect_to('subscription.php');
+        exit;
+    }
+}
+
+/** Render the grace/urgency banner (call once per staff page, after the header include). */
+function subscription_banner(): string
+{
+    if (!is_staff()) {
+        return '';
+    }
+    $s = Subscription::state((int) ($_SESSION['id'] ?? 0));
+    if ($s['state'] === 'active') {
+        if (!empty($s['trial'])) {
+            // Trial urgency beats the paid-plan ladder: the whole funnel
+            // depends on converting before day 14, so show it from day 10.
+            $left = $s['days_left'];
+            if ($left > 4) {
+                return '';
+            }
+            $msg = $left === 0
+                ? 'Your free trial ends TODAY — activate a plan to keep full access. '
+                : 'Your free trial ends ' . ($left === 1 ? 'TOMORROW' : 'in ' . $left . ' days') . ' — activate a plan to keep full access. ';
+            return '<div class="alert ' . ($left <= 1 ? 'alert-danger' : 'alert-warning') . ' text-center mb-0" role="alert">'
+                . htmlspecialchars($msg)
+                . '<a href="subscription.php">Choose your plan</a></div>';
+        }
+        $left = $s['days_left'];
+        if ($left > 7) {
+            return '';
+        }
+        $msg = $left > 3
+            ? 'Your subscription expires in ' . $left . ' days. '
+            : 'Your subscription expires ' . ($left === 1 ? 'tomorrow' : 'in ' . $left . ' days') . '. ';
+        $msg .= $s['sub'] !== null && (int) ($s['sub']->auto_renew ?? 1) === 1
+            ? 'Auto-renewal is ON — keep your M-Pesa phone reachable.'
+            : 'Auto-renewal is OFF — renew manually to avoid losing access.';
+        $cls = $left <= 3 ? 'alert-warning' : 'alert-info';
+        return '<div class="alert ' . $cls . ' alert-dismissible fade show text-center mb-0" role="alert">'
+            . htmlspecialchars($msg)
+            . ' <a href="subscription.php">Manage</a>
+            <button type="button" class="close" data-dismiss="alert"><span>&times;</span></button></div>';
+    }
+    if ($s['state'] === 'grace') {
+        return '<div class="alert alert-danger mb-0 text-center" role="alert">'
+            . '<strong>Your subscription has lapsed.</strong> You have '
+            . max(0, $s['grace_days_left']) . ' day(s) of read-only grace left — pay before then to keep full access. '
+            . '<a href="subscription.php">Renew now via M-Pesa</a></div>';
+    }
+    return '';
 }

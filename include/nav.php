@@ -39,6 +39,7 @@
                     <a class="wpms-cta btn btn-sm d-inline-block d-xl-none" href="login.php"><i class="mdi mdi-login-variant mr-1"></i> Login</a>
                     <a class="wpms-cta btn btn-sm d-none d-xl-inline-block" href="#" data-toggle="modal" data-target="#loginModal"><i class="mdi mdi-login-variant mr-1"></i> Login</a>
                     <a class="wpms-cta-ghost btn btn-sm" href="index.php#sign-up">Join Now — Free</a>
+                    <a class="btn btn-sm font-weight-bold" style="background:#065F46; color:#fff; border-radius:999px;" href="planner_register.php" title="Wedding planners: run your business on Everafter"><i class="mdi mdi-briefcase-outline mr-1"></i> For Planners</a>
                 <?php endif; ?>
             </div>
         </div>

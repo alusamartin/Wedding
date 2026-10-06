@@ -1,8 +1,6 @@
 <?php include 'include/init.php'; ?>
 <?php
-     if (!is_staff()) {
-         redirect_to("../");
-     }
+     require_staff_subscribed();
 
     $user_count =  Account_Details::count_user();
     $booking_count =  Booking::count_booking();
@@ -12,7 +10,20 @@
     // couples while the planner was away. Links to the full archive.
     $notif_unread = Notification::unread_count((int) $_SESSION['id']);
 ?>
-<?php $users_profile = Users::find_by_id($_SESSION['id']); ?>
+<?php
+$users_profile = Users::find_by_id($_SESSION['id']);
+
+// Trial-funnel report — SUPER ADMINS only (access_level 2, the SaaS
+// operator). Window via ?days= (7/30/90/365, default 30).
+$funnel = null;
+if ((int) ($users_profile->access_level ?? 0) === 2) {
+    $funnel_days = filter_input(INPUT_GET, 'days', FILTER_VALIDATE_INT, ['options' => ['default' => 30]]);
+    if (!in_array($funnel_days, [7, 30, 90, 365], true)) {
+        $funnel_days = 30;
+    }
+    $funnel = SignupGuard::funnel_report($funnel_days);
+}
+?>
 <!doctype html>
 <html lang="en">
 <head>
@@ -127,6 +138,7 @@
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
     <h4 class="h4 mt-4">WELCOME, <?= ucfirst($users_profile->firstname) . ' ' . ucfirst($users_profile->lastname); ?></h4>
 </div>
+<?= subscription_banner(); ?>
 <!-- <div class="row">
     <div class="col-lg-3">
         <div class="card bg-light mb-3" style="max-width: 18rem;">
@@ -217,6 +229,118 @@
       </a>
     </div>
   </div>
+
+<?php if ($funnel !== null) { ?>
+<div class="card mt-4 mb-3" style="border:1px solid #E2E8F0; border-radius:14px;">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap" style="border-bottom:1px solid #E2E8F0;">
+    <div>
+      <strong style="font-family:'Plus Jakarta Sans',sans-serif;"><i class="mdi mdi-filter-variant mr-1"></i>Trial Funnel</strong>
+      <span class="text-muted" style="font-size:12.5px;">— self-serve planner signups, verification and activation</span>
+    </div>
+    <ul class="nav nav-pills" style="font-size:12.5px;">
+      <?php foreach ([7 => '7 days', 30 => '30 days', 90 => '90 days', 365 => '1 year'] as $d => $label) { ?>
+        <li class="nav-item">
+          <a class="nav-link <?= $d === $funnel['window_days'] ? 'active' : '' ?>"
+             href="dashboard.php?days=<?= $d ?>"><?= $label ?></a>
+        </li>
+      <?php } ?>
+    </ul>
+  </div>
+  <div class="card-body">
+    <div class="row text-center mb-3">
+      <?php
+      $stages = [
+        ['signups', 'Signups', 'mdi-account-plus', '#26c6da'],
+        ['verified', 'Verified', 'mdi-email-check', '#007bff'],
+        ['active_trials', 'Active Trials', 'mdi-timer-sand-empty', '#f0ad4e'],
+        ['converted', 'Converted to Paid', 'mdi-cash-multiple', '#66bb6a'],
+        ['expired_unpaid', 'Expired, Never Paid', 'mdi-cancel', '#ef5350'],
+      ];
+      foreach ($stages as [$key, $label, $icon, $color]) { ?>
+        <div class="col">
+          <div style="padding:10px 4px;">
+            <i class="mdi <?= $icon ?>" style="font-size:1.6em; color:<?= $color ?>;"></i>
+            <div style="font-size:1.55rem; font-weight:700; line-height:1.2;"><?= (int) $funnel[$key] ?></div>
+            <div style="font-size:11.5px; color:#64748B; text-transform:uppercase; letter-spacing:.04em;"><?= $label ?></div>
+          </div>
+        </div>
+      <?php } ?>
+    </div>
+
+    <div class="row">
+      <div class="col-md-6">
+        <h6 class="mb-2" style="font-size:12.5px; color:#64748B;">SIGNUPS PER DAY</h6>
+        <?php if ($funnel['per_day'] === []) { ?>
+          <p class="text-muted mb-0" style="font-size:13px;">No self-serve signups in this window yet.</p>
+        <?php } else {
+          $max = max(1, max($funnel['per_day']));
+          $shown = array_slice($funnel['per_day'], -21, null, true); // last 21 days max
+          foreach ($shown as $day => $n) { ?>
+            <div class="d-flex align-items-center mb-1">
+              <span style="width:72px; font-size:11.5px; color:#64748B;"><?= htmlspecialchars((string) $day) ?></span>
+              <div style="flex:1; background:#F1F5F9; border-radius:4px; height:16px;">
+                <div style="width:<?= round($n / $max * 100) ?>%; background:linear-gradient(90deg,#065F46,#059669); height:16px; border-radius:4px;"></div>
+              </div>
+              <span style="width:30px; text-align:right; font-size:12px; font-weight:600;"><?= (int) $n ?></span>
+            </div>
+          <?php }
+          if (count($funnel['per_day']) > 21) { ?>
+            <p class="text-muted mb-0" style="font-size:11.5px;">… oldest <?= count($funnel['per_day']) - 21 ?> days hidden</p>
+          <?php }
+        } ?>
+      </div>
+      <div class="col-md-6">
+        <div class="d-flex justify-content-between" style="font-size:13px; padding:6px 0; border-bottom:1px solid #F1F5F9;">
+          <span>Verification rate</span><strong><?= number_format($funnel['verified_pct'], 1) ?>%</strong>
+        </div>
+        <div class="d-flex justify-content-between" style="font-size:13px; padding:6px 0; border-bottom:1px solid #F1F5F9;">
+          <span>Conversion to paid</span><strong><?= number_format($funnel['conversion_pct'], 1) ?>%</strong>
+        </div>
+        <div class="d-flex justify-content-between" style="font-size:13px; padding:6px 0; border-bottom:1px solid #F1F5F9;">
+          <span>Plans bought</span>
+          <strong><?php
+            echo $funnel['plans'] === []
+              ? '<span class="text-muted" style="font-weight:400;">none yet</span>'
+              : implode(', ', array_map(fn($p, $n) => ucfirst($p) . ' × ' . $n, array_keys($funnel['plans']), $funnel['plans']));
+          ?></strong>
+        </div>
+        <div class="mt-3" style="max-height:190px; overflow-y:auto;">
+          <table class="table table-sm mb-0" style="font-size:12px;">
+            <thead><tr><th>Planner</th><th>Signed up</th><th>Stage</th></tr></thead>
+            <tbody>
+            <?php foreach (array_slice($funnel['rows'], 0, 50) as $r) { ?>
+              <tr>
+                <td title="<?= htmlspecialchars($r['email'], ENT_QUOTES) ?>"><?= htmlspecialchars($r['name'] !== '' ? $r['name'] : $r['email']) ?></td>
+                <td><?= htmlspecialchars($r['signup_date']) ?></td>
+                <td><?php
+                  if ($r['paid']) {
+                    echo '<span class="badge badge-success">' . ucfirst($r['paid_plan']) . '</span>';
+                  } elseif ($r['trial']) {
+                    echo '<span class="badge badge-warning">Trial</span>';
+                  } elseif (!$r['verified']) {
+                    echo '<span class="badge badge-secondary">Unverified</span>'; 
+                  } elseif ($r['expired_unpaid']) {
+                    echo '<span class="badge badge-danger">Expired</span>';
+                  } else {
+                    echo '<span class="badge badge-light">—</span>'; 
+                  }
+                ?></td>
+              </tr>
+            <?php } ?>
+            <?php if ($funnel['rows'] === []) { ?>
+              <tr><td colspan="3" class="text-muted text-center" style="padding:14px;">No self-serve planners in this window yet.</td></tr>
+            <?php } ?>
+            </tbody>
+          </table>
+          <?php if (count($funnel['rows']) > 50) { ?>
+            <p class="text-muted mb-0" style="font-size:11.5px;">… showing 50 of <?= count($funnel['rows']) ?></p>
+          <?php } ?>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<?php } ?>
 
 
 
