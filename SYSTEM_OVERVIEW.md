@@ -416,9 +416,10 @@ tblpostwedding (real-weddings blog)
   automatically, exactly once (manual §7.7). Without Daraja credentials the
   transport is simulated (dev/demo).
 - **Login rate limiting is built in** — `login.php` throttles failed
-  sign-ins per (email, IP) pair (5 failures → 15-minute lockout) with a
-  wider per-IP cap, success-clear and prune (`LoginThrottle` class +
-  `tbllogin_throttle`, `WPMS_LOGIN_THROTTLE_OFF=1` disables it). No server
-  modules needed.
+  sign-ins per (email, IP) pair (5 failures → 15-minute lockout, escalating
+  to 1 h then 6 h for repeat offenders; the account owner is texted on every
+  lockout) with a wider per-IP cap, success-clear and prune (`LoginThrottle`
+  class + `tbllogin_throttle`, `WPMS_LOGIN_THROTTLE_OFF=1` disables it). No
+  server modules needed.
 - **White-label and analytics revenue** are priced in the manual but not yet
   productized.

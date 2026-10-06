@@ -264,10 +264,10 @@ date_default_timezone_set('Africa/Nairobi');
 ```
 
 ### 7. Set Base Path
-In `admin/include/init.php`, ensure:
-```php
-$webroot = "C:/xampp/htdocs/";
-```
+**No edit needed.** Since v2.4 `admin/include/init.php` resolves the install
+root from its own location, so the project runs from any folder name, drive
+or host with zero path edits. The old hard-coded
+`$webroot = "C:/xampp/htdocs/"` is gone.
 
 ### 8. Access the System
 ```
@@ -1443,7 +1443,7 @@ http://localhost/Wedding/site.php?slug=your-names
 | Password Verification | password_verify() |
 | Session Management | PHP sessions with regeneration |
 | Session Fixation | Regenerate ID every 30 minutes |
-| Brute Force | Built-in throttle on login.php: 5 failed attempts per (email, IP) pair locks it for 15 minutes; per-IP cap of 20 catches distributed guessing; success clears; `WPMS_LOGIN_THROTTLE_OFF=1` disables (§11.7) |
+| Brute Force | Built-in throttle on login.php: 5 failed attempts per (email, IP) pair locks it — 15 min, escalating to 1 h then 6 h for repeat offenders; owner texted on every lockout; per-IP cap of 20 catches distributed guessing; success clears; `WPMS_LOGIN_THROTTLE_OFF=1` disables (§11.7) |
 
 ## 11.2 CSRF Protection
 
@@ -1485,7 +1485,9 @@ http://localhost/Wedding/site.php?slug=your-names
 1. **Enable HTTPS** — Install SSL certificate
 2. **Backup** — Daily database backups
 3. **File Uploads** — Validate MIME types, limit size
-4. **Error Display** — Set display_errors=Off in production
+4. **Error Display** — Already handled: errors are hidden from visitors unless
+   `WPMS_DEBUG=1` is set in the environment (everything still goes to the
+   PHP error log). Never set `WPMS_DEBUG=1` on a public host.
 5. **Database User** — Use limited-privilege MySQL user
 6. **Admin Path** — Consider renaming /admin/ to custom path
 
@@ -1494,24 +1496,37 @@ http://localhost/Wedding/site.php?slug=your-names
 Failed sign-ins on `login.php` are throttled by the app itself (`LoginThrottle`
 class, storage `tbllogin_throttle` — run `migrations/v2.1_phase1_hardening.sql`):
 
-- **5 failed attempts** for one (email, IP) pair locks that pair for
-  **15 minutes**; the login form shows a message naming the wait. The lock is
-  keyed on the email as typed (case-insensitive), so it also covers attempts
-  against accounts that don't exist.
+- **5 failed attempts** for one (email, IP) pair locks that pair; the login
+  form shows a message naming the wait. The lock is keyed on the email as
+  typed (case-insensitive), so it also covers attempts against accounts that
+  don't exist.
+- **Lockouts escalate for repeat offenders**: the first lock serves
+  **15 minutes**, the second **1 hour**, and every lock after that **6 hours**
+  (`LoginThrottle::LOCKOUT_STEPS`). When a lock expires a fresh run of 5
+  failures is needed to lock again — but the escalation memory survives until
+  the account actually signs in successfully (which forgives the ladder) or
+  the row is pruned after 7 days.
+- **The account owner is texted on every lockout** (system SMS, cost 0.00 —
+  never billed to planner credits): couples on their `tblaccounts_detail`
+  number, staff on the optional `tblusers.phone` column (add it in the staff
+  profile). The message names the lockout count and the cool-down and points
+  to a password reset. Attempts against unknown emails notify nobody, and
+  every send is audited in `tblsms_logs`.
 - **Per-IP cap of 20 recent failures** across all accounts — a host spraying
   many addresses is locked out too, even for untouched accounts.
-- A **successful sign-in clears** that pair's counters — a user who mistyped a
-  few times is not haunted by stale failures.
+- A **successful sign-in clears** that pair's counters and its escalation
+  memory — a user who mistyped a few times is not haunted by stale failures.
 - Rows older than **7 days** are pruned automatically.
 - Set `WPMS_LOGIN_THROTTLE_OFF=1` (environment or `SetEnv`) to disable the
   whole throttle — maintenance mode or shared test suites. The client IP comes
   from `REMOTE_ADDR` only; behind a reverse proxy, rate-limit at the proxy or
   set the kill switch.
 - Staff monitor it under **Login Security** (`admin/login_activity.php`, staff
-  sidebar): currently **locked pairs** with their remaining cool-down and a
-  one-click **Unlock** (forgives that pair's counters — use for a genuine user
-  you recognize, not an attacker mid-campaign), **IP pressure** per source
-  address toward the cap with **Release** for shared-office NATs, the raw
+  sidebar): currently **locked pairs** with their lock number, escalation
+  window and remaining cool-down, and a one-click **Unlock** (forgives that
+  pair's counters — use for a genuine user you recognize, not an attacker
+  mid-campaign), **IP pressure** per source address toward the cap with
+  **Release** for shared-office NATs, the raw
   **recent failed attempts** list, and a **Prune** button for idle rows. Every
   unlock/release is written to the PHP error log with the acting admin's
   email. With `WPMS_LOGIN_THROTTLE_OFF=1` the page becomes read-only.
@@ -1552,12 +1567,12 @@ environment:
 ```
 
 ## 12.2 Path Configuration
+**Nothing to change.** `admin/include/init.php` derives the paths from
+`__DIR__`, so any deployment layout works as-is:
 ```php
-// admin/include/init.php
-$webroot = "C:/xampp/htdocs/";  // Change for production
-define('DS', DIRECTORY_SEPARATOR);
-define('SITE_ROOT', $webroot.DS.'Wedding'.DS.'admin');
-define('INCLUDES_PATH', SITE_ROOT.DS.'include');
+// admin/include/init.php (automatic — do not edit)
+define('SITE_ROOT', dirname(__DIR__));   // …/Wedding/admin
+define('INCLUDES_PATH', __DIR__);        // …/Wedding/admin/include
 ```
 
 ## 12.3 Timezone
@@ -1661,8 +1676,10 @@ while ($row = mysqli_fetch_object($result)) {
 ```
 1. Check PHP error log: C:\xampp\logs\php_error_log
 2. Check Apache error log: C:\xampp\logs\error.log
-3. Verify file permissions on upload/ directories
-4. Check database connection in config.php
+3. Verify file permissions on admin/upload/ directories
+4. Check database connection (admin/include/config.php)
+5. Temporarily set WPMS_DEBUG=1 in the environment to see the real error
+   on screen (dev machines only — turn it off afterwards)
 ```
 
 ### Database Connection Failed

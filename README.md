@@ -23,15 +23,11 @@ fingerprinting, audit log).
 | Web server | Apache (XAMPP) | Project hard-codes the XAMPP path — see below |
 | Composer | any recent | Only needed for dev tooling/tests |
 
-**Location matters.** `admin/include/init.php` hard-codes the install path:
-
-```php
-$webroot = "C:/xampp/htdocs/";
-define('SITE_ROOT', $webroot . '/Wedding/admin');
-```
-
-Copy the project to **`C:\xampp\htdocs\Wedding\`** (the standard XAMPP setup),
-or edit `$webroot` / `SITE_ROOT` in `admin/include/init.php` for a different path.
+**Location doesn't matter any more.** `admin/include/init.php` resolves the
+install root from its own location, so the project runs from any folder name,
+drive, or host — `C:\xampp\htdocs\Wedding\`, a vhost docroot,
+`/home/user/public_html`, a Docker container — with **zero path edits**.
+(XAMPP at `C:\xampp\htdocs\Wedding\` still works exactly as before.)
 
 ---
 
@@ -70,9 +66,23 @@ php scripts/shift_seed_dates.php
 
 # (d) Optional but recommended — idempotent v2.1 hardening helpers
 mysql -u root -p dbwedding < migrations/v2.1_phase1_hardening.sql
+
+# (e) Optional — subscription auto-renewal, 7-day grace + SMS dunning columns
+mysql -u root -p dbwedding < migrations/v2.2_subscription_renewals.sql
+
+# (f) Optional — self-serve planner registration + 14-day trial ('trial' ENUM,
+#     wider password column for bcrypt)
+mysql -u root -p dbwedding < migrations/v2.3_planner_trial.sql
+
+# (g) Optional — signup abuse protection: per-IP/per-email signup damper and
+#     email verification before the trial starts
+mysql -u root -p dbwedding < migrations/v2.4_signup_abuse_guard.sql
+
+# (h) Optional — trial nurture email band marker (check-in + last-call)
+mysql -u root -p dbwedding < migrations/v2.5_trial_nurture.sql
 ```
 
-**Already running a v2.0 database?** Apply (b) and (d) only. Skip (a)/(c),
+**Already running a v2.0 database?** Apply (b), (d), (e), (f), (g) and (h) only. Skip (a)/(c),
 which reset demo data to the Kenyan seed set.
 
 `DATABASE FILE/dbwedding.sql` is the original phpMyAdmin dump; the Kenya seed
@@ -89,7 +99,8 @@ php scripts/demo_reset.php --dry-run       # show the plan, change nothing
 ```
 
 This chains the whole install order above (base schema → Kenyan schema →
-Kenyan seed → hardening migration) and finishes with the date-shift so a
+Kenyan seed → hardening migration → v2.2 renewal migration) and finishes with
+the date-shift so a
 fresh demo always has future weddings. Requires the `mysql` CLI (found in
 PATH or the XAMPP defaults). Every run verifies 5/5 seed weddings are
 future-dated and prints the demo logins; it fails loudly otherwise.
@@ -163,6 +174,158 @@ M-Pesa Ledger shows every push and what each fulfilled one created.
 With `WPMS_MPESA_STK` off (dev/demo default) the buttons disappear and the
 code-entry flow behaves exactly as before.
 
+### Subscription auto-renewal, 7-day grace & SMS dunning
+
+A lapsed planner used to hit a hard wall at login. v2.2 adds the standard SaaS
+middle ground — remind first, lock out last:
+
+| Env var | Default | Effect |
+|---|---|---|
+| `WPMS_SUB_AUTO_RENEW` | *(off)* | `1` = cron STK-pushes the renewal before expiry (`scripts/subscription_renewals.php`) |
+| `WPMS_SUB_RENEW_DAYS` | `3` | Renewal window: prompt when expiry is this many days out |
+| `WPMS_SUB_GRACE` | *(off)* | `1` = lapsed staff keep READ-ONLY access for a grace window (banners, pay-any-time) |
+| `WPMS_SUB_GRACE_DAYS` | `7` | Grace window length in days |
+
+How it fits together:
+
+- **Auto-renew (STK):** each run, staff whose newest subscription row is
+  active and inside the renewal window get an M-Pesa prompt on their saved
+  number (`tblusers.phone` — set it on the subscription page). Before the
+  prompt, the row is cloned as a `pending_renewal` promise; the success
+  callback extends the SAME row +30 days from its own expiry (never from
+  today — a payment landing mid-grace never shortens entitlement) and flips
+  the promise back to active. Failed/missing-phone prompts fall back to a bell
+  notification; dead promises are swept so nothing pins the state.
+- **SMS dunning:** texts at 7/3/0 days before expiry (and on day 3 of grace)
+  with the plan, amount and a renew pointer — one text per band ever
+  (`renewal_sms_band` marker, same semantics as the couple deadline bands),
+  plus a bell notification per text. Auto-renew-OFF planners are reminded too.
+- **Grace instead of a wall:** with `WPMS_SUB_GRACE=1`, `login_redirect_target()`
+  and `require_staff_subscribed()` let a lapsed staff member into the staff
+  area with a red read-only banner (days remaining + Renew link). Past grace
+  (or never paid) the hard redirect to `subscription.php` returns, unchanged.
+  `subscription.php` and `stk_status.php` are always reachable.
+- **Toggle:** the subscription page has an auto-renew ON/OFF switch (per-row,
+  on by default) and a phone field — both CSRF-protected.
+
+Setup: run the migration (`migrations/v2.2_subscription_renewals.sql` — adds
+`tblsubscriptions.auto_renew`, `tblsubscriptions.renewal_sms_band`,
+`tblusers.phone`), then enable the env vars and add the cron:
+
+```cron
+30 8 * * * php /path/to/Wedding/scripts/subscription_renewals.php --quiet
+```
+
+The trial nurture leg needs `WPMS_TRIAL_NURTURE=1` (plus a reachable
+`WPMS_SITE_URL` for its links); emails queue as `pending` in
+`tbl_mail_logs` until `WPMS_MAIL_ENABLED=1`, then `scripts/mail_retry.php`
+or the next cron run delivers them.
+
+Both legs are single-flight locked, `--dry-run`-able, and no-ops (exit 0)
+when their switches are off — safe to leave in the crontab across
+environments. Requires `WPMS_MPESA_STK=1` with Daraja credentials for the
+prompt leg; the dunning leg rides the normal SMS outbox.
+
+### Self-serve planner registration & 14-day trial
+
+Planners no longer need an admin to seed an account. The public page
+`planner_register.php` (linked from the homepage hero and the login form)
+creates the staff account and opens a **full-feature trial in one
+transaction**, then signs the new planner straight into the activation page.
+
+- **The trial is a zero-amount subscription row** (`plan='trial'`,
+  `status='trial'`, amount 0.00) — so every existing gate, banner and expiry
+  calculation treats it as ordinary access with no special-casing in the
+  pages themselves. `Subscription::state()` flags `trial: true` for the UI.
+- **Funnel:** sign up → **verify your email** (the activation link emailed at
+  signup) → auto-login → `subscription.php` (trial banner + plan cards) →
+  M-Pesa purchase (code entry or STK push) → dashboard. Routing is
+  centralised in `login_redirect_target()`: a trial on its **final day** also
+  lands on the activation page, and an expired trial (after grace) locks the
+  same way a lapsed subscription always did.
+- **Welcome email:** the moment verification opens the trial, the planner
+  also gets a getting-started email through the `tbl_mail_logs` outbox —
+  their trial end date and the first three steps (add a client, build the
+  guest list + budget, send a vendor enquiry). Same outbox discipline as the
+  verification email: `pending` and retryable by `scripts/mail_retry.php`
+  when `WPMS_MAIL_ENABLED` is off.
+- **Nurture emails (cron LEG 3):** with `WPMS_TRIAL_NURTURE=1`, the renewal
+  cron emails every planner on a live trial a **check-in at the halfway
+  point** (7 days left on the default 14-day trial) with getting-started
+  tips, and a **last-call the day before expiry**. One email per band ever
+  (`trial_nurture_band` marker, stamp-first), converted planners are never
+  emailed, lapsed trials are skipped, and every email also rings the in-app
+  bell. Expiry day itself stays with the SMS dunning leg (WPMS_SUB_GRACE).
+- **One trial per account, ever** — enforced by `start_trial()` (a live
+  subscription or existing trial refuses a second), so deleting the trial row
+  cannot farm free months.
+- **Trials stay out of the renewals machine:** they are excluded from the
+  STK auto-renew leg and the 7/3-day dunning bands; they get exactly ONE
+  expiry-eve text (conversion nudge with the entry price) plus a bell
+  notification, charged to the planner's SMS credits like any other text.
+- **Cross-table email uniqueness:** registration refuses an email already
+  present in `tblusers` OR `tblaccounts` — couples and staff share one login
+  door, and one address must never hold two passwords.
+
+Setup: run the migration (`migrations/v2.3_planner_trial.sql` — adds the
+`'trial'` ENUM members and widens `tblusers.password` to VARCHAR(255) so
+bcrypt hashes fit; the legacy seed's truncated storage would otherwise break
+self-serve sign-ins). Trial length is tunable:
+
+| Env var | Default | Effect |
+|---|---|---|
+| `WPMS_TRIAL_DAYS` | `14` | Trial length in days granted at verification |
+
+### Signup abuse protection (throttle + email verification)
+
+The registration page mints paid-product entitlements with no human in the
+loop, so v2.4 gates it like the login door:
+
+- **Per-IP / per-email signup damper** (`tblsignup_throttle`): EVERY signup
+  POST is counted — successes included, because the flood itself is the
+  attack. Per email **3** per rolling hour, per IP **10**; tripped, the page
+  shows the same backoff message as the login throttle. Shares the
+  `WPMS_LOGIN_THROTTLE_OFF` kill switch and the 7-day prune.
+- **Email verification before the trial** (`tblplanner_verifications`):
+  `register_planner()` creates the account **unverified and without a trial**;
+  a single-use, 24-hour, stored-hashed token link (delivered through the
+  `tbl_mail_logs` outbox — 'pending' rows are retried by
+  `scripts/mail_retry.php` just like reset emails) starts the 14-day trial and
+  signs the planner in when clicked on `verify_planner.php`.
+- **No trial farming:** entitlements exist only after a working mailbox is
+  proven; re-sends are rate-limited (5/hour/account) and happen through a
+  no-enumeration resend form on the verify page; correct credentials on an
+  unverified account never create a session and never count as a throttle
+  failure — login just points at verification.
+- **Backfill safety:** every account created before this feature (admin-made
+  staff, vendors, clients) is treated as verified; only the self-serve path
+  stamps `email_verified = 0`.
+
+Setup: run the migration (`migrations/v2.4_signup_abuse_guard.sql` — adds
+`tblusers.email_verified`, `tblplanner_verifications`, `tblsignup_throttle`).
+No new env vars: the damper honours the existing
+`WPMS_LOGIN_THROTTLE_OFF` switch.
+
+### Trial-funnel report (super admins)
+
+The super admin's dashboard (`access_level 2`) carries a **Trial Funnel**
+panel over a selectable window (7 / 30 / 90 / 365 days via `?days=`):
+
+- **Stage counters** — Signups, Verified, Active Trials, Converted to Paid,
+  Expired-Never-Paid, plus the verification and conversion rates and a
+  per-plan breakdown of what converting planners bought.
+- **Signups per day** — a lightweight bar chart (no JS dependency) of the
+  most recent 21 active days.
+- **Planner table** — everyone in the window with their current stage badge
+  (Unverified / Trial / plan name / Expired).
+
+Self-serve accounts are identified by the `planner_` username prefix that
+`register_planner()` generates; admin-created staff and vendors are excluded
+from the funnel by design. The classification is committed to the same
+one-stage-per-planner rule the tests enforce: a paid row supersedes a live
+trial, and "expired" means verified + lapsed + never paid + signed up before
+today (so a brand-new signup is never misread as churn on day zero).
+
 ### Login rate limiting (built-in brute-force throttle)
 
 `login.php` throttles failed sign-ins itself — no server modules needed:
@@ -171,17 +334,27 @@ code-entry flow behaves exactly as before.
 |---|---|---|
 | `WPMS_LOGIN_THROTTLE_OFF` | *(off)* | `1` = disable all throttling (maintenance / shared test suites) |
 
-Defaults: **5** failed attempts for one (email, IP) pair locks it for
-**15 minutes** (the message names the wait); a per-IP cap of **20** recent
-failures blocks further attempts from that address even for fresh accounts;
-success clears the pair and rows older than 7 days are pruned. Setup: run the
-migration (`tbllogin_throttle`) — that's it. SetEnv works too, e.g.
-`SetEnv WPMS_LOGIN_THROTTLE_OFF 1` in an .htaccess to disable it temporarily.
+Defaults: **5** failed attempts for one (email, IP) pair locks it — the
+window **escalates** for repeat offenders (**15 minutes → 1 hour → 6 hours**;
+the message names the wait). A per-IP cap of **20** recent failures blocks
+further attempts from that address even for fresh accounts; success clears
+the pair (and its escalation memory) and rows older than 7 days are pruned.
+
+Every lockout also **texts the account owner** — couples on their registered
+couple phone, staff on the optional `tblusers.phone` column — as a system SMS
+(cost 0.00, never billed to planner credits, audited in `tblsms_logs`). The
+message names the lockout count and cool-down and points to a password reset.
+Attempts against unknown emails notify nobody.
+
+Setup: run the migration (`tbllogin_throttle`) — that's it. SetEnv works too,
+e.g. `SetEnv WPMS_LOGIN_THROTTLE_OFF 1` in an .htaccess to disable it
+temporarily.
 
 Staff can watch it live under **Login Security** (`admin/login_activity.php`):
-locked pairs with their remaining cool-down (one-click unlock), per-IP
-pressure toward the cap (with release for shared-office NATs), the recent
-failed-attempt list, and a prune button for idle rows.
+locked pairs with their lock number, escalation window and remaining
+cool-down (one-click unlock), per-IP pressure toward the cap (with release
+for shared-office NATs), the recent failed-attempt list, and a prune button
+for idle rows.
 
 Setup: run `migrations/v2.1_phase1_hardening.sql` (creates `tblmpesa_callbacks`
 + `tblmpesa_callback_log`), register `https://your-domain/mpesa_c2b.php` as the
