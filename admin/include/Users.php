@@ -173,11 +173,13 @@ class Users extends DB_Object
 
     /**
      * Check email existence — PDO prepared (was SQL-injected via string interpolation).
+     * (Column fix: tblusers has email/id — the old user_email/user_id names
+     * belong to tblaccounts, so this always threw or missed.)
      */
     public static function email_exists(string $email): bool
     {
         global $db;
-        $sql  = "SELECT user_id FROM " . self::$db_table . " WHERE user_email = :email LIMIT 1";
+        $sql  = "SELECT id FROM " . self::$db_table . " WHERE email = :email LIMIT 1";
         $stmt = $db->prepare($sql);
         $stmt->execute([':email' => $email]);
         return $stmt->fetch() !== false;

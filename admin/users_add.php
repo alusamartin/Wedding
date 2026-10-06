@@ -26,7 +26,6 @@
         $designation = clean($_POST['designation']);
 
          if (empty($firstname) || empty($lastname) || empty($address) || empty($email) || empty($username)) {
-            redirect_to("users_add.php");
             $session->message("
             <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
               <strong><i class='mdi mdi-account-alert'></i></strong> Please Fill up all the information.
@@ -34,12 +33,12 @@
                 <span aria-hidden=\"true\">&times;</span>
               </button>
             </div>");
+            redirect_to("users_add.php");
             die();
         }
 
         if ($password != $password2) {
 
-            redirect_to("users_add.php");
             $session->message("
             <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
               <strong><i class='mdi mdi-account-alert'></i></strong> Password input mismatched.
@@ -47,6 +46,7 @@
                 <span aria-hidden=\"true\">&times;</span>
               </button>
             </div>");
+            redirect_to("users_add.php");
             die();
 
         } else {
@@ -63,7 +63,6 @@
            $users->set_file($_FILES['profile_picture']);
            $users->date_created = date("F j, Y, g:i a"); 
            $users->save();
-            redirect_to("users.php");
             $session->message("
             <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
               <strong><i class='mdi mdi-check'></i></strong> {$users->firstname} {$users->lastname}  is successfully added.
@@ -71,6 +70,7 @@
                 <span aria-hidden=\"true\">&times;</span>
               </button>
             </div>");
+            redirect_to("users.php");
         }
     }
 ?>

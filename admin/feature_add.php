@@ -20,7 +20,6 @@
         $description = clean($_POST['description']);
        
          if (empty($wedding_type) || empty($title) || empty($description)) {
-            redirect_to("feature_add.php");
             $session->message("
             <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
               <strong><i class='mdi mdi-account-alert'></i></strong> Please Fill up all the information.
@@ -28,6 +27,7 @@
                 <span aria-hidden=\"true\">&times;</span>
               </button>
             </div>");
+            redirect_to("feature_add.php");
             die();
         }
 
@@ -35,7 +35,6 @@
         $features->category_id = $wedding_type;
         $features->description = $description;
         $features->save();
-        redirect_to("feature_add.php");
         $session->message("
             <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
               <strong><i class='mdi mdi-check'></i></strong> {$features->title} is successfully added.
@@ -43,6 +42,7 @@
                 <span aria-hidden=\"true\">&times;</span>
               </button>
             </div>");
+        redirect_to("feature_add.php");
     }
 
 

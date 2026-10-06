@@ -3,7 +3,12 @@
 
 
     if (!is_staff()) { redirect_to("../"); }
-    $features = Features::find_by_feature_id($_GET['id']);
+    $features = Features::find_by_feature_id((int) ($_GET['id'] ?? 0));
+    if ($features === false) {
+        $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> That feature no longer exists.</div>');
+        redirect_to("feature_add.php");
+        die();
+    }
     $category = category::find_all();
 
     if (isset($_POST['submit'])) {
@@ -20,7 +25,6 @@
         $description  = clean($_POST['description']);
        
          if (empty($wedding_type) || empty($title) || empty($description)) {
-            redirect_to("service_list.php");
             $session->message("
             <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
               <strong><i class='mdi mdi-account-alert'></i></strong> Please Fill up all the information.
@@ -28,6 +32,7 @@
                 <span aria-hidden=\"true\">&times;</span>
               </button>
             </div>");
+            redirect_to("service_list.php");
             die();
         }
         if ($features) {
@@ -35,7 +40,6 @@
             $features->category_id = $wedding_type;
             $features->description = $description;
             $features->update_feature($_GET['id']);
-            redirect_to("service_list.php?id=".$_GET['id']);
             $session->message("
                 <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
                   <strong><i class='mdi mdi-check'></i></strong> {$features->title} is successfully added.
@@ -43,6 +47,7 @@
                     <span aria-hidden=\"true\">&times;</span>
                   </button>
                 </div>");
+            redirect_to("service_list.php?id=".$_GET['id']);
         }
     }
 ?>

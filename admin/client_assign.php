@@ -84,8 +84,6 @@
                 $booking_id
             );
 
-           redirect_to("client.php");
-
             $session->message("
             <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
               <strong><i class='mdi mdi-approval'></i></strong> {$account_detail->firstname} {$account_detail->lastname} has been successfully modify.
@@ -93,6 +91,8 @@
                 <span aria-hidden=\"true\">&times;</span>
               </button>
             </div>");
+
+           redirect_to("client.php");
 
         }
     }
@@ -120,7 +120,6 @@
                 'client_manage_account_details.php?booking_id=' . $booking_id . '&user_id=' . $user_id
             );
 
-            redirect_to("client.php");
             $session->message("
             <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
               <strong><i class='mdi mdi-approval'></i></strong> {$account_detail->firstname} {$account_detail->lastname} has been successfully updated.
@@ -128,6 +127,7 @@
                 <span aria-hidden=\"true\">&times;</span>
               </button>
             </div>");
+            redirect_to("client.php");
 
         }
     }
@@ -155,7 +155,6 @@ if (isset($_POST['fraud'])) {
             'contact.php'
         );
 
-        redirect_to("client.php");
         $session->message("
             <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
               <strong><i class='mdi mdi-approval'></i></strong> {$account_detail->firstname} {$account_detail->lastname} has been successfully updated.
@@ -163,6 +162,7 @@ if (isset($_POST['fraud'])) {
                 <span aria-hidden=\"true\">&times;</span>
               </button>
             </div>");
+        redirect_to("client.php");
     }
 }
 

@@ -14,8 +14,8 @@
 
         // CSRF validation
         if (!$session->verify_csrf()) {
-            redirect_to("guest_add.php?$links");
             $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Invalid security token. Please try again.</div>');
+            redirect_to("guest_add.php?$links");
             die();
         }
 

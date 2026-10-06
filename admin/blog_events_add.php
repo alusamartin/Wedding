@@ -28,7 +28,6 @@
         $wedding_type = clean($_POST['wedding_type']);
         
          if (empty($title) || empty($description) || empty($wedding_date) || empty($location)) {
-            redirect_to("blog_events_add.php");
             $session->message("
             <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
               <strong><i class='mdi mdi-account-alert mr-2'></i></strong> Please Fill up all the information.
@@ -36,6 +35,7 @@
                 <span aria-hidden=\"true\">&times;</span>
               </button>
             </div>");
+            redirect_to("blog_events_add.php");
             die();
         }
 
@@ -60,7 +60,6 @@
         }
 
          if (empty($event_wedding->errors) && $event_wedding->save()) {
-            redirect_to("blog_events.php");
             $session->message("
             <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
               <strong><i class='mdi mdi-account-alert mr-2'></i></strong> The {$event_wedding->title} is successfully added.
@@ -68,6 +67,7 @@
                 <span aria-hidden=\"true\">&times;</span>
               </button>
             </div>");
+            redirect_to("blog_events.php");
             die();
         }
         $msg = join("<br>", $event_wedding->errors);

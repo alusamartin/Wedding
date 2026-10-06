@@ -3,7 +3,12 @@
 
 
     if (!is_staff()) { redirect_to("../"); }
-    $gallery = Gallery::find_by_id($_GET['id']);
+    $gallery = Gallery::find_by_id((int) ($_GET['id'] ?? 0));
+    if ($gallery === false) {
+        $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> That photo no longer exists.</div>');
+        redirect_to("photos_view.php");
+        die();
+    }
     $booking = Booking::find_booking_all();
       
     if (isset($_POST['submit']) || isset($_FILES['file'])) {

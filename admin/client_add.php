@@ -16,90 +16,95 @@
 
     if (isset($_POST['submit'])) {
 
-        $user_password1 = htmlspecialchars($_POST['user_password1']);
-        $user_password2 = htmlspecialchars($_POST['user_password2']);
+        // CSRF validation (this handler creates accounts — it must never run
+        // from a forged cross-site POST).
+        if (!$session->verify_csrf()) {
+            $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Invalid security token. Please try again.</div>');
+            redirect_to("client_add.php");
+            die();
+        }
 
-        if ($user_password1 != $user_password2) {
-              redirect_to("client_add.php");
+        $user_password1 = (string) ($_POST['user_password1'] ?? '');
+        $user_password2 = (string) ($_POST['user_password2'] ?? '');
+
+        if ($user_password1 !== $user_password2 || strlen($user_password1) < 8) {
             $session->message("
             <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
-              <strong><i class='mdi mdi-alert-circle-outline'></i></strong>  Password is mismatched. Please Try Again!
+              <strong><i class='mdi mdi-alert-circle-outline'></i></strong>  Passwords must match and be at least 8 characters.
               <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
                 <span aria-hidden=\"true\">&times;</span>
               </button>
             </div>");
+              redirect_to("client_add.php");
             die();
         }
 
-        
+        $firstname = clean($_POST['firstname'] ?? '');
+        $lastname = clean($_POST['lastname'] ?? '');
+        $email = clean($_POST['email'] ?? '');
+        $wedding_date = clean($_POST['wedding_date'] ?? '');
+        $bride = clean($_POST['bride'] ?? '');
+        $groom = clean($_POST['groom'] ?? '');
+        $phone = clean($_POST['phone'] ?? '');
+        $city = clean($_POST['city'] ?? '');
+        $wedding_type = (int) clean($_POST['wedding_type'] ?? '0');
+        $organizer_id = (int) clean($_POST['organizer_id'] ?? '0');
 
-        if ($booking_detail) {
-
-            $firstname = clean($_POST['firstname']);
-            $lastname = clean($_POST['lastname']);
-            $email = clean($_POST['email']);
-            $wedding_date = clean($_POST['wedding_date']);
-            $bride = clean($_POST['bride']);
-            $groom = clean($_POST['groom']);
-            $phone = clean($_POST['phone']);
-            $city = clean($_POST['city']);
-            $wedding_type = clean($_POST['wedding_type']);
-            $organizer_id = clean($_POST['organizer_id']);
-
-             if (empty($firstname) || empty($lastname) || empty($email) || empty($bride) || empty($groom)) {
-                redirect_to("client_add.php");
-                $session->message("
-                <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
-                  <strong><i class='mdi mdi-account-alert mr-2'></i></strong> Please Fill up all the information.
-                  <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
-                    <span aria-hidden=\"true\">&times;</span>
-                  </button>
-                </div>");
-                die();
-            }
-
-            // if($error == '' ) {
-               
-                $account_detail->firstname = $firstname;
-                $account_detail->lastname = $lastname;
-                $account_detail->phone = $phone;
-                $account_detail->city = $city;
-                $account_detail->status =  'pending';
-                $account_detail->datetime_created  = date("Y-m-d H:i:s");
-            
-                if ($account_detail->save()) {
-                    $account_detail->user_id = $db->the_insert_id();
-                    if($account_detail->update()) {
-                        $accounts->user_id = $account_detail->user_id;
-                        $accounts->user_email= $email;
-                        $accounts->user_password = $user_password1;
-                        $accounts->user_password= md5($user_password1);
-
-                        if($accounts->save()) {
-                            $booking_detail->user_id = $accounts->user_id;
-                            $booking_detail->bride = $bride;
-                            $booking_detail->groom = $groom;
-                            $booking_detail->wedding_type = $wedding_type;
-                            $booking_detail->user_email = $email;
-                            $booking_detail->wedding_date = $wedding_date;
-                            $booking_detail->organizer_id = $organizer_id;
-                            $booking_detail->wedding_date =  $wedding_date;
-                            
-                            $booking_detail->save();
-                            redirect_to("client.php");
-                            $session->message("
-                            <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
-                              <strong><i class='mdi mdi-alert-circle-outline'></i></strong>  New Client has been added.
-                              <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
-                                <span aria-hidden=\"true\">&times;</span>
-                              </button>
-                            </div>");
-                            die();
-                         }
-                    }
-                }
-            // }
+        if (empty($firstname) || empty($lastname) || empty($email) || empty($bride) || empty($groom)
+            || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $session->message("
+            <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
+              <strong><i class='mdi mdi-account-alert mr-2'></i></strong> Please fill in all required fields with a valid email.
+              <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
+                <span aria-hidden=\"true\">&times;</span>
+              </button>
+            </div>");
+            redirect_to("client_add.php");
+            die();
         }
+
+        if (Accounts::email_exists($email)) {
+            $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> That email is already registered.</div>');
+            redirect_to("client_add.php");
+            die();
+        }
+
+        // Create account + detail + booking atomically (bcrypt-hashed password,
+        // consistent user_id linkage) via the shared registration routine.
+        $result = register_client($firstname, $lastname, $email, $phone, $user_password1, $wedding_date, $wedding_type);
+        if (!$result['ok']) {
+            $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> ' . htmlspecialchars($result['error']) . '</div>');
+            redirect_to("client_add.php");
+            die();
+        }
+
+        // Enrich the fresh booking/detail rows with the staff-only fields
+        // (register_client seeds them neutral: no bride/groom, organizer 0).
+        $uid = (int) $db->fetchValue('SELECT user_id FROM tblaccounts WHERE user_email = :e LIMIT 1', [':e' => $email]);
+        if ($uid > 0) {
+            $booking_row = Booking::find_by_user_id($uid);
+            if ($booking_row !== false) {
+                $booking_row->bride = $bride;
+                $booking_row->groom = $groom;
+                $booking_row->organizer_id = $organizer_id;
+                $booking_row->update_booking();
+            }
+            $detail_row = Account_Details::find_by_user_id($uid);
+            if ($detail_row !== false && $city !== '') {
+                $detail_row->city = $city;
+                $detail_row->update_user();
+            }
+        }
+
+        $session->message("
+        <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
+          <strong><i class='mdi mdi-check-circle-outline'></i></strong>  New client has been added.
+          <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
+            <span aria-hidden=\"true\">&times;</span>
+          </button>
+        </div>");
+        redirect_to("client.php");
+        die();
     }
 
 
@@ -144,6 +149,7 @@
             <div class="col-lg-8 offset-2 pl-3 pb-3 box-shadow mt-4">
             
                 <form action="client_add.php" method="post">
+                    <?= $session->csrf_field(); ?>
                     <h4 class="h4 mt-4 pb-2" style="border-bottom: 1px solid #dee2e6!important;">New Client Information
                         <a href="client.php" class="btn btn-sm btn-danger float-right" style="font-size: 12px;"><i class="mdi mdi-close-circle mr-2"></i> Cancel</a>
                         <button type="submit" name="submit" class="btn btn-sm btn-success float-right mr-2" style="font-size: 12px;"><i class="mdi mdi-account-plus mr-2"></i> Save Client</button>

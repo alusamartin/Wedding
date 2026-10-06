@@ -19,7 +19,7 @@ class PasswordReset
 {
     protected static $db_table   = 'tbl_password_resets';
     public const TOKEN_TTL_MIN   = 60;
-    private const MAX_PER_HOUR   = 5;     // per email — brute-force damper
+    public const MAX_PER_HOUR    = 5;     // per email — brute-force damper
     private const LINK_BASE_PATH = 'reset_password.php';
 
     /**
@@ -43,10 +43,13 @@ class PasswordReset
         }
         $userId = (int) $userId;
 
-        // Rate limit: 5 live requests per rolling hour per address.
+        // Rate limit: 5 REQUESTS per rolling hour per address — counted on ALL
+        // rows in the window, not just live ones. (Counting only unused rows
+        // never trips: issue() burns older live tokens right before inserting
+        // the new one, so the counter would be reset to 1 on every call.)
         $recent = $db->prepare(
             'SELECT COUNT(*) FROM ' . self::$db_table
-            . " WHERE user_id = :uid AND used_at IS NULL AND created_at > (NOW() - INTERVAL 1 HOUR)"
+            . " WHERE user_id = :uid AND created_at > (NOW() - INTERVAL 1 HOUR)"
         );
         $recent->execute([':uid' => $userId]);
         if ((int) $recent->fetchColumn() >= self::MAX_PER_HOUR) {
@@ -103,6 +106,10 @@ class PasswordReset
         // Burn the token (single-use) and any other live tokens for safety.
         $db->prepare('UPDATE ' . self::$db_table . ' SET used_at = NOW() WHERE user_id = :uid AND used_at IS NULL')
            ->execute([':uid' => (int) $row->user_id]);
+        error_log(sprintf(
+            '[WPMS][PasswordReset] password changed via reset token for user_id=%d',
+            (int) $row->user_id
+        ));
         return true;
     }
 

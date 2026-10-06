@@ -18,7 +18,6 @@
         $price = clean($_POST['price']);
         
          if (empty($wedding_type) || empty($price)) {
-            redirect_to("service_list.php");
             $session->message("
             <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
               <strong><i class='mdi mdi-account-alert'></i></strong> Please Fill up all the information.
@@ -26,6 +25,7 @@
                 <span aria-hidden=\"true\">&times;</span>
               </button>
             </div>");
+            redirect_to("service_list.php");
             die();
         }
         $category->set_file($_FILES['preview_image']);
@@ -33,7 +33,6 @@
         $category->price = $price;
         $category->save_image();
         $category->save();
-        redirect_to("service_list.php");
         $session->message("
             <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
               <strong><i class='mdi mdi-check'></i></strong> {$category->wedding_type} is successfully added.
@@ -41,6 +40,7 @@
                 <span aria-hidden=\"true\">&times;</span>
               </button>
             </div>");
+        redirect_to("service_list.php");
     }
 
 

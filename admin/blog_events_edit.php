@@ -3,7 +3,12 @@
     $count = 0;
     $error = '';
     if (!is_staff()) { redirect_to("../"); }
-    $event_wedding =   EventWedding::find_by_id($_GET['id']);
+    $event_wedding =   EventWedding::find_by_id((int) ($_GET['id'] ?? 0));
+    if ($event_wedding === false) {
+        $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> That article no longer exists.</div>');
+        redirect_to("blog_events.php");
+        die();
+    }
 $category = Category::find_all();
     if (isset($_POST['submit'])) {
         if ($event_wedding) {
@@ -22,7 +27,6 @@ $category = Category::find_all();
             $wedding_type       = clean($_POST['wedding_type']);
             
             if (empty($title) || empty($description) || empty($wedding_date) || empty($location)) {
-                redirect_to("blog_events_edit.php?id=".$_GET['id']);
                 $session->message("
                 <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
                   <strong><i class='mdi mdi-account-alert mr-2'></i></strong> Please Fill up all the information.
@@ -30,6 +34,7 @@ $category = Category::find_all();
                     <span aria-hidden=\"true\">&times;</span>
                   </button>
                 </div>");
+                redirect_to("blog_events_edit.php?id=".$_GET['id']);
                 die();
             }
 
@@ -51,7 +56,6 @@ $category = Category::find_all();
             // No new file chosen => metadata-only update (keeps existing image)
             if (empty($_FILES['preview_image']['name'])) {
                 $event_wedding->save();
-                redirect_to("blog_events.php");
                 $session->message("
                 <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
                   <strong><i class='mdi mdi-account-alert mr-2'></i></strong> The {$event_wedding->title} has been updated.
@@ -59,6 +63,7 @@ $category = Category::find_all();
                     <span aria-hidden=\"true\">&times;</span>
                   </button>
                 </div>");
+                redirect_to("blog_events.php");
                 die();
             }
 

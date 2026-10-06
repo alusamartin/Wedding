@@ -3,7 +3,13 @@
 
 
     if (!is_staff()) { redirect_to("../"); }
-    $category = Category::find_by_id($_GET['id']);
+    $category = Category::find_by_id((int) ($_GET['id'] ?? 0));
+
+    if ($category === false) {
+        $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> That package no longer exists.</div>');
+        redirect_to("package_add.php");
+        die();
+    }
 
     if (isset($_POST['submit'])) {
 
@@ -18,7 +24,6 @@
         $price = clean($_POST['price']);
        
          if (empty($wedding_type) || empty($price)) {
-            redirect_to("service_list.php");
             $session->message("
             <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
               <strong><i class='mdi mdi-account-alert'></i></strong> Please Fill up all the information.
@@ -26,6 +31,7 @@
                 <span aria-hidden=\"true\">&times;</span>
               </button>
             </div>");
+            redirect_to("service_list.php");
             die();
         }
         if ($category) {
@@ -34,7 +40,6 @@
                 $category->wedding_type = $wedding_type;
                 $category->price = $price;
                 $category->update();
-                redirect_to("service_list.php");
                 $session->message("
                     <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
                       <strong><i class='mdi mdi-check'></i></strong>The {$category->wedding_type} is successfully Updated.
@@ -42,6 +47,7 @@
                         <span aria-hidden=\"true\">&times;</span>
                       </button>
                     </div>");
+                redirect_to("service_list.php");
             } else {
                 $category->wedding_type = $wedding_type;
                 $category->price = $price;

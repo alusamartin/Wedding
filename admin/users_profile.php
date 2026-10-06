@@ -24,7 +24,6 @@
             $designation = clean($_POST['designation']);
 
              if (empty($firstname) || empty($lastname) || empty($address) || empty($email) || empty($username)) {
-                redirect_to("users_profile.php");
                 $session->message("
                 <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
                   <strong><i class='mdi mdi-account-alert'></i></strong> Please Fill up all the information.
@@ -32,6 +31,7 @@
                     <span aria-hidden=\"true\">&times;</span>
                   </button>
                 </div>");
+                redirect_to("users_profile.php");
                 die();
             }
 
@@ -47,7 +47,6 @@
 
                 if(empty($_FILES['profile_picture'])) {
                   $users_profile->save();
-                   redirect_to("users_profile.php");
                   $session->message("
                     <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
                       <strong><i class='mdi mdi-check'></i></strong>The {$users_profile->firstname} {$users_profile->lastname} is successfully updated.
@@ -55,11 +54,11 @@
                         <span aria-hidden=\"true\">&times;</span>
                       </button>
                     </div>");
+                   redirect_to("users_profile.php");
                 } else {
                   $users_profile->set_file($_FILES['profile_picture']);
                   $users_profile->save_image();
                   $users_profile->save();
-                  redirect_to("users_profile.php");
                   $session->message("
                     <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
                       <strong><i class='mdi mdi-check'></i></strong>The {$users_profile->firstname} {$users_profile->lastname} is successfully updated.
@@ -67,6 +66,7 @@
                         <span aria-hidden=\"true\">&times;</span>
                       </button>
                     </div>");
+                  redirect_to("users_profile.php");
                 }
             }
         }

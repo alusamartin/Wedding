@@ -8,12 +8,12 @@ $tokenDead = $row === false && (isset($_GET['token']) || isset($_POST['token']))
 
 if (isset($_POST['reset'])) {
     if (!$session->verify_csrf()) {
-        redirect_to("reset_password.php?token=" . urlencode($plain));
         $session->message(
             "<div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">"
             . "<strong><i class='mdi mdi-alert'></i></strong> Invalid security token. Please try again."
             . "<button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\"><span aria-hidden=\"true\">&times;</span></button></div>"
         );
+        redirect_to("reset_password.php?token=" . urlencode($plain));
         die();
     }
     $p1 = (string) ($_POST['input_password'] ?? '');

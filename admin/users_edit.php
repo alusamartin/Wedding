@@ -4,7 +4,13 @@
 
     if (!is_staff()) { redirect_to("../"); }
 
-    $users = Users::find_by_id($_GET['id']);
+    $users = Users::find_by_id((int) ($_GET['id'] ?? 0));
+
+    if ($users === false) {
+        $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> That staff account no longer exists.</div>');
+        redirect_to("users.php");
+        die();
+    }
 
     if (isset($_POST['submit'])) {
 
@@ -24,7 +30,6 @@
         $designation = clean($_POST['designation']);
 
          if (empty($firstname) || empty($lastname) || empty($address) || empty($email) || empty($username)) {
-            redirect_to("users_edit.php?id=" . (int) ($_GET['id'] ?? 0));
             $session->message("
             <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
               <strong><i class='mdi mdi-account-alert'></i></strong> Please Fill up all the information.
@@ -32,6 +37,7 @@
                 <span aria-hidden=\"true\">&times;</span>
               </button>
             </div>");
+            redirect_to("users_edit.php?id=" . (int) ($_GET['id'] ?? 0));
             die();
         }
 
@@ -47,13 +53,12 @@
 
             if(empty($_FILES['profile_picture'])) {
               $users->save();
-               redirect_to("users.php");
               $session->message("The photo has been updated");
+               redirect_to("users.php");
             } else {
               $users->set_file($_FILES['profile_picture']);
               $users->save_image();
               $users->save();
-              redirect_to("users.php");
               $session->message("
                 <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
                   <strong><i class='mdi mdi-check'></i></strong>The {$users->firstname} {$users->lastname} is successfully updated.
@@ -61,6 +66,7 @@
                     <span aria-hidden=\"true\">&times;</span>
                   </button>
                 </div>");
+              redirect_to("users.php");
             }
         }
     }
