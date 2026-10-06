@@ -4,11 +4,15 @@
  * Login Security — admin view over the login brute-force throttle.
  *
  * Mirrors what tbllogin_throttle is doing right now:
- *   - which (email, IP) pairs are LOCKED (5+ failures inside the 15-minute
- *     window — anyone targeting an account),
+ *   - which (email, IP) pairs are LOCKED (5+ failures inside their current
+ *     escalation window — anyone targeting an account),
  *   - which source IPs are under PRESSURE (failure sums climbing toward the
  *     per-IP cap of 20 — distributed guessing across many accounts),
  *   - the raw recent failed-attempt rows.
+ *
+ * Escalation: each pair's lock window grows with its lock_count — first lock
+ * 15 min, then 1 h, then 6 h (LoginThrottle::LOCKOUT_STEPS). Every lockout
+ * also texts the account owner (system-billed SMS).
  *
  * Actions (POST + CSRF, logged to error_log for audit):
  *   unlock      — delete one pair's counters (forgive the lock),
@@ -63,6 +67,21 @@
         die();
     }
 
+    // Render helpers ---------------------------------------------------------
+    $remaining = function (object $row): int {
+        // Seconds left on this pair's lock. Each pair serves ITS OWN window
+        // from the escalation ladder (same math as LoginThrottle::secondsRemaining).
+        $window = LoginThrottle::lockoutForCount((int) ($row->lock_count ?? 0));
+        $age = max(0, (time()) - strtotime((string) $row->updated_at));
+        return max(0, $window - $age);
+    };
+    $isLocked = function (object $row) use ($remaining): bool {
+        return (int) $row->fail_count >= LoginThrottle::MAX_FAILURES && $remaining($row) > 0;
+    };
+    $windowMins = function (object $row): int {
+        return (int) round(LoginThrottle::lockoutForCount(max(1, (int) ($row->lock_count ?? 1))) / 60);
+    };
+
     // ---- Read model --------------------------------------------------------
     $tableMissing = false;
     $stats = null;
@@ -75,13 +94,13 @@
         // Per-pair lock window == LOCKOUT_SECONDS; pressure window == the same.
         $win = LoginThrottle::LOCKOUT_SECONDS;
 
+        // Active pairs + 24h failure total; "locked" is computed per row
+        // below (each pair serves its OWN escalation window).
         $stats = $db->fetchOne(
             "SELECT
                 SUM(CASE WHEN fail_count > 0 AND updated_at >= NOW() - INTERVAL {$win} SECOND THEN 1 ELSE 0 END) AS active_pairs,
-                SUM(CASE WHEN fail_count >= :maxf AND updated_at >= NOW() - INTERVAL {$win} SECOND THEN 1 ELSE 0 END) AS locked_pairs,
                 COALESCE(SUM(CASE WHEN updated_at >= NOW() - INTERVAL 86400 SECOND THEN fail_count ELSE 0 END), 0) AS fails_24h
-             FROM tbllogin_throttle",
-            [':maxf' => LoginThrottle::MAX_FAILURES]
+             FROM tbllogin_throttle"
         );
 
         $hotIps = (int) $db->fetchValue(
@@ -95,12 +114,29 @@
         );
         $stats->hot_ips = $hotIps;
 
-        $lockedPairs = $db->fetchAll(
+        // Candidates for "locked": enough failures and recent enough for even
+        // the LONGEST escalation window; $isLocked (per-row window) filters
+        // the expired ones out. lock_count is re-fetched after each claim so
+        // the view reflects the live ladder.
+        $lockCandidates = $db->fetchAll(
             "SELECT * FROM tbllogin_throttle
-             WHERE fail_count >= :maxf AND updated_at >= NOW() - INTERVAL {$win} SECOND
-             ORDER BY updated_at DESC LIMIT 50",
-            [':maxf' => LoginThrottle::MAX_FAILURES]
+             WHERE fail_count >= :maxf
+               AND updated_at >= NOW() - INTERVAL :maxwin SECOND
+             ORDER BY updated_at DESC
+             LIMIT 500",
+            [
+                ':maxf'   => LoginThrottle::MAX_FAILURES,
+                ':maxwin' => max(LoginThrottle::LOCKOUT_STEPS),
+            ]
         );
+        $stats->locked_pairs = 0;
+        $lockedPairs = [];
+        foreach ($lockCandidates as $row) {
+            if ($isLocked($row)) {
+                $lockedPairs[] = $row;
+                $stats->locked_pairs++;
+            }
+        }
 
         $ipPressure = $db->fetchAll(
             "SELECT throttle_ip, COUNT(*) AS accounts, SUM(fail_count) AS recent_fails,
@@ -124,17 +160,6 @@
         $tableMissing = true; // migration not run yet
         error_log('[WPMS][LoginSecurity] ' . $e->getMessage());
     }
-
-    // Render helpers ---------------------------------------------------------
-    $remaining = function (object $row): int {
-        // Seconds left on this pair's lock (same math as LoginThrottle::secondsRemaining).
-        $age = max(0, (time()) - strtotime((string) $row->updated_at));
-        $left = LoginThrottle::LOCKOUT_SECONDS - $age;
-        return max(0, $left);
-    };
-    $isLocked = function (object $row) use ($remaining): bool {
-        return (int) $row->fail_count >= LoginThrottle::MAX_FAILURES && $remaining($row) > 0;
-    };
 ?>
 <?php $users_profile = Users::find_by_id($_SESSION['id']); ?>
 <!doctype html>
@@ -169,8 +194,11 @@
             <p class="text-muted mb-0" style="font-size: 13px;">
                 Brute-force throttle on <code>login.php</code> —
                 <?= (int) LoginThrottle::MAX_FAILURES; ?> failures per (email, IP) pair locks it
-                <?= (int) (LoginThrottle::LOCKOUT_SECONDS / 60); ?> min; per-IP cap
-                <?= (int) LoginThrottle::MAX_FAILURES_PER_IP; ?> catches distributed guessing.
+                <?= (int) (LoginThrottle::LOCKOUT_STEPS[0] / 60); ?> min, escalating to
+                <?= (int) (LoginThrottle::LOCKOUT_STEPS[1] / 60); ?> h and
+                <?= (int) (LoginThrottle::LOCKOUT_STEPS[2] / 60); ?> h for repeat offenders; per-IP cap
+                <?= (int) LoginThrottle::MAX_FAILURES_PER_IP; ?> catches distributed guessing. Every lockout
+                texts the account owner.
             </p>
         </div>
         <div class="text-right">
@@ -209,7 +237,7 @@
             <div class="table-responsive">
             <table class="table table-hover ledger-table" style="margin-bottom:0;">
                 <thead>
-                    <tr><th>Email attempted</th><th>IP</th><th>Failures</th><th>Unlocks in</th><th>Last attempt</th><th></th></tr>
+                    <tr><th>Email attempted</th><th>IP</th><th>Failures</th><th>Lock #</th><th>Unlocks in</th><th>Last attempt</th><th></th></tr>
                 </thead>
                 <tbody>
                 <?php foreach ($lockedPairs as $r): ?>
@@ -217,6 +245,7 @@
                         <td class="mono" style="font-size:12.5px;"><strong><?= htmlspecialchars((string) $r->throttle_email); ?></strong></td>
                         <td class="mono" style="font-size:12.5px;"><?= htmlspecialchars((string) $r->throttle_ip); ?></td>
                         <td class="mono"><span class="pill badge-danger"><?= (int) $r->fail_count; ?></span></td>
+                        <td class="mono"><span class="pill badge-dark">#<?= (int) $r->lock_count; ?> · <?= (int) $windowMins($r); ?>m window</span></td>
                         <td class="mono" style="font-size:12.5px;"><?= (int) ceil($remaining($r) / 60); ?> min</td>
                         <td style="font-size:12.5px; white-space:nowrap;"><?= htmlspecialchars(format_date_kd((string) $r->updated_at, true)); ?> <span class="text-muted">(<?= htmlspecialchars(time_elapsed_string((string) $r->updated_at)); ?>)</span></td>
                         <td>
@@ -319,7 +348,7 @@
                         <td class="mono"><?= (int) $r->fail_count; ?> / <?= (int) LoginThrottle::MAX_FAILURES; ?></td>
                         <td>
                             <?php if ($isLocked($r)): ?>
-                                <span class="pill badge-danger">locked <?= (int) ceil($remaining($r) / 60); ?>m left</span>
+                                <span class="pill badge-danger">locked <?= (int) ceil($remaining($r) / 60); ?>m left · #<?= (int) $r->lock_count; ?></span>
                             <?php elseif ((int) $r->fail_count > 0): ?>
                                 <span class="pill badge-warning">watching</span>
                             <?php else: ?>
@@ -341,6 +370,10 @@
         (they simply resume; each new failure re-locks the pair). Set <code>WPMS_LOGIN_THROTTLE_OFF=1</code> to
         disable the throttle entirely (this page becomes read-only while it is off). Blocked attempts are also
         written to the PHP error log (<code>[WPMS][LoginThrottle]</code>) for fail2ban-style alerting.
+        Repeat offenders climb the escalation ladder (<?= (int) (LoginThrottle::LOCKOUT_STEPS[0] / 60); ?> min →
+        <?= (int) (LoginThrottle::LOCKOUT_STEPS[1] / 60); ?> h → <?= (int) (LoginThrottle::LOCKOUT_STEPS[2] / 60); ?> h);
+        a successful sign-in forgives the ladder, the 7-day prune ages it out, and every lockout texts the
+        account owner (system SMS, not billed to planner credits — audit row in <code>tblsms_logs</code>).
     </p>
 
     <?php endif; /* $tableMissing */ ?>

@@ -156,17 +156,57 @@ CREATE TABLE IF NOT EXISTS `tblmpesa_stk_pushes` (
 --     further attempts for that pair; a per-IP total catches distributed
 --     guessing across many accounts. Success clears the pair; prune()
 --     removes aged rows. Idempotent: re-running this file is safe.
+--
+--     Escalation for repeat offenders: lock_count counts how many times this
+--     pair has tripped the lockout. Each new lockout steps through
+--     LoginThrottle::LOCKOUT_STEPS (15 min -> 1 h -> 6 h). When a lock
+--     expires, fail_count resets (a fresh attack sequence is required) but
+--     lock_count SURVIVES as the repeat-offense memory until a successful
+--     sign-in clears the pair (clear()) or the row is pruned. The account
+--     owner gets a security SMS on every lockout (lock_event_at is the
+--     exactly-once marker; user_id is the resolved account for auditing).
 -- ----------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `tbllogin_throttle` (
     `id`            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `throttle_email` VARCHAR(191) NOT NULL COMMENT 'the email ATTEMPTED (as typed, lowercased) — regardless of whether the account exists',
     `throttle_ip`   VARCHAR(45)  NOT NULL COMMENT 'client IP (IPv6-capable)',
     `fail_count`    INT UNSIGNED NOT NULL DEFAULT 0,
+    `lock_count`    INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'lockouts tripped by this pair — drives the escalation ladder',
+    `user_id`       INT UNSIGNED NULL COMMENT 'account the attempted email resolves to (NULL = unknown email)',
+    `last_lock_at`  DATETIME     NULL COMMENT 'when the current/most recent lockout started — exactly-once marker for the owner SMS',
     `updated_at`    DATETIME     NOT NULL COMMENT 'last failed attempt — the lockout clock resets with it',
     UNIQUE KEY `uniq_throttle_pair` (`throttle_email`, `throttle_ip`),
     KEY `idx_throttle_ip` (`throttle_ip`),
     KEY `idx_throttle_updated` (`updated_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Upgrade path for installs created before escalation existed (idempotent,
+-- portable: works on both MariaDB and plain MySQL via information_schema).
+DELIMITER //
+CREATE PROCEDURE wpms21_throttle_escalation()
+BEGIN
+    DECLARE col_count INT DEFAULT 0;
+    SELECT COUNT(*) INTO col_count FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME   = 'tbllogin_throttle'
+       AND COLUMN_NAME  = 'lock_count';
+    IF col_count = 0 THEN
+        ALTER TABLE `tbllogin_throttle`
+            ADD COLUMN `lock_count`   INT UNSIGNED NOT NULL DEFAULT 0 AFTER `fail_count`,
+            ADD COLUMN `user_id`      INT UNSIGNED NULL AFTER `lock_count`,
+            ADD COLUMN `last_lock_at` DATETIME     NULL AFTER `user_id`;
+    END IF;
+END //
+DELIMITER ;
+CALL wpms21_throttle_escalation();
+DROP PROCEDURE IF EXISTS wpms21_throttle_escalation;
+
+-- Backfill the owner link for existing throttle rows (unknown emails stay NULL).
+UPDATE tbllogin_throttle t
+  LEFT JOIN tblusers    u ON LOWER(u.email) = t.throttle_email
+  LEFT JOIN tblaccounts a ON LOWER(a.user_email) = t.throttle_email
+   SET t.user_id = COALESCE(u.id, a.user_id)
+ WHERE t.user_id IS NULL;
 
 -- ----------------------------------------------------------------------
 -- 5. Guest relationship vocabulary (Stage 2 audit)

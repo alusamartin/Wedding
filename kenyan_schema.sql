@@ -31,6 +31,12 @@ MODIFY `state` VARCHAR(100) NOT NULL DEFAULT '';
 ALTER TABLE `tblweddingbook`
 ADD COLUMN IF NOT EXISTS `pay_band_sms_sent` TINYINT(3) DEFAULT NULL AFTER `organizer_id`;
 
+-- 1b-2. tblusers - staff mobile number (nullable, optional)
+--     Lets security alerts (login lockout SMS) reach staff accounts too.
+--     Couples already have a phone via tblaccounts_detail; staff had none.
+ALTER TABLE `tblusers`
+ADD COLUMN IF NOT EXISTS `phone` VARCHAR(20) DEFAULT NULL AFTER `address`;
+
 -- 1c. tbl_installment_plans - opt-in month-by-month payment plans
 --     A couple spreads the package balance over N monthly installments; the
 --     overview nudge then tracks their pace against THEIR plan instead of a

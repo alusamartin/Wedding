@@ -8,11 +8,15 @@ use PHPUnit\Framework\TestCase;
  * Built-in login rate limiting (tbllogin_throttle + LoginThrottle class).
  *
  * Class-level tests prove the counter mechanics directly: the 5-failure
- * lockout, success-clears, the 20-failure per-IP cap shared across accounts,
- * counting per (email, IP) pair, and the 7-day prune. The HTTP tests prove
- * the end-to-end login.php behaviour: 4 wrong passwords still let the correct
- * one through, the 5th lock makes the correct password bounce, the throttle
- * message renders, and a different IP/account is unaffected.
+ * lockout, the ESCALATION ladder for repeat offenders (lock_count survives
+ * expired locks, so windows grow 15 min -> 1 h -> 6 h), the exactly-once
+ * owner SMS on each lockout (system-billed, via SMS::send_system),
+ * success-clears (which also forgives the ladder), the 20-failure per-IP cap
+ * shared across accounts, counting per (email, IP) pair, and the 7-day
+ * prune. The HTTP tests prove the end-to-end login.php behaviour: 4 wrong
+ * passwords still let the correct one through, the 5th lock makes the
+ * correct password bounce, the throttle message renders, and a different
+ * IP/account is unaffected.
  *
  * Integration ('integration' group) — requires the live DB (and php -S for
  * the HTTP tests). Every touched throttle row is deleted in teardown, so the
@@ -26,6 +30,10 @@ final class LoginThrottleTest extends TestCase
     private const GUINEA_PASS  = 'Admin@2024!';
     private const COUPLE_EMAIL = 'brian.wafula@gmail.com';
     private const COUPLE_PASS  = 'Test@1234';
+
+    /** Probe staff account used to prove the owner-SMS path end-to-end. */
+    private const OWNER_EMAIL = 'owner.lock@throttle-test.example';
+    private const OWNER_PHONE = '0711000222'; // send_system normalizes to 254711000222
 
     private static ?Database $db = null;
     private static ?string $base = null;
@@ -64,6 +72,8 @@ final class LoginThrottleTest extends TestCase
             try {
                 self::$db->execute('DELETE FROM tbllogin_throttle WHERE throttle_email LIKE :p', [':p' => '%@throttle-test.example']);
                 self::$db->execute('DELETE FROM tbllogin_throttle WHERE throttle_email = :e', [':e' => self::GUINEA_EMAIL]);
+                self::$db->execute('DELETE FROM tblusers WHERE email = :e', [':e' => self::OWNER_EMAIL]);
+                self::$db->execute("DELETE FROM tblsms_logs WHERE phone = :p AND message LIKE '%lockout%'", [':p' => '254711000222']);
             } catch (Throwable $e) {
                 // leave state untouched on failure
             }
@@ -100,6 +110,41 @@ final class LoginThrottleTest extends TestCase
                 [':e' => self::GUINEA_EMAIL, ':i' => '127.0.0.1']
             );
         }
+    }
+
+    /** Insert the probe staff owner (with a phone) for the SMS tests. */
+    private function createOwnerProbe(): void
+    {
+        global $db;
+        $db->execute('DELETE FROM tblusers WHERE email = :e', [':e' => self::OWNER_EMAIL]);
+        $db->execute(
+            "INSERT INTO tblusers (firstname, lastname, gender, username, password, email, designation, address, phone, access_level, profile_picture, date_created)
+             VALUES ('Lock', 'Probe', 'm', 'lockprobe', 'x', :e, '1', 'Nairobi', :p, '1', '', NOW())",
+            [':e' => self::OWNER_EMAIL, ':p' => self::OWNER_PHONE]
+        );
+    }
+
+    /** Lockout SMS audit rows for the probe owner's phone. */
+    private function ownerSmsCount(): int
+    {
+        global $db;
+        return (int) $db->fetchValue(
+            "SELECT COUNT(*) FROM tblsms_logs WHERE phone = :p AND message LIKE '%lockout%'",
+            [':p' => '254711000222']
+        );
+    }
+
+    /** Simulate every lock this pair has served having fully expired. */
+    private function expireLocks(string $email, string $ip): void
+    {
+        global $db;
+        $db->execute(
+            'UPDATE tbllogin_throttle
+             SET updated_at   = NOW() - INTERVAL ' . max(LoginThrottle::LOCKOUT_STEPS) . ' SECOND,
+                 last_lock_at = NOW() - INTERVAL ' . max(LoginThrottle::LOCKOUT_STEPS) . ' SECOND
+             WHERE throttle_email = :e AND throttle_ip = :i',
+            [':e' => $email, ':i' => $ip]
+        );
     }
 
     // ------------------------------------------------------------------
@@ -192,6 +237,156 @@ final class LoginThrottleTest extends TestCase
             LoginThrottle::secondsRemaining('cASE@THROTTLE-TEST.EXAMPLE', '203.0.113.15'),
             'an attacker must not evade the lock by changing case'
         );
+    }
+
+    public function testEscalationLadderMapping(): void
+    {
+        // Pure mapping — 1st lock serves steps[0], later locks saturate at the
+        // longest window.
+        $steps = LoginThrottle::LOCKOUT_STEPS;
+        self::assertSame($steps[0], LoginThrottle::lockoutForCount(1));
+        self::assertSame($steps[1], LoginThrottle::lockoutForCount(2));
+        self::assertSame($steps[2], LoginThrottle::lockoutForCount(3));
+        self::assertSame($steps[2], LoginThrottle::lockoutForCount(4), 'must saturate at the longest window');
+        self::assertSame($steps[2], LoginThrottle::lockoutForCount(50));
+    }
+
+    #[Group('integration')]
+    public function testRepeatOffensesServeLongerWindows(): void
+    {
+        global $db;
+        $db->execute('DELETE FROM tbllogin_throttle WHERE throttle_email LIKE :p', [':p' => '%@throttle-test.example']);
+
+        $email = 'escalate@throttle-test.example';
+        $ip    = '203.0.113.21';
+
+        // --- Lock #1: the ordinary 15-minute window.
+        for ($i = 0; $i < LoginThrottle::MAX_FAILURES; $i++) {
+            LoginThrottle::recordFailure($email, $ip);
+        }
+        $wait1 = LoginThrottle::secondsRemaining($email, $ip);
+        self::assertGreaterThanOrEqual(LoginThrottle::LOCKOUT_STEPS[0] - 5, $wait1);
+        self::assertLessThanOrEqual(LoginThrottle::LOCKOUT_STEPS[0], $wait1);
+
+        // --- The lock expires; a fresh burst must serve the LONGER window.
+        $this->expireLocks($email, $ip);
+        for ($i = 0; $i < LoginThrottle::MAX_FAILURES; $i++) {
+            LoginThrottle::recordFailure($email, $ip);
+        }
+        $row = $db->fetchOne('SELECT fail_count, lock_count FROM tbllogin_throttle WHERE throttle_email = :e AND throttle_ip = :i', [':e' => $email, ':i' => $ip]);
+        self::assertSame(2, (int) $row->lock_count, 'the expired lock must be remembered and escalated');
+        $wait2 = LoginThrottle::secondsRemaining($email, $ip);
+        self::assertGreaterThanOrEqual(LoginThrottle::LOCKOUT_STEPS[1] - 5, $wait2, 'second offense must serve the 1-hour window');
+        self::assertLessThanOrEqual(LoginThrottle::LOCKOUT_STEPS[1], $wait2);
+
+        // --- A burst INSIDE an active escalated lock must not reset anything.
+        LoginThrottle::recordFailure($email, $ip);
+        $row = $db->fetchOne('SELECT fail_count, lock_count FROM tbllogin_throttle WHERE throttle_email = :e AND throttle_ip = :i', [':e' => $email, ':i' => $ip]);
+        self::assertSame(LoginThrottle::MAX_FAILURES + 1, (int) $row->fail_count, 'failures inside an active lock just accumulate');
+        self::assertSame(2, (int) $row->lock_count, 'no extra lock while the current one is active');
+
+        // --- Third offense: the longest window.
+        $this->expireLocks($email, $ip);
+        for ($i = 0; $i < LoginThrottle::MAX_FAILURES; $i++) {
+            LoginThrottle::recordFailure($email, $ip);
+        }
+        $wait3 = LoginThrottle::secondsRemaining($email, $ip);
+        self::assertGreaterThanOrEqual(LoginThrottle::LOCKOUT_STEPS[2] - 5, $wait3, 'third offense must serve the 6-hour window');
+        self::assertLessThanOrEqual(LoginThrottle::LOCKOUT_STEPS[2], $wait3);
+    }
+
+    #[Group('integration')]
+    public function testLockSendsOwnerSmsExactlyOncePerLock(): void
+    {
+        global $db;
+        $db->execute('DELETE FROM tbllogin_throttle WHERE throttle_email LIKE :p', [':p' => '%@throttle-test.example']);
+        $this->createOwnerProbe();
+
+        $email = self::OWNER_EMAIL;
+        $ip    = '203.0.113.22';
+
+        // Lock #1 → exactly one SMS to the owner's phone.
+        for ($i = 0; $i < LoginThrottle::MAX_FAILURES; $i++) {
+            LoginThrottle::recordFailure($email, $ip);
+        }
+        self::assertSame(1, $this->ownerSmsCount(), 'the first lockout must send exactly one SMS');
+        $sms = $db->fetchOne(
+            'SELECT phone, message, user_id, cost, status FROM tblsms_logs WHERE phone = :p AND message LIKE :m ORDER BY id DESC LIMIT 1',
+            [':p' => '254711000222', ':m' => '%lockout%']
+        );
+        self::assertNotNull($sms, 'the SMS must be addressed to the normalized owner phone');
+        self::assertStringContainsString('1st lockout on your account', (string) $sms->message);
+        self::assertStringContainsString('15 min', (string) $sms->message);
+        self::assertGreaterThan(0, (int) $sms->user_id, 'the audit row must attribute a real staff id (tblsms_logs.user_id FK)');
+        self::assertSame('0.00', (string) $sms->cost, 'security SMS is system-billed — no credits deducted');
+        $probeId = (int) $db->fetchValue('SELECT id FROM tblusers WHERE email = :e', [':e' => self::OWNER_EMAIL]);
+        self::assertSame($probeId, (int) $sms->user_id, 'staff locks attribute to the staff member themselves');
+        self::assertSame('sent', (string) $sms->status, 'dev transport records the audit row as sent');
+
+        // More failures while locked: no additional SMS.
+        LoginThrottle::recordFailure($email, $ip);
+        LoginThrottle::recordFailure($email, $ip);
+        self::assertSame(1, $this->ownerSmsCount(), 'failures inside an active lock must not re-notify');
+
+        // Lock #2 (after expiry) → exactly one more SMS, naming the escalation.
+        $this->expireLocks($email, $ip);
+        for ($i = 0; $i < LoginThrottle::MAX_FAILURES; $i++) {
+            LoginThrottle::recordFailure($email, $ip);
+        }
+        self::assertSame(2, $this->ownerSmsCount(), 'a second lockout sends exactly one more SMS');
+        $sms2 = $db->fetchOne(
+            'SELECT message FROM tblsms_logs WHERE phone = :p AND message LIKE :m ORDER BY id DESC LIMIT 1',
+            [':p' => '254711000222', ':m' => '%lockout%']
+        );
+        self::assertStringContainsString('2nd lockout', (string) $sms2->message);
+        self::assertStringContainsString('60 min', (string) $sms2->message, 'the SMS must name the escalated window');
+    }
+
+    #[Group('integration')]
+    public function testUnknownEmailNeverSendsSms(): void
+    {
+        global $db;
+        $db->execute('DELETE FROM tbllogin_throttle WHERE throttle_email LIKE :p', [':p' => '%@throttle-test.example']);
+        $before = (int) $db->fetchValue("SELECT COUNT(*) FROM tblsms_logs WHERE message LIKE '%lockout%'");
+
+        $email = 'nobody.home@throttle-test.example';
+        for ($i = 0; $i < LoginThrottle::MAX_FAILURES; $i++) {
+            LoginThrottle::recordFailure($email, '203.0.113.23');
+        }
+        self::assertGreaterThan(0, LoginThrottle::secondsRemaining($email, '203.0.113.23'), 'precondition: unknown-email pair still locks');
+        self::assertSame($before, (int) $db->fetchValue("SELECT COUNT(*) FROM tblsms_logs WHERE message LIKE '%lockout%'"), 'an email with no account must not text anyone');
+    }
+
+    #[Group('integration')]
+    public function testClearForgivesTheEscalationLadder(): void
+    {
+        global $db;
+        $db->execute('DELETE FROM tbllogin_throttle WHERE throttle_email LIKE :p', [':p' => '%@throttle-test.example']);
+
+        $email = 'forgive@throttle-test.example';
+        $ip    = '203.0.113.24';
+
+        // Two full lockouts: the pair now serves the 1-hour window.
+        for ($i = 0; $i < LoginThrottle::MAX_FAILURES; $i++) {
+            LoginThrottle::recordFailure($email, $ip);
+        }
+        $this->expireLocks($email, $ip);
+        for ($i = 0; $i < LoginThrottle::MAX_FAILURES; $i++) {
+            LoginThrottle::recordFailure($email, $ip);
+        }
+        self::assertGreaterThanOrEqual(LoginThrottle::LOCKOUT_STEPS[1] - 5, LoginThrottle::secondsRemaining($email, $ip), 'precondition: escalated window active');
+
+        // The owner signs in successfully — the ladder is forgiven.
+        LoginThrottle::clear($email, $ip);
+        self::assertSame(0, (int) $db->fetchValue('SELECT COUNT(*) FROM tbllogin_throttle WHERE throttle_email = :e AND throttle_ip = :i', [':e' => $email, ':i' => $ip]));
+
+        // A fresh attacker on the same pair starts back at the 15-minute step.
+        for ($i = 0; $i < LoginThrottle::MAX_FAILURES; $i++) {
+            LoginThrottle::recordFailure($email, $ip);
+        }
+        $wait = LoginThrottle::secondsRemaining($email, $ip);
+        self::assertLessThanOrEqual(LoginThrottle::LOCKOUT_STEPS[0], $wait, 'after a successful sign-in the ladder must restart');
+        self::assertGreaterThanOrEqual(LoginThrottle::LOCKOUT_STEPS[0] - 5, $wait);
     }
 
     #[Group('integration')]

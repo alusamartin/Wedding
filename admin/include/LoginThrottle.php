@@ -17,6 +17,15 @@ declare(strict_types=1);
  * SQL against the DB session timezone (Africa/Nairobi), never in PHP, so the
  * window can't drift with PHP/DB clock or TZ mismatches.
  *
+ * Escalation: repeat offenders get progressively longer cool-downs. A pair's
+ * row carries lock_count (how many times it has tripped the lockout); the
+ * window is picked from LOCKOUT_STEPS by that count. When a lock EXPIRES,
+ * fail_count resets (a fresh attack sequence is required) but lock_count
+ * survives as the repeat-offense memory — only a successful sign-in (clear())
+ * or the 7-day prune forgives it. Locking also notifies the account owner by
+ * SMS (SMS::send_system, never billed to a planner's credits) when the
+ * attempted email resolves to a known account.
+ *
  * Kill switch: set WPMS_LOGIN_THROTTLE_OFF=1 in the environment to disable
  * every throttle operation (shared test suites, maintenance). The class
  * re-reads the flag on each call, so it can be toggled at runtime.
@@ -29,8 +38,15 @@ class LoginThrottle
     /** Recent failures summed across ALL accounts from one IP before the IP locks. */
     public const MAX_FAILURES_PER_IP = 20;
 
-    /** How long a tripped throttle stays locked (seconds). */
+    /** How long a first-time tripped throttle stays locked (seconds). */
     public const LOCKOUT_SECONDS = 900; // 15 minutes
+
+    /**
+     * Escalation ladder: lock windows (seconds) by repeat-offense count.
+     * Index = lock_count - 1 for the lock being served (1st, 2nd, 3rd...);
+     * anything beyond the last step keeps the last (longest) window.
+     */
+    public const LOCKOUT_STEPS = [900, 3600, 21600]; // 15 min, 1 h, 6 h
 
     /** Rows untouched for this long are deleted by prune(). */
     public const PRUNE_AFTER_DAYS = 7;
@@ -61,6 +77,20 @@ class LoginThrottle
     }
 
     /**
+     * The cool-down window (seconds) this pair's row serves right now: the
+     * LOCKOUT_STEPS entry selected by how many times it has locked before.
+     * First offense = 15 min, second = 1 h, third+ = 6 h.
+     */
+    public static function lockoutForCount(int $lockCount): int
+    {
+        $step = max(0, $lockCount - 1); // 1st lock -> steps[0], 2nd -> steps[1], ...
+        if ($step >= count(self::LOCKOUT_STEPS)) {
+            $step = count(self::LOCKOUT_STEPS) - 1;
+        }
+        return self::LOCKOUT_STEPS[$step];
+    }
+
+    /**
      * Seconds until this pair (or its IP) may attempt a sign-in again.
      * 0 = not blocked. Checks the per-pair lock first, then the per-IP cap
      * (recent failures summed across all accounts seen from that IP).
@@ -79,16 +109,18 @@ class LoginThrottle
 
         // Per-pair lock: enough recent failures and the clock hasn't run out.
         $row = $db->fetchOne(
-            'SELECT fail_count, TIMESTAMPDIFF(SECOND, updated_at, NOW()) AS age_seconds
+            'SELECT fail_count, lock_count, TIMESTAMPDIFF(SECOND, updated_at, NOW()) AS age_seconds
              FROM tbllogin_throttle
              WHERE throttle_email = :e AND throttle_ip = :i',
             [':e' => $email, ':i' => $ip]
         );
-        if ($row !== null
-            && (int) $row->fail_count >= self::MAX_FAILURES
-            && (int) $row->age_seconds < self::LOCKOUT_SECONDS
-        ) {
-            return self::LOCKOUT_SECONDS - (int) $row->age_seconds;
+        if ($row !== null) {
+            $window = self::lockoutForCount((int) ($row->lock_count ?? 0));
+            if ((int) $row->fail_count >= self::MAX_FAILURES
+                && (int) $row->age_seconds < $window
+            ) {
+                return $window - (int) $row->age_seconds;
+            }
         }
 
         // Per-IP cap: any account hammered from this IP recently blocks
@@ -117,6 +149,8 @@ class LoginThrottle
     /**
      * Record one failed sign-in. UPSERT: creates the pair row or increments
      * it, refreshing updated_at so each failure restarts the lockout clock.
+     * The attempted email is also linked to its account (if it exists) so
+     * lockout alerts can reach the owner.
      */
     public static function recordFailure(string $email, ?string $ip = null): void
     {
@@ -130,17 +164,160 @@ class LoginThrottle
             return;
         }
         $db->execute(
-            'INSERT INTO tbllogin_throttle (throttle_email, throttle_ip, fail_count, updated_at)
-             VALUES (:e, :i, 1, NOW())
+            'INSERT INTO tbllogin_throttle (throttle_email, throttle_ip, fail_count, user_id, updated_at)
+             VALUES (:e, :i, 1, COALESCE((SELECT id FROM (SELECT id FROM tblusers WHERE LOWER(email) = :e2 UNION ALL SELECT user_id FROM tblaccounts WHERE LOWER(user_email) = :e3 LIMIT 1) owner), NULL), NOW())
              ON DUPLICATE KEY UPDATE fail_count = fail_count + 1, updated_at = NOW()',
-            [':e' => $email, ':i' => $ip]
+            [':e' => $email, ':i' => $ip, ':e2' => $email, ':e3' => $email]
         );
+        self::maybeEscalate($email, $ip);
         self::prune();
     }
 
     /**
+     * Expired-lock reset + escalation + owner SMS, run after every recorded
+     * failure (the UPSERT above has already counted this failure).
+     *
+     *  1. If the row is a COMPLETED lock (fail_count >= MAX, lock_count > 0,
+     *     its window fully passed) the previous attack sequence is over: the
+     *     stale counter is reset so THIS failure counts as #1 of a fresh
+     *     burst — the next lock again needs MAX_FAILURES new failures.
+     *     lock_count survives as the repeat-offense memory. The reset also
+     *     NULLs last_lock_at (the burst marker) so the reset itself only
+     *     ever fires once per burst; it is a conditional UPDATE re-checking
+     *     the expiry atomically, so a burst inside an ACTIVE lock is never
+     *     wiped.
+     *  2. If the row has just reached MAX_FAILURES (a NEW lock), claim it with
+     *     a conditional UPDATE bumping lock_count and stamping last_lock_at.
+     *     That UPDATE is the exactly-once gate: only the request whose UPDATE
+     *     matches one row notifies the owner — concurrent failures can't
+     *     double-fire the SMS.
+     */
+    private static function maybeEscalate(string $email, string $ip): void
+    {
+        global $db;
+        $row = $db->fetchOne(
+            'SELECT fail_count, lock_count FROM tbllogin_throttle
+             WHERE throttle_email = :e AND throttle_ip = :i',
+            [':e' => $email, ':i' => $ip]
+        );
+        if ($row === null) {
+            return;
+        }
+        $locks = (int) $row->lock_count;
+
+        // (1) Fresh burst arriving AFTER an expired lock: collapse the stale
+        //     counter, consuming the failure just recorded as burst-#1.
+        //     last_lock_at (not updated_at, which the failure just refreshed)
+        //     tells us the previous lock's window has fully passed.
+        if ((int) $row->fail_count >= self::MAX_FAILURES && $locks > 0) {
+            $stmt = $db->execute(
+                'UPDATE tbllogin_throttle SET fail_count = 1, last_lock_at = NULL
+                 WHERE throttle_email = :e AND throttle_ip = :i
+                   AND fail_count >= :maxf
+                   AND lock_count = :lc
+                   AND last_lock_at IS NOT NULL
+                   AND TIMESTAMPDIFF(SECOND, last_lock_at, NOW()) >= :w',
+                [
+                    ':e'    => $email,
+                    ':i'    => $ip,
+                    ':maxf' => self::MAX_FAILURES,
+                    ':lc'   => $locks,
+                    ':w'    => self::lockoutForCount($locks),
+                ]
+            );
+            if ($stmt->rowCount() === 1) {
+                return; // this failure now stands alone as burst-#1
+            }
+        }
+
+        // (2) Fresh lock: the conditional UPDATE is the claim. Exactly one
+        //     concurrent request wins it (last_lock_at must be NULL — burst
+        //     under way, no lock served yet — or clear of the window the
+        //     PREVIOUS lock served). InnoDB row-locking serializes racing
+        //     claims, so the guard is re-evaluated atomically per request.
+        $fresh = $db->fetchOne(
+            'SELECT fail_count FROM tbllogin_throttle
+             WHERE throttle_email = :e AND throttle_ip = :i',
+            [':e' => $email, ':i' => $ip]
+        );
+        if ($fresh !== null && (int) $fresh->fail_count >= self::MAX_FAILURES) {
+            $stmt = $db->execute(
+                'UPDATE tbllogin_throttle
+                 SET lock_count = lock_count + 1, last_lock_at = NOW()
+                 WHERE throttle_email = :e AND throttle_ip = :i
+                   AND (last_lock_at IS NULL
+                        OR TIMESTAMPDIFF(SECOND, last_lock_at, NOW()) >= :w)',
+                [':e' => $email, ':i' => $ip, ':w' => self::lockoutForCount($locks)]
+            );
+            if ($stmt->rowCount() === 1) {
+                self::notifyOwnerOfLock($email, $locks + 1);
+            }
+        }
+    }
+
+    /**
+     * Text the account owner that their account is under attack. Never
+     * billed to anyone's credits (SMS::send_system, cost 0.00) and never
+     * fatal: a missing phone or gateway hiccup must not break the throttle.
+     * Emails that resolve to no account get nothing (and nothing observable
+     * changes for the attacker either way).
+     */
+    private static function notifyOwnerOfLock(string $email, int $lockNumber): void
+    {
+        global $db;
+        try {
+            // Couples: phone lives in tblaccounts_detail. The SMS audit row's
+            // FK wants a real tblusers id, so attribute via their booking's
+            // organizer (falling back to the platform super admin — the SMS
+            // is from the platform either way). Staff: their own row.
+            $owner = $db->fetchOne(
+                'SELECT d.phone AS phone, w.organizer_id AS owner_user_id
+                 FROM tblaccounts a
+                 LEFT JOIN tblaccounts_detail d ON d.user_id = a.user_id
+                 LEFT JOIN tblweddingbook w ON w.user_id = a.user_id
+                 WHERE LOWER(a.user_email) = :e
+                 LIMIT 1',
+                [':e' => $email]
+            ) ?? $db->fetchOne(
+                'SELECT phone, id AS owner_user_id FROM tblusers WHERE LOWER(email) = :e LIMIT 1',
+                [':e' => $email]
+            );
+            if ($owner === null) {
+                return; // unknown email — nobody to warn
+            }
+            $phone = trim((string) ($owner->phone ?? ''));
+            if ($phone === '') {
+                error_log("[WPMS][LoginThrottle] lock #{$lockNumber} on {$email} — no phone on file, owner not notified");
+                return;
+            }
+            $ownerUserId = (int) ($owner->owner_user_id ?? 0);
+            if ($ownerUserId <= 0) {
+                $ownerUserId = (int) $db->fetchValue(
+                    'SELECT id FROM tblusers WHERE access_level = 2 ORDER BY id LIMIT 1'
+                );
+            }
+            $mins = (int) round(self::lockoutForCount($lockNumber) / 60);
+            $suffix = match ($lockNumber % 100) {
+                11, 12, 13 => 'th',
+                default => match ($lockNumber % 10) {
+                    1 => 'st', 2 => 'nd', 3 => 'rd', default => 'th',
+                },
+            };
+            SMS::send_system(
+                $phone,
+                "Everafter security: {$lockNumber}{$suffix} lockout on your account (too many failed sign-ins). Sign-in locked for {$mins} min. If this wasn't you, reset your password now.",
+                $ownerUserId
+            );
+        } catch (Throwable $e) {
+            error_log('[WPMS][LoginThrottle] owner notification failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Clear the pair after a successful sign-in — legit users who mistyped a
-     * few times aren't haunted by stale counters.
+     * few times aren't haunted by stale counters. A success also proves the
+     * account owner is back in control, so the escalation memory (lock_count)
+     * is forgiven too.
      */
     public static function clear(string $email, ?string $ip = null): void
     {
