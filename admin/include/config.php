@@ -18,6 +18,54 @@
  *   - Docker:        environment: - WPMS_DB_PASS=secret
  */
 
+/**
+ * Load a simple KEY=VALUE .env file into the process environment.
+ *
+ * Shared hosting (cPanel) has no reliable per-app env-var UI, so secrets are
+ * kept in a `.env` file placed ABOVE the web root (never web-readable) or in
+ * the project root (never commit it). Real environment variables always win
+ * over file values, so a `SetEnv` in .htaccess or a crontab export overrides
+ * the file — same precedence as before this loader existed.
+ */
+function wpms_load_env_file(string $path): void
+{
+    static $loaded = [];
+    $real = realpath($path);
+    if ($real === false || isset($loaded[$real]) || !is_file($real) || !is_readable($real)) {
+        return;
+    }
+    $loaded[$real] = true;
+    foreach (file($real, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        $line = trim($line);
+        if ($line === '' || $line[0] === '#' || !str_contains($line, '=')) {
+            continue;
+        }
+        $key = trim(substr($line, 0, strpos($line, '=')));
+        $val = trim(substr($line, strpos($line, '=') + 1));
+        $len = strlen($val);
+        if ($len >= 2 && (($val[0] === '"' && $val[$len - 1] === '"') || ($val[0] === "'" && $val[$len - 1] === "'"))) {
+            $val = substr($val, 1, -1);
+        }
+        if ($key === '' || getenv($key) !== false) {
+            continue; // malformed or already set in the real environment
+        }
+        putenv("$key=$val");
+        $_ENV[$key] = $val;
+        $_SERVER[$key] = $val;
+    }
+}
+
+/*
+ * Load .env from the project root, then from its parent directory.
+ * On cPanel the recommended layout uploads `.env` to the account HOME
+ * (e.g. /home/user/.env) where it is unreachable from the web; the project
+ * root copy is the fallback for CLI/dev use.
+ */
+$wpms_root = dirname(__DIR__);
+wpms_load_env_file($wpms_root . '/.env');
+wpms_load_env_file(dirname($wpms_root) . '/.env');
+unset($wpms_root);
+
 function wpms_db_env(string $key, string $default): string
 {
     $value = getenv($key);

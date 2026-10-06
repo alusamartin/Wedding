@@ -1,10 +1,29 @@
 <?php
 ob_start();
 date_default_timezone_set('Africa/Nairobi');
-$webroot = "C:/xampp/htdocs/";
+
+/*
+ * Error display: OFF unless WPMS_DEBUG is explicitly enabled. A stray
+ * warning on a hosted site would leak paths and SQL to visitors; everything
+ * still lands in the PHP error log either way. Set WPMS_DEBUG=1 only on a
+ * dev machine (it also makes database.php die() with the real PDO message).
+ */
+$debug = in_array(strtolower(trim((string) getenv('WPMS_DEBUG'))), ['1', 'true', 'yes', 'on'], true);
+define('WPMS_DEBUG', $debug);
+error_reporting(E_ALL);
+ini_set('display_errors', $debug ? '1' : '0');
+ini_set('display_startup_errors', $debug ? '1' : '0');
+ini_set('log_errors', '1');
+
+/*
+ * Portable install root — resolved from THIS file's location, so the project
+ * runs from any folder name, any drive, any host (XAMPP subfolder, a vhost
+ * docroot, /home/user/public_html, …) with zero edits. Previously this was
+ * hard-coded to C:/xampp/htdocs/Wedding and broke on every other layout.
+ */
 define('DS', DIRECTORY_SEPARATOR);
-define('SITE_ROOT', $webroot.DS.'Wedding'.DS.'admin');
-define('INCLUDES_PATH', SITE_ROOT.DS.'include');
+define('SITE_ROOT', dirname(__DIR__));      // …/Wedding/admin
+define('INCLUDES_PATH', __DIR__);            // …/Wedding/admin/include
 require_once(INCLUDES_PATH.DS."Helper.php");
 require_once(INCLUDES_PATH.DS."config.php");
 require_once(INCLUDES_PATH.DS."database.php");
@@ -24,6 +43,7 @@ require_once(INCLUDES_PATH.DS."Users.php");
 require_once(INCLUDES_PATH.DS."Events.php");
 require_once(INCLUDES_PATH.DS."Liquidation.php");
 require_once(INCLUDES_PATH.DS."LoginThrottle.php");
+require_once(INCLUDES_PATH.DS."SignupGuard.php");
 require_once(INCLUDES_PATH.DS."Monetization.php");
 require_once(INCLUDES_PATH.DS."Notification.php");
 require_once(INCLUDES_PATH.DS."PasswordReset.php");
@@ -61,6 +81,13 @@ function require_staff(): void
         exit;
     }
 }
+
+/*
+ * Subscription grace/gate helpers (subscription_state_for_session,
+ * subscription_in_grace, require_staff_subscribed, subscription_banner)
+ * live in Helper.php so CLI scripts, tests and composer's files-autoload
+ * all see them — this file is web-request-only.
+ */
 
 /**
  * Is the current session a vendor account?
@@ -111,7 +138,14 @@ function vendor_profile_of(int $user_id): ?object
 function login_redirect_target(bool $staff, int $user_id, bool $from_admin_dir = false): string
 {
     if ($staff) {
-        $page = Subscription::get_active($user_id) ? 'dashboard.php' : 'subscription.php';
+        // Trial-aware routing: a NEW self-serve planner (trial in its final
+        // day) lands on subscription.php — the activation funnel — while
+        // earlier trial days, paid plans and grace all go to the dashboard
+        // with banners. Locked (trial expired + grace elapsed, or never
+        // paid) is diverted to subscription.php first, as before.
+        $s = Subscription::state((int) $user_id);
+        $trialFinalDay = !empty($s['trial']) && $s['state'] === 'active' && $s['days_left'] === 0;
+        $page = ($s['state'] === 'locked' || $trialFinalDay) ? 'subscription.php' : 'dashboard.php';
         return $from_admin_dir ? $page : 'admin/' . $page;
     }
     return $from_admin_dir ? 'client.php' : 'admin/client.php';

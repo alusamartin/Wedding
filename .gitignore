@@ -1,6 +1,9 @@
 # Agent / tooling metadata
 .freebuff/
 
+# Secrets — never commit real credentials
+.env
+
 # Dependencies
 /vendor/
 
