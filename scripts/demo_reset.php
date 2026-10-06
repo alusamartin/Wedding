@@ -12,6 +12,10 @@ declare(strict_types=1);
  *        kenyan_schema.sql                                 (KSh + Kenyan columns)
  *        DATABASE FILE/seed_v2.1_full_test_KENYA_ONLY.sql  (Kenyan seed)
  *        migrations/v2.1_phase1_hardening.sql              (idempotent helpers)
+ *        migrations/v2.2_subscription_renewals.sql         (renewal columns)
+ *        migrations/v2.3_planner_trial.sql                 (trial ENUM + bcrypt width)
+ *        migrations/v2.4_signup_abuse_guard.sql            (signup throttle + verification)
+ *        migrations/v2.5_trial_nurture.sql                 (trial nurture band marker)
  *   3. Runs the date-shift logic (same rules as scripts/shift_seed_dates.php):
  *      every seed booking moves forward in whole 52-week steps until future,
  *      payments rebase to wedding-30d, calendar widget recomputed. Booking
@@ -46,6 +50,10 @@ $files = [
     __DIR__ . '/../kenyan_schema.sql',
     __DIR__ . '/../DATABASE FILE/seed_v2.1_full_test_KENYA_ONLY.sql',
     __DIR__ . '/../migrations/v2.1_phase1_hardening.sql',
+    __DIR__ . '/../migrations/v2.2_subscription_renewals.sql',
+    __DIR__ . '/../migrations/v2.3_planner_trial.sql',
+    __DIR__ . '/../migrations/v2.4_signup_abuse_guard.sql',
+    __DIR__ . '/../migrations/v2.5_trial_nurture.sql',
 ];
 foreach ($files as $f) {
     if (!is_file($f)) {
