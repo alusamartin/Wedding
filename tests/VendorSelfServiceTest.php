@@ -298,17 +298,22 @@ final class VendorSelfServiceTest extends TestCase
         $this->requireHttp();
 
         // Staff are bounced OFF vendor pages — vendor pages are vendor-scoped.
+        // The bounce body must be EMPTY: redirect_to() terminates execution, so
+        // gated pages never leak their HTML into the redirect response (the
+        // pre-audit bug: the full admin page rode along in the 302 body).
         self::login(self::STAFF_EMAIL, self::STAFF_PASS);
         foreach (['vendor_home.php', 'vendor_profile.php', 'vendor_packages.php'] as $page) {
             $res = self::http('GET', '/admin/' . $page);
             self::assertSame(302, $res['status'], "staff must bounce off {$page}");
             self::assertStringStartsWith('../', $res['location'] ?? '', "staff bounce from {$page} must stay on-site");
+            self::assertSame('', trim($res['body']), "gated page {$page} must not leak HTML in the redirect body");
         }
 
         // Anonymous bounce.
         self::$jar = [];
         $res = self::http('GET', '/admin/vendor_home.php');
         self::assertSame(302, $res['status'], 'anonymous visitors must bounce off vendor pages');
+        self::assertSame('', trim($res['body']), 'anonymous bounce must not leak HTML in the redirect body');
 
         // Client (tblaccounts) bounce.
         self::login(self::CLIENT_EMAIL, self::CLIENT_PASS);

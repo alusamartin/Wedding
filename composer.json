@@ -32,6 +32,11 @@
         "test": "phpunit --testdox",
         "migrate:db-compat": "php scripts/migrate_mysqli_to_pdo.php",
         "lint": "@php scripts/lint.php admin",
+        "code-audit": [
+            "@php scripts/audit_db_object.php",
+            "@php scripts/audit_static_calls.php",
+            "@php scripts/audit_sql_columns.php"
+        ],
         "smoke": "@php scripts/smoke.php",
         "demo:reset": "@php scripts/demo_reset.php --yes"
     },
