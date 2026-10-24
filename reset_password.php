@@ -53,7 +53,7 @@ if (isset($_POST['reset'])) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Choose a New Password - Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/modern.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@700&display=swap" rel="stylesheet">
     <link href="css/signin.css" rel="stylesheet">
@@ -117,7 +117,7 @@ if (isset($_POST['reset'])) {
     <?php endif; ?>
     <p class="mt-4 mb-0 text-muted">&copy; <?= date('Y'); ?> Everafter Planner</p>
 </div>
-<script src="js/jquery.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
+<script src="js/jquery-3.7.1.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
 </body>
 </html>

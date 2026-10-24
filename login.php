@@ -22,8 +22,10 @@
          redirect_to("login.php");
          die();
      }
-     $input_email = clean($_POST['input_email']);
-     $input_password= clean($_POST['input_password']);
+     // Guarded: a POST bearing a valid CSRF token but omitting the fields (a
+     // malformed client, a scanner) must not emit "Undefined array key".
+     $input_email = clean($_POST['input_email'] ?? '');
+     $input_password = clean($_POST['input_password'] ?? '');
 
      // Built-in brute-force throttle (tbllogin_throttle): too many failed
      // sign-ins for this (email, IP) pair — or from this IP overall — short-
@@ -145,7 +147,7 @@ if ($session->is_signed_in() && isset($_SESSION['id'])) {
     <title>Login Your Account</title>
 
     <!-- Bootstrap core CSS -->
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/modern.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@700&display=swap" rel="stylesheet">
@@ -288,13 +290,13 @@ if ($session->is_signed_in() && isset($_SESSION['id'])) {
         <i class="mdi mdi-login-variant mr-1"></i> Login
     </button>
     <p class="mt-3 mb-0" style="font-size:13px;"><a href="forgot_password.php">Forgot your password?</a></p>
-    <p class="mt-3 mb-0" style="font-size:13px;">Are you a <strong>wedding planner</strong>? <a href="planner_register.php">Start your 14-day free trial &rarr;</a></p>
+    <p class="mt-3 mb-0" style="font-size:13px;">Are you a <strong>wedding planner</strong>? <a href="planner_register.php">Start your 6-month free trial &rarr;</a></p>
     <p class="mt-4 mb-0 text-muted">&copy; <?php echo date('Y')?> Everafter Planner</p>
 </form>
-<script src="js/jquery-3.2.1.slim.min.js"></script>
-<script src="js/jquery.min.js"></script>
+<script src="js/jquery-3.7.1.slim.min.js"></script>
+<script src="js/jquery-3.7.1.min.js"></script>
 <script src="js/popper.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
 <script>
     $('.your-checkbox').prop('indeterminate', true);
 </script>

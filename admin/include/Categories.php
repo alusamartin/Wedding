@@ -119,7 +119,7 @@ class Category extends DB_Object
     public static function get_kenyan_packages() {
         global $db;
         $sql = "SELECT * FROM tblweddingcategories WHERE id >= 6 ORDER BY price ASC";
-        $result = $db->query($sql);
+        $result = $db->execute($sql);
         $the_object_array = array();
         while($row = $result->fetch(PDO::FETCH_ASSOC)) {
             $the_object_array[] = static::instantiation($row);

@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+# The suite is a database application's suite: it needs a real MySQL, a real
+# php -S child to drive the pages, and the seed data. The job below gives it all
+# three against a THROWAWAY database — never a copy of anyone's demo data — so a
+# green run means the same thing on a laptop and on the runner.
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # The floor the codebase supports AND the branches production may run.
+    # PHP 8.2 is security-only and ends 2026-12-31; 8.4/8.5 are the supported
+    # branches (php.net/supported-versions). All three are exercised so a
+    # deprecation or a removed behaviour cannot reach the host unnoticed.
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: [ '8.2', '8.4', '8.5' ]
+    name: PHP ${{ matrix.php-version }}
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+
+    env:
+      WPMS_DB_HOST: 127.0.0.1
+      WPMS_DB_USER: root
+      WPMS_DB_PASS: root
+      # Anything but the default `wpms_test` would also work; keeping it makes
+      # the isolated DB the runner's own and lets phpunit.xml's default stand.
+      WPMS_DB_NAME: wpms_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          extensions: pdo, pdo_mysql, mbstring, json, openssl, curl
+          # PCOV — fast statement coverage, no per-line overhead like Xdebug.
+          coverage: pcov
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Lint every PHP file
+        run: composer lint
+
+      - name: Build the isolated test database
+        run: composer test:db
+
+      - name: Static audits (models, SQL, promises, enums, fixtures, request reads)
+        run: composer code-audit
+
+      - name: Run the test suite
+        run: vendor/bin/phpunit --no-coverage
+
+      # Coverage only on the latest supported branch; the other jobs prove
+      # compatibility, not reports.
+      - name: Code coverage
+        if: matrix.php-version == '8.5'
+        run: composer coverage -- --clover=build/coverage/clover.xml
+
+      - name: Upload coverage report
+        if: matrix.php-version == '8.5'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-clover-php${{ matrix.php-version }}
+          path: build/coverage/clover.xml

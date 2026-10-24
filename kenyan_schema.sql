@@ -65,17 +65,30 @@ INSERT INTO `tblweddingcategories` (`wedding_type`, `price`, `preview_image`) VA
 ('Reception Package', 350000, 'default.jpg'),
 ('After-Party Celebration', 100000, 'default.jpg');
 
--- 3b. tblnotifications - planner in-app alerts (couple M-Pesa deposits etc.)
+-- 3b. tblnotifications - in-app alerts (couple M-Pesa deposits, booking
+--     confirmations, vendor briefs …), for staff AND couples
+--
+--     `user_id` is an id from ONE of two account tables, and `recipient_type`
+--     is the column that says which (migrations/v2.13_notification_recipients.sql):
+--       'user'    -> tblusers.id          staff: planners, admins, vendor leads
+--       'account' -> tblaccounts.user_id  couples
+--       'none'    -> no account behind the row (user_id 0: a bare address)
+--     Both sequences are separate auto-increments, so an id in one table can
+--     equal an id in the other; every read names the type so the two can never
+--     answer the same query.
 CREATE TABLE IF NOT EXISTS `tblnotifications` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `user_id` INT NOT NULL,
   `booking_id` INT NOT NULL DEFAULT 0,
+  `recipient_type` ENUM('user','account','none') NOT NULL
+                   COMMENT '''user'' = tblusers.id (staff/vendor) | ''account'' = tblaccounts.user_id (couple) | ''none'' = no account (user_id 0)',
   `message` VARCHAR(255) NOT NULL,
   `link` VARCHAR(255) NOT NULL DEFAULT '',
   `is_read` TINYINT(1) NOT NULL DEFAULT 0,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_user_read` (`user_id`, `is_read`),
+  KEY `idx_recipient_read` (`recipient_type`, `user_id`, `is_read`),
   KEY `idx_created` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -124,6 +137,8 @@ CREATE TABLE IF NOT EXISTS `tbl_mail_logs` (
   `notification_id` INT UNSIGNED DEFAULT NULL,
   `user_id` INT NOT NULL,
   `booking_id` INT NOT NULL DEFAULT 0,
+  `recipient_type` ENUM('user','account','none') NOT NULL
+                   COMMENT '''user'' = tblusers.id (staff/vendor) | ''account'' = tblaccounts.user_id (couple) | ''none'' = no account (user_id 0)',
   `to_email` VARCHAR(100) NOT NULL,
   `subject` VARCHAR(255) NOT NULL,
   `body` TEXT NOT NULL,
@@ -134,6 +149,7 @@ CREATE TABLE IF NOT EXISTS `tbl_mail_logs` (
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_mail_user_status` (`user_id`, `status`),
+  KEY `idx_mail_recipient` (`recipient_type`, `user_id`, `status`),
   KEY `idx_mail_notification` (`notification_id`),
   KEY `idx_mail_retry` (`status`, `attempts`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

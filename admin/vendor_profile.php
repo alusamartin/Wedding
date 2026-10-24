@@ -11,9 +11,16 @@
     require_vendor();
 
     $user_id = (int) $_SESSION['id'];
-    $vendor  = Vendor::get_by_user($user_id);
-    if ($vendor === null) {
-        redirect_to("vendor_register.php"); // not registered yet
+    /*
+     * An account may run several businesses, and get_by_user() returns only one
+     * of them — so the owner of a second listing could not edit that listing's
+     * profile at all. Edit the session's selected listing (ownership re-checked
+     * on every request and on every write below).
+     */
+    $myListings = Vendor::all_for_user($user_id);
+    $vendor  = current_vendor_listing($user_id, $myListings);
+    if (!vendor_listing_visible_to_session($vendor)) {
+        redirect_to("vendor_register.php"); // not registered yet, or not this account's
         die();
     }
 
@@ -80,8 +87,11 @@
                     if (!empty($vendor->logo)) {
                         @unlink(SITE_ROOT . DS . 'upload' . DS . 'vendors' . DS . $vendor->logo);
                     }
-                    $db->prepare('UPDATE tblvendors SET logo = :logo WHERE id = :vid')
-                       ->execute([':logo' => $name, ':vid' => (int) $vendor->id]);
+                    // Carries its own ownership clause like the profile UPDATE
+                    // above, instead of relying on $vendor having been resolved
+                    // safely one step earlier.
+                    $db->prepare('UPDATE tblvendors SET logo = :logo WHERE id = :vid AND user_id = :uid')
+                       ->execute([':logo' => $name, ':vid' => (int) $vendor->id, ':uid' => $user_id]);
                 }
             } else {
                 $session->message('<div class="alert alert-warning">Profile saved, but the logo was skipped — use a JPG/PNG/WebP image up to 3 MB.</div>');
@@ -96,7 +106,7 @@
     }
 
     // Re-read after any save so the form shows fresh values.
-    $vendor = Vendor::get_by_user($user_id);
+    $vendor = current_vendor_listing($user_id, $myListings);
 ?>
 <?php $users_profile = Users::find_by_id($user_id); ?>
 <!doctype html>
@@ -105,7 +115,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>My Vendor Profile - Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/7.4.47/css/materialdesignicons.min.css">
@@ -124,7 +134,11 @@
 
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4" style="border-bottom: 1px solid #dee2e6; padding-bottom: 15px;">
-        <h4><i class="mdi mdi-store-edit"></i> My Vendor Profile</h4>
+        <div>
+            <h4 class="mb-1"><i class="mdi mdi-store-edit"></i> My Vendor Profile</h4>
+            <p class="text-muted mb-0" style="font-size:13px;"><?= htmlspecialchars((string) $vendor->business_name); ?></p>
+            <?php vendor_listing_switcher($myListings, (int) $vendor->id, 'vendor_profile.php'); ?>
+        </div>
         <a href="vendor_home.php" class="btn btn-sm btn-outline-secondary"><i class="mdi mdi-arrow-left"></i> My Bookings</a>
     </div>
 

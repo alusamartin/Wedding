@@ -1,13 +1,25 @@
 <?php include 'include/init.php'; ?>
 <?php
-    if (!is_staff()) { redirect_to("../"); }
+    require_staff_subscribed();
 
-    $booking_id = $_GET['booking'];
-    $user_id = $_GET['user_id'];
+    $booking_id = (int) ($_GET['booking'] ?? 0);
+    $user_id    = (int) ($_GET['user_id'] ?? 0);
 
     $accounts =  Accounts::find_by_user_id($user_id);
     $account_detail =  Account_Details::find_by_user_id($user_id);
     $booking_detail =  Booking::find_by_booking_id($booking_id);
+
+    /*
+     * The form below reads straight off these two rows, so a missing one (stale
+     * link, deleted client) used to render against false and warn on every
+     * property. Bail back to the client list with a message instead.
+     */
+    if (!$account_detail || !$booking_detail) {
+        $session->message('<div class="alert alert-warning"><strong><i class="mdi mdi-alert"></i></strong> That client booking no longer exists.</div>');
+        redirect_to("client.php");
+        die();
+    }
+
     $categories = Category::find_all();
     
     if (isset($_POST['submit'])) {
@@ -21,16 +33,16 @@
 
         if ($booking_detail) {
 
-            $firstname = clean($_POST['firstname']);
-            $lastname = clean($_POST['lastname']);
-            $email = clean($_POST['email']);
-            $wedding_date = clean($_POST['wedding_date']);
-            $bride = clean($_POST['bride']);
-            $groom = clean($_POST['groom']);
-            $phone = clean($_POST['phone']);
-            $city = clean($_POST['city']);
-            $wedding_type = clean($_POST['wedding_type']);
-            $organizer_id = clean($_POST['organizer_id']);
+            $firstname = clean($_POST['firstname'] ?? '');
+            $lastname = clean($_POST['lastname'] ?? '');
+            $email = clean($_POST['email'] ?? '');
+            $wedding_date = clean($_POST['wedding_date'] ?? '');
+            $bride = clean($_POST['bride'] ?? '');
+            $groom = clean($_POST['groom'] ?? '');
+            $phone = clean($_POST['phone'] ?? '');
+            $city = clean($_POST['city'] ?? '');
+            $wedding_type = clean($_POST['wedding_type'] ?? '');
+            $organizer_id = clean($_POST['organizer_id'] ?? '');
 
             $booking_detail->bride = $bride;
             $booking_detail->groom = $groom;
@@ -70,11 +82,11 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
         <title>Edit Client Information - Administrator</title>
-        <link href="css/bootstrap.min.css" rel="stylesheet">        <link href="css/dashboard.css" rel="stylesheet">
+        <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">        <link href="css/dashboard.css" rel="stylesheet">
         <link href="css/modern-admin.css" rel="stylesheet">
         <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
         <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet">
-        <link rel="stylesheet" href="../css/bootstrap-datepicker.css">
+        <link rel="stylesheet" href="../css/bootstrap-datepicker.css?v=1.10.1">
         <style>
             body {
                 margin-bottom: 2%;
@@ -220,12 +232,12 @@
 <!-- Bootstrap core JavaScript
 ================================================== -->
 <!-- Placed at the end of the document so the pages load faster -->
-<script src="js/jquery-3.2.1.slim.min.js"></script>
+<script src="js/jquery-3.7.1.slim.min.js"></script>
 <script>window.jQuery || document.write('<script src="../../../../assets/js/vendor/jquery-slim.min.js"><\/script>')</script>
 <script src="js/popper.min.js"></script>
-<script src="../js/jquery.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
-<script src="../js/bootstrap-datepicker.min.js"></script>
+<script src="../js/jquery-3.7.1.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
+<script src="../js/bootstrap-datepicker.min.js?v=1.10.1"></script>
 <script>
     $(document).ready(function() {
         $('#wedding_date').datepicker();

@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require __DIR__ . '/cli_guard.php'; // CLI-only: refuse to run over HTTP
 
 /**
  * Cron-safe RSVP reminder dispatcher.
@@ -57,6 +58,7 @@ require_once $root . '/admin/include/Monetization.php';
 if (!class_exists('Notification', false)) {
     require_once $root . '/admin/include/Notification.php';
 }
+require_once $root . '/admin/include/JobWatch.php'; // the heartbeat this job leaves (v2.15)
 global $db;
 $db = new Database();
 
@@ -76,6 +78,9 @@ if ($due === []) {
     if (!$quiet) {
         echo "no pending guests are due a reminder "
             . "(invited {$after}d+ ago, resend={$resend}d, cap={$maxR}, grace={$grace}d)\n";
+    }
+    if (!$dryRun) {
+        JobWatch::record(JobWatch::RSVP_REMINDERS, JobWatch::OK, 0, 'no pending guests due a reminder', 0, null, 0);
     }
     flock($lock, LOCK_UN);
     fclose($lock);
@@ -155,10 +160,10 @@ foreach ($byBooking as $bookingId => $guests) {
     }
 
     // One planner notification per booking per run (in-app bell + mail
-    // outbox leg via Notification::create()) — counts real sends only.
+    // outbox leg via Notification::create_for_staff()) — counts real sends only.
     if (!$dryRun && $sentForBooking > 0 && !empty($first->organizer_id)) {
         $organizerId = (int) $first->organizer_id;
-        Notification::create(
+        Notification::create_for_staff(
             $organizerId,
             $bookingId,
             "RSVP reminders sent to {$sentForBooking} guest"
@@ -171,11 +176,33 @@ foreach ($byBooking as $bookingId => $guests) {
     }
 }
 
+$summary = 'due: ' . count($due)
+    . ", sent: {$sent}, failed: {$failed}, skipped(no phone): {$skippedNoPhone}";
 if (!$quiet) {
-    echo "due: " . count($due)
-        . ", sent: {$sent}, failed: {$failed}, skipped(no phone): {$skippedNoPhone}"
-        . ($dryRun ? " (DRY RUN — nothing written)" : '')
-        . "\n";
+    echo $summary . ($dryRun ? ' (DRY RUN — nothing written)' : '') . "\n";
+}
+
+/*
+ * The heartbeat the watchdog judges (v2.15). Only a REAL run leaves one: a dry
+ * run wrote nothing, so it must not make a silent job look alive. The queue is
+ * Guest::find_reminder_due()'s own selection — guests still pending an answer
+ * who have reached their reminder window — counted BEFORE the --limit broke the
+ * loop, so a run that stops at its cap still says how much waits behind it. A
+ * guest with no number counts as ACTED ON (the run marked the attempt so they
+ * cannot spin the cron forever), which is why it is in the items count and not
+ * in the queue. Every send failing while others were due is a failure to report,
+ * not a clean run: the process exited 0, the guests got nothing.
+ */
+if (!$dryRun) {
+    JobWatch::record(
+        JobWatch::RSVP_REMINDERS,
+        ($failed > 0 && $sent === 0) ? JobWatch::FAILED : JobWatch::OK,
+        $sent + $failed + $skippedNoPhone,
+        $summary,
+        ($failed > 0 && $sent === 0) ? 1 : 0,
+        null,
+        count($due)
+    );
 }
 
 flock($lock, LOCK_UN);

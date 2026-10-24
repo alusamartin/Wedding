@@ -1,4 +1,4 @@
-<?php include("include/init.php"); require_staff(); ?>
+<?php include("include/init.php"); require_staff_subscribed(); ?>
 
 <?php 
 
@@ -13,7 +13,7 @@ if (empty($_GET['id'])) {
     die();
 }
 
-$category = Category::find_by_id((int) $_GET['id']);
+$category = Category::find_by_id((int)($_GET['id'] ?? 0));
 
 if ($category) {
     $category->delete_photo();

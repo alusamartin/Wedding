@@ -27,7 +27,12 @@ function sheet_boot(): object
         redirect_to('client.php');
         exit;
     }
-    if (!is_staff() && (int) $booking->user_id !== (int) $_SESSION['id']) {
+    // Helper, not a hand-rolled comparison: staff may print for any wedding, a
+    // couple only for their own, and a vendor session (a tblusers row, so
+    // is_staff() is false for it) is never the couple whose tblaccounts id
+    // happens to match. The query string's user_id is deliberately NOT
+    // consulted — HeadcountBrief links the venue sheet with booking_id alone.
+    if (!booking_visible_to_session($booking)) {
         redirect_to('client.php');
         exit;
     }
@@ -46,7 +51,7 @@ function sheet_head(string $title, object $booking): void
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= htmlspecialchars($title); ?> &mdash; <?= htmlspecialchars($couple); ?> - Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@700&display=swap" rel="stylesheet">
     <style>
@@ -85,12 +90,23 @@ function sheet_head(string $title, object $booking): void
                      border-radius: 999px; font-weight: 600; font-size: 13px; padding: 8px 22px; }
         .btn-print:hover { background: var(--evergreen); color: #fff; }
         .s-meta { color: var(--muted); font-size: 12.5px; }
+        .s-num { text-align: right; font-variant-numeric: tabular-nums; }
+        /* The headcount editor on the venue sheet: on-screen only, never printed. */
+        .s-edit { border: 1.5px dashed var(--line); border-radius: 10px; padding: 12px 14px; margin: 10px 0 4px; background: #FCFCFA; }
+        .s-edit table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+        .s-edit th { text-align: left; font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase;
+                     color: var(--muted); border-bottom: 1px solid var(--line); padding: 4px 6px; }
+        .s-edit th.s-num, .s-edit td.s-num { text-align: right; }
+        .s-edit td { padding: 4px 6px; border-bottom: 1px solid #F1F5F9; }
+        .s-edit input[type=number] { width: 84px; padding: 4px 6px; border: 1px solid var(--line);
+                                     border-radius: 6px; font: inherit; text-align: right; }
+        .s-msg .alert { margin-bottom: 0; font-size: 12.5px; }
         .day-h { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700; font-size: 13.5px;
                  color: var(--ink); margin: 16px 0 4px; }
         @media print {
             body { background: #fff; padding: 0; }
             .sheet { box-shadow: none; border-radius: 0; max-width: 100%; }
-            .s-actions { display: none; }
+            .s-actions, .s-edit, .s-msg { display: none; }
             @page { size: A4; margin: 14mm 12mm; }
         }
         @media (max-width: 640px) { .s-body { padding: 18px 14px 6px; } .s-head { padding: 18px 14px 14px; } }

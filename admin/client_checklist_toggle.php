@@ -4,7 +4,9 @@
  * booking in the query string AND that booking must belong to the session
  * client (staff may toggle while assisting a couple).
  */
-include 'include/init.php';
+include 'include/init.php'; // paywall: staff need an active plan to preview any booking
+    if (staff_paywall_locked()) { redirect_to('subscription.php'); exit; }
+
 
 $booking_id = (int) ($_GET['booking_id'] ?? 0);
 $user_id    = (int) ($_GET['user_id'] ?? 0);
@@ -19,12 +21,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     die();
 }
 $booking = Booking::find_by_booking_id($booking_id);
-if (!is_staff()) {
-    if (!$booking || (int) $booking->user_id !== (int) $_SESSION['id'] || $user_id !== (int) $_SESSION['id']) {
-        redirect_to("client.php");
-        die();
-    }
-} elseif (!$booking) {
+// A couple may toggle only their own booking; staff may assist any. A missing
+// booking is refused for everyone, so the old staff-side `elseif (!$booking)`
+// bail-out is folded into the one helper.
+if (!may_open_couple_page($booking, $user_id)) {
     redirect_to("client.php");
     die();
 }

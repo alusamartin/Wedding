@@ -2,7 +2,7 @@
 <?php
 
 
-    if (!is_staff()) { redirect_to("../"); }
+    require_staff_subscribed();
 
     $users = new Users();
 
@@ -15,15 +15,26 @@
             die();
         }
 
-        $firstname   = clean($_POST['firstname']);
-        $lastname    = clean($_POST['lastname']);
-        $address     = clean($_POST['address']);
-        $email       = clean($_POST['email']);
-        $username    = clean($_POST['username']);
-        $password    = clean($_POST['password']);
-        $password2   = clean($_POST['password2']);
-        $gender      = clean($_POST['gender']);
-        $designation = clean($_POST['designation']);
+        $firstname   = clean($_POST['firstname'] ?? '');
+        $lastname    = clean($_POST['lastname'] ?? '');
+        $address     = clean($_POST['address'] ?? '');
+        $email       = clean($_POST['email'] ?? '');
+        $username    = clean($_POST['username'] ?? '');
+        $password    = clean($_POST['password'] ?? '');
+        $password2   = clean($_POST['password2'] ?? '');
+        $gender      = clean($_POST['gender'] ?? '');
+        $designation = clean($_POST['designation'] ?? '');
+        /*
+         * tblusers.access_level is `enum('0','1','2') NOT NULL` with no default,
+         * and this form had no field for it — so $users->access_level was never
+         * set and the INSERT died with "Column 'access_level' cannot be null"
+         * (HTTP 500) while the page still claimed the account was created.
+         * The role is now chosen explicitly and validated against the enum.
+         */
+        $access_level = (string) ($_POST['access_level'] ?? '1');
+        if (!in_array($access_level, ['0', '1', '2'], true)) {
+            $access_level = '1'; // planner — the safe default for a new staff row
+        }
 
          if (empty($firstname) || empty($lastname) || empty($address) || empty($email) || empty($username)) {
             $session->message("
@@ -60,17 +71,36 @@
            $users->password = password_hash($password, PASSWORD_DEFAULT);
            $users->gender = $gender;
            $users->designation = $designation;
-           $users->set_file($_FILES['profile_picture']);
-           $users->date_created = date("F j, Y, g:i a"); 
-           $users->save();
-            $session->message("
-            <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
-              <strong><i class='mdi mdi-check'></i></strong> {$users->firstname} {$users->lastname}  is successfully added.
-              <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
-                <span aria-hidden=\"true\">&times;</span>
-              </button>
-            </div>");
-            redirect_to("users.php");
+           $users->access_level = $access_level;
+           // The avatar is optional: only hand set_file() a real upload. Passing
+           // the raw $_FILES entry when nothing was chosen also emitted
+           // "Undefined array key" / aborted the insert (see Users::save()).
+           if (!empty($_FILES['profile_picture']['name'])) {
+               $users->set_file($_FILES['profile_picture']);
+           }
+           $users->date_created = date("F j, Y, g:i a");
+
+           if ($users->save()) {
+               $session->message("
+                <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
+                  <strong><i class='mdi mdi-check'></i></strong> {$users->firstname} {$users->lastname}  is successfully added.
+                  <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
+                    <span aria-hidden=\"true\">&times;</span>
+                  </button>
+                </div>");
+               redirect_to("users.php");
+           } else {
+               // Never report success for a write that did not happen.
+               $reason = !empty($users->errors) ? implode(' ', (array) $users->errors) : 'The account could not be saved.';
+               $session->message("
+                <div class=\"alert alert-danger alert-dismissible fade show\" role=\"alert\">
+                  <strong><i class='mdi mdi-alert'></i></strong> " . htmlspecialchars($reason) . "
+                  <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
+                    <span aria-hidden=\"true\">&times;</span>
+                  </button>
+                </div>");
+               redirect_to("users_add.php");
+           }
         }
     }
 ?>
@@ -81,7 +111,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Add New User - Administrator</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
@@ -169,6 +199,15 @@
                         </select>
                     </div>
 
+                    <div class="form-group">
+                        <label for="access_level">Role:</label>
+                        <select name="access_level" class="custom-select" id="access_level">
+                            <option value="1" selected>Wedding Planner (staff)</option>
+                            <option value="0">Vendor Lead (vendor sign-in)</option>
+                            <option value="2">Super Admin (operator)</option>
+                        </select>
+                    </div>
+
                 <div class="form-group">
                     <label for="inputAddress">Address</label>
                     <textarea rows="5" name="address" class="form-control" id="inputAddress"  placeholder="Enter Address"></textarea>
@@ -200,11 +239,11 @@
 <!-- Bootstrap core JavaScript
 ================================================== -->
 <!-- Placed at the end of the document so the pages load faster -->
-<script src="js/jquery-3.2.1.slim.min.js"></script>
+<script src="js/jquery-3.7.1.slim.min.js"></script>
 <script>window.jQuery || document.write('<script src="../../../../assets/js/vendor/jquery-slim.min.js"><\/script>')</script>
 <script src="js/popper.min.js"></script>
-<script src="../js/jquery.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
+<script src="../js/jquery-3.7.1.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
 <script>
 
     $(document).ready(function() {

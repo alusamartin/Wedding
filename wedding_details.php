@@ -14,7 +14,7 @@ if ($not_found):
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Story Not Found - Everafter Planner</title>
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
-    <link rel="stylesheet" href="css/bootstrap.min.css">
+    <link rel="stylesheet" href="css/bootstrap.min.css?v=4.6.2">
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/modern.css">
 </head>
@@ -53,10 +53,10 @@ endif;
     <link href="https://fonts.googleapis.com/css?family=Open+Sans|Roboto" rel="stylesheet">
     <link rel="stylesheet" type="text/css"
           href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
-    <link rel="stylesheet" href="css/bootstrap.min.css">
+    <link rel="stylesheet" href="css/bootstrap.min.css?v=4.6.2">
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/modern.css">
-    <link rel="stylesheet" href="css/bootstrap-datepicker.css">
+    <link rel="stylesheet" href="css/bootstrap-datepicker.css?v=1.10.1">
     <style>
         body {
             margin-top: 6%;
@@ -140,11 +140,11 @@ endif;
 
 <!-- Optional JavaScript -->
 <!-- jQuery first, then Popper.js, then Bootstrap JS -->
-<script src="js/jquery-3.2.1.slim.min.js"></script>
-<script src="js/jquery.min.js"></script>
+<script src="js/jquery-3.7.1.slim.min.js"></script>
+<script src="js/jquery-3.7.1.min.js"></script>
 <script src="js/popper.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
-<script src="js/bootstrap-datepicker.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
+<script src="js/bootstrap-datepicker.min.js?v=1.10.1"></script>
 
 <script>
 

@@ -331,6 +331,23 @@ final class SignupFormValidationTest extends TestCase
                     [':e' => $email]
                 );
                 if ($userId > 0) {
+                    /*
+                     * Since v2.30 the sign-up also creates the couple's
+                     * PROPOSAL, which hangs off the booking rather than the
+                     * account (its options and items cascade with it). Without
+                     * this the suite leaves an orphan proposal on a booking
+                     * that no longer exists.
+                     */
+                    $probeBooking = (int) self::$db->fetchValue(
+                        'SELECT booking_id FROM tblweddingbook WHERE user_id = :id',
+                        [':id' => $userId]
+                    );
+                    if ($probeBooking > 0) {
+                        self::$db->execute(
+                            'DELETE FROM tblproposals WHERE booking_id = :b',
+                            [':b' => $probeBooking]
+                        );
+                    }
                     foreach (['tblweddingbook' => 'user_id', 'tblaccounts_detail' => 'user_id', 'tblaccounts' => 'user_id'] as $table => $col) {
                         self::$db->execute('DELETE FROM ' . $table . ' WHERE ' . $col . ' = :id', [':id' => $userId]);
                     }

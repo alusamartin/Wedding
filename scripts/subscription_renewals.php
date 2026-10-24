@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require __DIR__ . '/cli_guard.php'; // CLI-only: refuse to run over HTTP
 
 /**
  * Cron-safe subscription auto-renewal + SMS dunning + trial nurture.
@@ -37,8 +38,8 @@ declare(strict_types=1);
  * LEG 3 — TRIAL NURTURE (WPMS_TRIAL_NURTURE=1)
  *   Newest-row-per-user, trial rows only (converted planners never appear —
  *   their newest row is paid):
- *     - check-in email at the halfway point of the trial (7 days left for
- *       the default 14-day trial), with getting-started tips,
+ *     - check-in email at the halfway point of the trial (90 days left for
+ *       the default six-month trial), with getting-started tips,
  *     - last-call email 1 day before expiry.
  *   Emails ride the shared tbl_mail_logs outbox (pending/retryable when
  *   WPMS_MAIL_ENABLED is off); the band marker trial_nurture_band is
@@ -69,6 +70,7 @@ require_once $root . '/admin/include/SignupGuard.php';
 if (!class_exists('Notification', false)) {
     require_once $root . '/admin/include/Notification.php';
 }
+require_once $root . '/admin/include/JobWatch.php'; // the heartbeat this job leaves (v2.15)
 global $db;
 $db = new Database();
 
@@ -87,6 +89,19 @@ $graceEnabled = Subscription::grace_enabled();
 $nurtureEnabled = Subscription::trial_nurture_enabled();
 $renewWindow  = max(1, (int) (getenv('WPMS_SUB_RENEW_DAYS') ?: 3));
 
+/*
+ * WHAT EACH LEG HAD IN ITS WINDOW (v2.15) — the queue the heartbeat reports.
+ * Counted from the leg's OWN selection, at the point the run commits to acting,
+ * and BEFORE the --limit can break the loop, so a run that stops at its cap still
+ * says how much waits behind it. A leg that is switched off contributes nothing:
+ * the job cannot be idle over work it is not configured to do, and an
+ * already-texted band or a promised renewal is not waiting either (which is why
+ * the dunning and nurture counts happen after the marker checks below).
+ */
+$renewDue = 0;
+$dunningDue = 0;
+$nurtureDue = 0;
+
 // ------------------------------------------------------------------
 // LEG 1 — auto-renew STK prompts
 // ------------------------------------------------------------------
@@ -103,7 +118,9 @@ if ($renewEnabled && !MpesaStk::enabled()) {
 }
 
 if ($renewEnabled && MpesaStk::enabled() && !$dryRun) {
-    foreach (Subscription::auto_renew_candidates($renewWindow) as $row) {
+    $candidates = Subscription::auto_renew_candidates($renewWindow);
+    $renewDue   = count($candidates); // every candidate is a renewal owed today
+    foreach ($candidates as $row) {
         if ($pushed + $pushFailed >= $limit) {
             break; // defer the rest to the next run
         }
@@ -112,7 +129,7 @@ if ($renewEnabled && MpesaStk::enabled() && !$dryRun) {
         $phone = Subscription::staff_phone($uid);
         if ($phone === '') {
             $pushSkippedNoPhone++;
-            Notification::create(
+            Notification::create_for_staff(
                 $uid,
                 0,
                 'Auto-renewal could not run: no M-Pesa number on file. '
@@ -145,7 +162,7 @@ if ($renewEnabled && MpesaStk::enabled() && !$dryRun) {
                 [':i' => (int) $clone->id]
             );
             $pushFailed++;
-            Notification::create(
+            Notification::create_for_staff(
                 $uid,
                 0,
                 'Auto-renewal prompt failed: ' . (string) ($init['error'] ?? 'unknown error')
@@ -179,8 +196,22 @@ $bands = [7, 3, 0];
 $texted = 0;
 $textFailed = 0;
 
+/*
+ * The dunning queue is counted in its own pass, because the marker check sits
+ * inside the loop below (right after the state branches) and a band already
+ * texted is not waiting. One rule, stated once here and once there: a target is
+ * due when its marker has not reached the band it is in — 0 for a trial or a
+ * grace text, its days-left for an active plan.
+ */
 if ($graceEnabled) {
-    foreach (Subscription::dunning_targets($bands) as $t) {
+    $targets = Subscription::dunning_targets($bands);
+    foreach ($targets as $t) {
+        $dueBand = $t['state'] === 'active' ? (int) $t['days_left'] : 0;
+        if (Subscription::sent_band($t['sub']) > $dueBand) {
+            $dunningDue++;
+        }
+    }
+    foreach ($targets as $t) {
         if ($texted + $textFailed >= $limit) {
             break;
         }
@@ -247,7 +278,7 @@ if ($graceEnabled) {
         $r = SMS::send($phone, $text, $uid, 0);
         if (!empty($r['success'])) {
             $texted++;
-            Notification::create($uid, 0, $bell, 'subscription.php', 'Subscription ' . $lbl);
+            Notification::create_for_staff($uid, 0, $bell, 'subscription.php', 'Subscription ' . $lbl);
             if (!$quiet) {
                 echo "texted user {$uid} ({$plan}) | {$t['state']}\n";
             }
@@ -267,7 +298,14 @@ $nurtured = 0;
 $nurtureFailed = 0;
 
 if ($nurtureEnabled) {
-    foreach (Subscription::trial_nurture_targets() as $t) {
+    $nurtureTargets = Subscription::trial_nurture_targets();
+    foreach ($nurtureTargets as $t) {
+        // Same rule as the loop's own marker check: an emailed band is done.
+        if (Subscription::sent_nurture_band($t['sub']) > (int) $t['band']) {
+            $nurtureDue++;
+        }
+    }
+    foreach ($nurtureTargets as $t) {
         if ($nurtured + $nurtureFailed >= $limit) {
             break;
         }
@@ -303,7 +341,7 @@ if ($nurtureEnabled) {
                 $endDate
             );
             $nurtured++;
-            Notification::create(
+            Notification::create_for_staff(
                 $uid,
                 0,
                 $band <= 1
@@ -327,16 +365,43 @@ if ($nurtureEnabled) {
 // ------------------------------------------------------------------
 // Summary
 // ------------------------------------------------------------------
+$summary = 'auto-renew: ' . ($renewEnabled ? 'on' : 'off')
+    . ', prompts: ' . $pushed . ', failed: ' . $pushFailed
+    . ', no-phone: ' . $pushSkippedNoPhone
+    . ' | dunning: ' . ($graceEnabled ? 'on' : 'off')
+    . ', texted: ' . $texted . ', failed: ' . $textFailed
+    . ' | nurture: ' . ($nurtureEnabled ? 'on' : 'off')
+    . ', emailed: ' . $nurtured . ', failed: ' . $nurtureFailed
+    . ' | queued: ' . ($renewDue + $dunningDue + $nurtureDue)
+    . ($dryRun ? ' (DRY RUN — nothing written)' : '');
 if (!$quiet) {
-    echo 'auto-renew: ' . ($renewEnabled ? 'on' : 'off')
-        . ', prompts: ' . $pushed . ', failed: ' . $pushFailed
-        . ', no-phone: ' . $pushSkippedNoPhone
-        . ' | dunning: ' . ($graceEnabled ? 'on' : 'off')
-        . ', texted: ' . $texted . ', failed: ' . $textFailed
-        . ' | nurture: ' . ($nurtureEnabled ? 'on' : 'off')
-        . ', emailed: ' . $nurtured . ', failed: ' . $nurtureFailed
-        . ($dryRun ? ' (DRY RUN — nothing written)' : '')
-        . "\n";
+    echo $summary . "\n";
+}
+
+/*
+ * The heartbeat the watchdog judges (v2.15). Only a REAL run leaves one: a
+ * dry run wrote nothing, so it must not make a silent job look alive. The
+ * count is what the three legs actually did (prompts sent, texts sent,
+ * emails queued); the watchdog compares it against the queues those legs
+ * select from, so 'ok' with nothing done while planners wait is the finding.
+ * With every leg switched off there is nothing this job is allowed to do,
+ * and it says so ('noop') rather than looking idle.
+ */
+if (!$dryRun) {
+    $legsOn = $renewEnabled || $graceEnabled || $nurtureEnabled;
+    JobWatch::record(
+        JobWatch::RENEWALS,
+        $legsOn ? JobWatch::OK : JobWatch::NOOP,
+        // Actions taken, not just successes: a prompt that failed, a planner
+        // warned that they have no M-Pesa number, a text that bounced — every
+        // one of them is the run having done something about the queue.
+        $pushed + $pushFailed + $pushSkippedNoPhone + $texted + $textFailed + $nurtured + $nurtureFailed,
+        $summary,
+        0,
+        null,
+        // And what that window held, before the limit broke any loop.
+        $renewDue + $dunningDue + $nurtureDue
+    );
 }
 
 flock($lock, LOCK_UN);

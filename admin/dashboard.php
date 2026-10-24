@@ -3,12 +3,16 @@
      require_staff_subscribed();
 
     $user_count =  Account_Details::count_user();
-    $booking_count =  Booking::count_booking();
+    // The weddings THIS planner is scoped to — a count of every booking on the
+    // platform would tell a planner how much business their colleagues hold,
+    // which is exactly what per-planner scoping exists to stop. Super admins
+    // and installs with scoping off get the platform-wide number as before.
+    $booking_count =  Booking::count_booking(planner_scope_sql());
     $gallery_count =  Gallery::count_all();
     $event_post =  EventWedding::count_all();
     // Unread alerts for THIS staff user — surfaces deposits recorded by
     // couples while the planner was away. Links to the full archive.
-    $notif_unread = Notification::unread_count((int) $_SESSION['id']);
+    $notif_unread = Notification::unread_count(Notification::FOR_USER, (int) $_SESSION['id']);
 ?>
 <?php
 $users_profile = Users::find_by_id($_SESSION['id']);
@@ -32,11 +36,11 @@ if ((int) ($users_profile->access_level ?? 0) === 2) {
     <title>Dashboard - Administrator</title>
 
     <!-- Bootstrap core CSS -->
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
 
     <!-- Custom styles for this template -->
     <link href="css/dashboard.css" rel="stylesheet">
-    <link href="css/dataTables.bootstrap4.min.css" rel="stylesheet">
+    <link href="css/dataTables.bootstrap4.min.css?v=1.13.11" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" href="css/font-awesome.min.css">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/7.4.47/css/materialdesignicons.min.css">

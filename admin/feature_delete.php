@@ -1,4 +1,4 @@
-<?php include("include/init.php"); require_staff(); ?>
+<?php include("include/init.php"); require_staff_subscribed(); ?>
 
 <?php 
 
@@ -13,7 +13,7 @@ if (empty($_GET['id'])) {
     die();
 }
 
-$id = (int) $_GET['id'];
+$id = (int)($_GET['id'] ?? 0);
 $features = Features::find_by_feature_id($id);
 
 if ($features) {

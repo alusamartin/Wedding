@@ -1,12 +1,22 @@
-<?php include 'include/init.php'; ?>
+<?php include 'include/init.php'; if (staff_paywall_locked()) { redirect_to('subscription.php'); exit; } ?>
 <?php
     if (!isset($_SESSION['id'])) {
         redirect_to("../");
     }
 
+    /*
+     * Staff see every booking; a couple sees only their own. A VENDOR is
+     * neither — is_staff() is false for access_level 0, so they used to fall
+     * straight through into the client branch and be served the entire
+     * planner back office (sidebar and all). Send them to their own home.
+     */
+    if (is_vendor()) {
+        redirect_to("vendor_home.php");
+    }
+
     // Handle status filter
-    $status_filter = isset($_GET['status']) ? clean($_GET['status']) : 'all';
-    $search = isset($_GET['search']) ? clean($_GET['search']) : '';
+    $status_filter = isset($_GET['status']) ? clean($_GET['status'] ?? '') : 'all';
+    $search = isset($_GET['search']) ? clean($_GET['search'] ?? '') : '';
 
     // Get bookings — staff see all; a client session is scoped to their own account
     $is_staff_view = is_staff();
@@ -14,6 +24,21 @@
     if ($is_staff_view) {
         $pending = Booking::getBooking();
         $confirmed = Booking::ConfirmedBooking();
+
+        /*
+         * Per-planner scoping, applied with the SAME predicate every page and
+         * every endpoint uses — so a booking this planner cannot open is not
+         * listed here either, and the counts below (pending, confirmed, guests,
+         * budget) are the planner's own book of business. `Booking::getBooking()`
+         * and `ConfirmedBooking()` stay unscoped on purpose: they are also the
+         * model's record of the platform, and a model that silently filtered by
+         * whoever happened to be signed in would be a trap for the scripts and
+         * the tests that legitimately want every row.
+         */
+        if (planner_scope_planner_id() > 0) {
+            $pending   = array_values(array_filter($pending, 'booking_visible_to_session'));
+            $confirmed = array_values(array_filter($confirmed, 'booking_visible_to_session'));
+        }
     } else {
         $pending = Booking::getBookingForUser($current_user_id);
         $confirmed = Booking::ConfirmedBookingForUser($current_user_id);
@@ -33,6 +58,75 @@
     foreach ($confirmed as $b) {
         $total_guests += Guest::count_guest($b->booking_id);
         $total_budget += Liquidation::getTotalAmount($b->booking_id);
+    }
+
+    /*
+     * THE VENDOR TILE (couple's own view only).
+     *
+     * "Who is doing our wedding, and what is left to spend on them?" is the
+     * question a couple opens the dashboard with, and until now the answer was
+     * two clicks away on the vendor plan. VendorPlan::build() is a VIEW over the
+     * deals that already exist, so this tile can never disagree with that page or
+     * with the vendor's ledger — and it writes nothing.
+     *
+     * The budget is the couple's own vendor budget: the caps they set per category
+     * on Taste & Budget. Before they have set any, the package they bought is the
+     * only figure that means "the budget"; with neither, the tile says so rather
+     * than comparing money with nothing. Staff do not get this tile — their
+     * dashboard lists every wedding, so one vendor figure would mix couples up.
+     */
+    $vendor_total  = 0.0;
+    $vendor_caps   = 0.0;
+    $vendor_deals  = 0;
+    $vendor_link   = '';
+    $vendor_tile   = false;
+    $tile_class    = $is_staff_view ? 'col-md-3' : 'col-md-6 col-lg';
+    if (!$is_staff_view) {
+        foreach ($all_bookings as $plan_booking) {
+            $plan_totals   = VendorPlan::build((int) $plan_booking->booking_id)['totals'];
+            $vendor_total += (float) $plan_totals['total'];
+            $vendor_caps  += (float) $plan_totals['caps'];
+            $vendor_deals += (int) $plan_totals['deals'];
+            if ($vendor_link === '') {
+                $vendor_link = 'client_vendor_plan.php?booking_id=' . (int) $plan_booking->booking_id
+                    . '&user_id=' . (int) $plan_booking->user_id;
+            }
+        }
+        if ($vendor_caps <= 0.0) {
+            $primary = $confirmed[0] ?? ($pending[0] ?? null);
+            if ($primary !== null) {
+                $primary_package = Category::find_by_id((int) ($primary->wedding_type ?? 0));
+                $vendor_caps     = (float) ($primary_package->price ?? 0);
+            }
+        }
+        $vendor_tile = true;
+    }
+
+    /*
+     * THE PLANNING TILE (couple's own view only).
+     *
+     * "Am I on track?" is what the checklist answers one item at a time; until
+     * now the answer was a click away. Checklist::progress() is the SAME
+     * calculation the checklist page renders, so the bar here and the
+     * percentage there cannot disagree — and it only READS, so opening the
+     * dashboard can never seed, tick or reset anything.
+     *
+     * A couple with no checklist yet (a wedding that predates v2.30, or one
+     * still pending) gets an invitation to start one rather than a 0% bar,
+     * which would read like work they had already missed.
+     */
+    $plan_progress  = null;
+    $checklist_link = '';
+    if (!$is_staff_view) {
+        $plan_booking = $confirmed[0] ?? ($pending[0] ?? ($all_bookings[0] ?? null));
+        if ($plan_booking !== null) {
+            $plan_progress = Checklist::progress(
+                (int) $plan_booking->booking_id,
+                (string) ($plan_booking->wedding_date ?? '')
+            );
+            $checklist_link = 'client_checklist.php?booking_id=' . (int) $plan_booking->booking_id
+                . '&user_id=' . (int) $plan_booking->user_id;
+        }
     }
 
     // Helper function for booking row output
@@ -156,10 +250,10 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Bookings - Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
-    <link href="css/dataTables.bootstrap4.min.css" rel="stylesheet">
+    <link href="css/dataTables.bootstrap4.min.css?v=1.13.11" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
     <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet">
     <style>
@@ -174,9 +268,9 @@
             transition: transform 0.2s;
         }
         .stat-card:hover { transform: translateY(-2px); }
-        .stat-card.success { border-left-color: #059669; }
-        .stat-card.info { border-left-color: #0EA5A0; }
-        .stat-card.warning { border-left-color: #D97706; }
+        .stat-card.success { border-left-color: var(--success); }
+        .stat-card.info { border-left-color: var(--info); }
+        .stat-card.warning { border-left-color: var(--warning); }
         .stat-card h6 {
             font-size: 11px;
             text-transform: uppercase;
@@ -369,35 +463,102 @@
 
     <!-- Statistics Cards -->
     <div class="row mb-4">
-        <div class="col-md-3">
+        <div class="<?= $tile_class; ?>">
             <div class="stat-card">
                 <h6><i class="mdi mdi-clock-outline"></i> Pending</h6>
                 <div class="value"><?= $total_pending; ?></div>
                 <div class="trend"><?= $is_staff_view ? 'Awaiting assignment' : 'Awaiting confirmation'; ?></div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="<?= $tile_class; ?>">
             <div class="stat-card success">
                 <h6><i class="mdi mdi-check-circle"></i> Confirmed</h6>
                 <div class="value"><?= $total_confirmed; ?></div>
                 <div class="trend"><?= $is_staff_view ? 'Active weddings' : 'Your confirmed booking'; ?></div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="<?= $tile_class; ?>">
             <div class="stat-card info">
                 <h6><i class="mdi mdi-account-multiple"></i> <?= $is_staff_view ? 'Total Guests' : 'My Guests'; ?></h6>
                 <div class="value"><?= number_format($total_guests); ?></div>
                 <div class="trend"><?= $is_staff_view ? 'Across all weddings' : 'On your confirmed booking'; ?></div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="<?= $tile_class; ?>">
             <div class="stat-card warning">
                 <h6><i class="mdi mdi-cash-multiple"></i> <?= $is_staff_view ? 'Revenue Collected' : 'Amount Paid'; ?></h6>
                 <div class="value"><?= format_ksh($total_budget); ?></div>
                 <div class="trend"><?= $is_staff_view ? 'Total payments received' : 'Payments received on your booking'; ?></div>
             </div>
         </div>
+        <?php if ($vendor_tile): ?>
+            <?php
+            // Over budget is the one figure here a couple must not have to work
+            // out: it is stated in words, in red, and the tile opens the plan so
+            // the category that caused it is one click away.
+            $vendor_over = $vendor_caps > 0 && $vendor_total > $vendor_caps;
+            ?>
+            <div class="<?= $tile_class; ?>">
+                <div class="stat-card" style="border-left-color:var(--info);">
+                    <h6><i class="mdi mdi-store"></i> Vendor Costs</h6>
+                    <div class="value"><?= format_ksh($vendor_total); ?></div>
+                    <div class="trend" style="color:<?= $vendor_over ? '#B91C1C' : ($vendor_caps > 0 ? '#059669' : '#6B7280'); ?>;">
+                        <?php if ($vendor_deals === 0 && $vendor_total <= 0): ?>
+                            <?php /* Nothing chosen yet: a "left of" sentence here would read like progress that has not happened. */ ?>
+                            No vendors planned yet
+                        <?php elseif ($vendor_over): ?>
+                            <i class="mdi mdi-alert"></i> <?= format_ksh($vendor_total - $vendor_caps); ?> over your budget
+                        <?php elseif ($vendor_caps > 0): ?>
+                            <?= format_ksh($vendor_caps - $vendor_total); ?> left of <?= format_ksh($vendor_caps); ?>
+                        <?php else: ?>
+                            No budget set yet
+                        <?php endif; ?>
+                    </div>
+                    <?php if ($vendor_link !== ''): ?>
+                        <a href="<?= htmlspecialchars($vendor_link); ?>" style="font-size:11px; font-weight:600; color:#0E7490;">
+                            <?= $vendor_deals > 0 ? 'See who is booked' : 'Plan your vendors'; ?> <i class="mdi mdi-arrow-right"></i>
+                        </a>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php endif; ?>
     </div>
+
+    <!-- Planning progress (couple's own view): the same numbers as the checklist page -->
+    <?php if ($plan_progress !== null): ?>
+    <div class="card mb-4" style="border-radius:12px; border:1px solid #E2E8F0; box-shadow:0 1px 3px rgba(0,0,0,.06);">
+        <div class="card-body" style="padding:16px 20px;">
+            <div class="d-flex justify-content-between align-items-center flex-wrap" style="gap:10px;">
+                <div>
+                    <h6 style="margin:0; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:#64748B;">
+                        <i class="mdi mdi-checkbox-marked-outline" style="color:#065F46;"></i> Planning progress
+                    </h6>
+                    <div style="font-size:13px; color:#0F172A; margin-top:3px;">
+                        <?php if (!$plan_progress['seeded']): ?>
+                            Your checklist has not been started yet — the Kenyan milestone plan takes two minutes to open.
+                        <?php else: ?>
+                            <strong><?= (int) $plan_progress['done']; ?> of <?= (int) $plan_progress['total']; ?></strong> milestones done<?php if ((int) $plan_progress['overdue'] > 0): ?>
+                                &middot; <span style="color:#B91C1C; font-weight:700;"><?= (int) $plan_progress['overdue']; ?> overdue</span><?php endif; ?>
+                            <?php if ($plan_progress['next'] !== null): ?>
+                                <?php $next_title = (string) $plan_progress['next']->title; ?>
+                                &middot; up next: <?= htmlspecialchars(mb_substr($next_title, 0, 60)); ?><?= mb_strlen($next_title) > 60 ? '…' : ''; ?>
+                            <?php else: ?>
+                                &middot; everything ticked 🎉
+                            <?php endif; ?>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center" style="gap:12px;">
+                    <strong style="font-size:20px; color:#065F46;"><?= (int) $plan_progress['pct']; ?>%</strong>
+                    <a href="<?= htmlspecialchars($checklist_link); ?>" class="btn btn-sm btn-outline-success">
+                        <?= $plan_progress['seeded'] ? 'Open checklist' : 'Start checklist'; ?> <i class="mdi mdi-arrow-right"></i>
+                    </a>
+                </div>
+            </div>
+            <div class="pay-bar" style="height:10px; margin-top:10px;"><div class="pay-fill" style="width:<?= (int) $plan_progress['pct']; ?>%;"></div></div>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <!-- Filter Bar -->
     <div class="filter-bar">
@@ -634,11 +795,11 @@
 </div>
 </div>
 
-<script src="js/jquery-3.2.1.slim.min.js"></script>
+<script src="js/jquery-3.7.1.slim.min.js"></script>
 <script src="js/popper.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
-<script src="js/jquery.dataTables.min.js"></script>
-<script src="js/dataTables.bootstrap4.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
+<script src="js/jquery.dataTables.min.js?v=1.13.11"></script>
+<script src="js/dataTables.bootstrap4.min.js?v=1.13.11"></script>
 <script>
     $(document).ready(function() {
         // Initialize DataTables

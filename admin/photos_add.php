@@ -2,7 +2,7 @@
 <?php
 
 
-    if (!is_staff()) { redirect_to("../"); }
+    require_staff_subscribed();
     $gallery = new Gallery();
     $booking = Booking::find_booking_all();
     if (isset($_POST['submit']) || isset($_FILES['file'])) {
@@ -14,10 +14,10 @@
             die();
         }
 
-        $gallery->title = clean($_POST['title']);
-        $gallery->caption = clean($_POST['caption']);
-        $gallery->alternate_text = clean($_POST['alternate_text']);
-        $gallery->description = clean($_POST['description']);
+        $gallery->title = clean($_POST['title'] ?? '');
+        $gallery->caption = clean($_POST['caption'] ?? '');
+        $gallery->alternate_text = clean($_POST['alternate_text'] ?? '');
+        $gallery->description = clean($_POST['description'] ?? '');
         $gallery->booking_id = (int)($_POST['booking_id'] ?? 0);
         $gallery->set_file($_FILES['file'] ?? null);
        
@@ -35,7 +35,7 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
         <title>Upload Photos - Administrator</title>
-        <link href="css/bootstrap.min.css" rel="stylesheet">        <link href="css/dashboard.css" rel="stylesheet">
+        <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">        <link href="css/dashboard.css" rel="stylesheet">
         <link href="css/modern-admin.css" rel="stylesheet">
         <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
         <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet">

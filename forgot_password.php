@@ -17,7 +17,9 @@ if (isset($_POST['forgot'])) {
     $token = $email !== '' ? PasswordReset::issue($email) : null;
 
     if ($token !== null) {
-        // Resolve the first name for a warm greeting (best effort).
+        // Resolve the first name for a warm greeting (best effort). The token
+        // may belong to a couple (tblaccounts_detail) or to a staff member
+        // (tblusers) — tried in the same order PasswordReset resolved it.
         $first = '';
         $stmt  = $GLOBALS['db']->prepare(
             'SELECT d.firstname FROM tblaccounts a JOIN tblaccounts_detail d ON d.user_id = a.user_id '
@@ -25,6 +27,14 @@ if (isset($_POST['forgot'])) {
         );
         $stmt->execute([':e' => $email]);
         $first = (string) $stmt->fetchColumn();
+
+        if ($first === '') {
+            $stmt = $GLOBALS['db']->prepare(
+                'SELECT firstname FROM tblusers WHERE LOWER(email) = :e LIMIT 1'
+            );
+            $stmt->execute([':e' => $email]);
+            $first = (string) $stmt->fetchColumn();
+        }
 
         PasswordReset::deliver($email, $first, $token);
     }
@@ -40,7 +50,7 @@ if (isset($_POST['forgot'])) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Reset Password - Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/modern.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@700&display=swap" rel="stylesheet">
     <link href="css/signin.css" rel="stylesheet">
@@ -98,7 +108,7 @@ if (isset($_POST['forgot'])) {
     <?php endif; ?>
     <p class="mt-4 mb-0 text-muted">&copy; <?= date('Y'); ?> Everafter Planner</p>
 </div>
-<script src="js/jquery.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
+<script src="js/jquery-3.7.1.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
 </body>
 </html>

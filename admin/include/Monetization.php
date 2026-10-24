@@ -69,11 +69,19 @@ class Subscription extends DB_Object
         ]);
     }
 
-    /** Trial length in days (env: WPMS_TRIAL_DAYS, default 14). */
+    /**
+     * Trial length in days (env: WPMS_TRIAL_DAYS, default 180 = six months).
+     *
+     * Six months is deliberate: a Kenyan planner evaluating Everafter has to
+     * run a real wedding through it — take enquiries, send RSVPs, settle an
+     * M-Pesa payment — and a fortnight is not enough of a wedding season to
+     * judge that. The nurture bands below derive from this number, so raising
+     * or lowering it moves the check-in emails with it.
+     */
     public static function trial_days(): int
     {
         $d = filter_var(getenv('WPMS_TRIAL_DAYS'), FILTER_VALIDATE_INT);
-        return ($d === false || $d < 1) ? 14 : $d;
+        return ($d === false || $d < 1) ? 180 : $d;
     }
 
     /**
@@ -105,7 +113,7 @@ class Subscription extends DB_Object
     }
 
     /**
-     * Activation for the self-serve funnel: open the 14-day trial for an
+     * Activation for the self-serve funnel: open the six-month trial for an
      * account whose mailbox has just been proven (SignupGuard::verify). The
      * one choke point so the verify page and tests can never drift apart.
      *
@@ -514,8 +522,9 @@ class Subscription extends DB_Object
      * Trial nurture-email targets (cron LEG 3): the newest row per user,
      * trial-status rows only, each matched against the nurture bands —
      * [check-in, last-call] in days-left. Defaults follow the trial length:
-     * halfway point and the day before expiry (7 and 1 for WPMS_TRIAL_DAYS
-     * = 14). Converted planners cannot appear: their newest row is paid.
+     * halfway point and the day before expiry (90 and 1 for the default
+     * WPMS_TRIAL_DAYS = 180). Converted planners cannot appear: their newest
+     * row is paid.
      *
      * @param array<int,int>|null $bands override; null = derive from trial length
      * @return array<array{sub:object, days_left:int, band:int}>
@@ -618,6 +627,273 @@ class Subscription extends DB_Object
         $sql = "SELECT * FROM tblsubscription_plans WHERE is_active = 1 ORDER BY price ASC";
         // No user input — safe direct query
         return $db->fetchAll($sql);
+    }
+
+    /**
+     * EVERY plan definition, retired ones included — the operator's view.
+     *
+     * get_all_plans() is the shop window (is_active = 1 only). This is the
+     * workshop, where a retired plan has to stay visible so it can be revived,
+     * and where a plan that is a mistake can still be seen and turned off.
+     */
+    public static function all_plans(): array
+    {
+        global $db;
+        return $db->fetchAll('SELECT * FROM tblsubscription_plans ORDER BY is_active DESC, price ASC, id ASC');
+    }
+
+    /**
+     * A plan that is genuinely FOR SALE.
+     *
+     * Retirement has to mean something. get_plan() deliberately ignores
+     * is_active, because a plan somebody already bought must keep resolving for
+     * renewals and M-Pesa callbacks — but a PURCHASE must never be able to
+     * start on a retired plan, or retiring one would merely hide the card from
+     * the page while a crafted POST still bought it.
+     */
+    public static function get_purchasable_plan(string $plan_slug): object|false|null
+    {
+        global $db;
+        $stmt = $db->prepare('SELECT * FROM tblsubscription_plans WHERE plan_slug = :slug AND is_active = 1 LIMIT 1');
+        $stmt->execute([':slug' => $plan_slug]);
+        $row = $stmt->fetch(PDO::FETCH_OBJ);
+        return $row ?: null;
+    }
+
+    /** How many subscriptions have ever been bought on this plan key. */
+    public static function subscriber_count(string $plan_slug): int
+    {
+        global $db;
+        return (int) $db->fetchValue(
+            'SELECT COUNT(*) FROM tblsubscriptions WHERE plan = :slug',
+            [':slug' => $plan_slug]
+        );
+    }
+
+    /**
+     * How many planners are ON this plan right now: status 'active' and not yet
+     * expired. subscriber_count() above counts every row ever bought (history),
+     * which is the right number for "has this key been sold?"; this is the right
+     * number for "how many people are paying for it today".
+     */
+    public static function active_subscriber_count(string $plan_slug): int
+    {
+        global $db;
+        return (int) $db->fetchValue(
+            "SELECT COUNT(*) FROM tblsubscriptions
+              WHERE plan = :slug AND status = 'active' AND expiry_date >= CURDATE()",
+            [':slug' => $plan_slug]
+        );
+    }
+
+    /** One plan definition by id (the pre-image a change is compared against). */
+    public static function plan_by_id(int $id): object|false|null
+    {
+        global $db;
+        $stmt = $db->prepare(
+            'SELECT id, plan_slug, name, price, wedding_limit, features, is_active
+               FROM tblsubscription_plans WHERE id = :id LIMIT 1'
+        );
+        $stmt->execute([':id' => $id]);
+        $row = $stmt->fetch(PDO::FETCH_OBJ);
+        return $row ?: null;
+    }
+
+    /**
+     * Who is acting.
+     *
+     * An explicit id wins when the caller has one (the operator's page passes
+     * the signed-in session id); otherwise the session is consulted, and a
+     * CLI/cron context records NULL rather than inventing a user.
+     */
+    private static function actor_id(?int $actor = null): ?int
+    {
+        $id = $actor ?? (int) ($_SESSION['id'] ?? 0);
+        return $id > 0 ? $id : null;
+    }
+
+    /**
+     * Append one changed field to the plan ledger.
+     *
+     * One row per FIELD, never one row per save: that is what makes "who moved
+     * the price, and from what to what" a query instead of a guess. $old is NULL
+     * for a definition (the plan did not exist a moment before).
+     */
+    private static function record_plan_change(int $plan_id, string $slug, string $field, ?string $old, ?string $new, ?int $actor): void
+    {
+        global $db;
+        $db->execute(
+            'INSERT INTO tblsubscription_plan_changes
+                 (plan_id, plan_slug, field_name, old_value, new_value, user_id)
+             VALUES (:pid, :slug, :field, :old, :new, :uid)',
+            [
+                ':pid'   => $plan_id,
+                ':slug'  => $slug,
+                ':field' => $field,
+                ':old'   => $old,
+                ':new'   => $new,
+                ':uid'   => $actor,
+            ]
+        );
+    }
+
+    /**
+     * The change history of one plan, newest first (empty when it has never
+     * been edited since it was defined).
+     *
+     * The LIMIT is a literal rather than interpolated so this stays a single,
+     * statically analysable statement — the promise/schema sweeps read these
+     * SQL strings, and a concatenated tail is one they cannot see into. The
+     * history is a small table; callers narrow it in PHP when they need less.
+     *
+     * @return array<object>
+     */
+    public static function plan_changes(int $plan_id): array
+    {
+        global $db;
+        $stmt = $db->prepare(
+            'SELECT c.id, c.plan_id, c.plan_slug, c.field_name, c.old_value, c.new_value,
+                    c.user_id, c.changed_at, u.firstname, u.lastname
+               FROM tblsubscription_plan_changes c
+          LEFT JOIN tblusers u ON u.id = c.user_id
+              WHERE c.plan_id = :pid
+           ORDER BY c.changed_at DESC, c.id DESC
+              LIMIT 25'
+        );
+        $stmt->execute([':pid' => $plan_id]);
+        return $stmt->fetchAll(PDO::FETCH_OBJ) ?: [];
+    }
+
+    /**
+     * The price entries only, newest first.
+     *
+     * Price is called out on its own because it is the number the operator
+     * asked about: a plan's price IS the platform's revenue, and every previous
+     * price used to be overwritten without a trace.
+     *
+     * @return array<object>
+     */
+    public static function price_history(int $plan_id): array
+    {
+        return array_values(array_filter(
+            self::plan_changes($plan_id),
+            static fn($c): bool => (string) $c->field_name === 'price'
+        ));
+    }
+
+    /**
+     * Create a plan definition. Returns the new id, or 0 when the key is taken.
+     *
+     * plan_slug is UNIQUE and is what tblsubscriptions.plan stores, so a key
+     * that has already been sold cannot be quietly redefined as a different
+     * product — the caller reports that rather than overwriting history.
+     */
+    public static function create_plan(string $slug, string $name, float $price, int $weddingLimit, string $features, ?int $actor = null): int
+    {
+        global $db;
+        $stmt = $db->prepare(
+            'INSERT INTO tblsubscription_plans (plan_slug, name, price, wedding_limit, features, is_active)
+             VALUES (:slug, :name, :price, :limit_n, :features, 1)'
+        );
+        $ok = $stmt->execute([
+            ':slug'     => $slug,
+            ':name'     => $name,
+            ':price'    => $price,
+            ':limit_n'  => $weddingLimit,
+            ':features' => $features,
+        ]);
+        $id = $ok ? (int) $db->the_insert_id() : 0;
+        if ($id > 0) {
+            // Every field the operator chose, recorded as a definition (old_value
+            // NULL) so the history reads from the very first price this plan had.
+            $who = self::actor_id($actor);
+            self::record_plan_change($id, $slug, 'name', null, $name, $who);
+            self::record_plan_change($id, $slug, 'price', null, sprintf('%.2f', $price), $who);
+            self::record_plan_change($id, $slug, 'wedding_limit', null, (string) $weddingLimit, $who);
+            self::record_plan_change($id, $slug, 'features', null, $features, $who);
+            self::record_plan_change($id, $slug, 'is_active', null, '1', $who);
+        }
+        return $id;
+    }
+
+    /**
+     * Update the editable fields of an existing plan.
+     *
+     * The KEY (plan_slug) is deliberately not editable: subscriptions already
+     * record it, so renaming it would orphan every purchase made on the plan.
+     *
+     * Fields that did not actually change are NOT recorded: pressing Save makes
+     * no entry, so the ledger answers "who changed this" instead of "who looked
+     * at it". Returns false when the plan does not exist.
+     */
+    public static function update_plan(int $id, string $name, float $price, int $weddingLimit, string $features, ?int $actor = null): bool
+    {
+        global $db;
+        $before = self::plan_by_id($id);
+        if ($before === null) {
+            return false;
+        }
+        $stmt = $db->prepare(
+            'UPDATE tblsubscription_plans
+                SET name = :name, price = :price, wedding_limit = :limit_n, features = :features
+              WHERE id = :id'
+        );
+        $ok = $stmt->execute([
+            ':name'     => $name,
+            ':price'    => $price,
+            ':limit_n'  => $weddingLimit,
+            ':features' => $features,
+            ':id'       => $id,
+        ]);
+        if (!$ok) {
+            return false;
+        }
+
+        // Prices are compared as fixed-precision strings: float equality would
+        // record a change on every save (4.99 vs 4.989999...).
+        $who    = self::actor_id($actor);
+        $slug   = (string) $before->plan_slug;
+        $fields = [
+            'name'          => [(string) $before->name, $name],
+            'price'         => [sprintf('%.2f', (float) $before->price), sprintf('%.2f', $price)],
+            'wedding_limit' => [(string) (int) $before->wedding_limit, (string) $weddingLimit],
+            'features'      => [(string) $before->features, $features],
+        ];
+        foreach ($fields as $field => [$old, $new]) {
+            if ($old !== $new) {
+                self::record_plan_change($id, $slug, $field, $old, $new, $who);
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Retire a plan (is_active = 0) or put it back on sale (1).
+     *
+     * Retiring is a change to what buyers can see, so it is recorded too — and
+     * only when the flag really moves (the page's toggle posts the wanted value,
+     * not a delta).
+     */
+    public static function set_plan_active(int $id, bool $active, ?int $actor = null): bool
+    {
+        global $db;
+        $before = self::plan_by_id($id);
+        if ($before === null) {
+            return false;
+        }
+        $stmt = $db->prepare('UPDATE tblsubscription_plans SET is_active = :a WHERE id = :id');
+        $ok = $stmt->execute([':a' => $active ? 1 : 0, ':id' => $id]);
+        if ($ok && (int) $before->is_active !== ($active ? 1 : 0)) {
+            self::record_plan_change(
+                $id,
+                (string) $before->plan_slug,
+                'is_active',
+                (string) (int) $before->is_active,
+                $active ? '1' : '0',
+                self::actor_id($actor)
+            );
+        }
+        return $ok;
     }
 }
 
@@ -1071,7 +1347,6 @@ class MpesaStk
         ]);
         $response = curl_exec($ch);
         $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
         $body = is_string($response) ? (json_decode($response, true) ?: []) : [];
         if ($httpCode !== 200 || empty($body['CheckoutRequestID'])) {
             error_log('[WPMS][MpesaStk] push rejected: HTTP ' . $httpCode . ' ' . substr((string) $response, 0, 300));
@@ -1099,7 +1374,6 @@ class MpesaStk
             CURLOPT_USERPWD        => $key . ':' . $secret,
         ]);
         $response = curl_exec($ch);
-        curl_close($ch);
         $body = is_string($response) ? (json_decode($response, true) ?: []) : [];
         if (empty($body['access_token'])) {
             return null;
@@ -1227,7 +1501,7 @@ class MpesaStk
                     [':r' => $subId, ':id' => (int) $push->id]);
                 $renewed = Subscription::sub_by_id($subId);
                 $until   = $renewed !== null ? date('d M Y', strtotime((string) $renewed->expiry_date)) : date('d M Y', strtotime('+30 days'));
-                Notification::create(
+                Notification::create_for_staff(
                     (int) $push->user_id,
                     0,
                     'Asante! Your ' . ucfirst((string) $push->plan) . ' renewal payment of ' . format_ksh((float) $push->amount, 2)
@@ -1244,7 +1518,7 @@ class MpesaStk
             );
             $db->execute("UPDATE tblmpesa_stk_pushes SET ref_table = 'tblsubscriptions', ref_id = :r WHERE id = :id",
                 [':r' => $subId, ':id' => (int) $push->id]);
-            Notification::create(
+            Notification::create_for_staff(
                 (int) $push->user_id,
                 0,
                 'Your ' . ucfirst((string) $push->plan) . ' subscription payment of ' . format_ksh((float) $push->amount, 2)
@@ -1271,7 +1545,7 @@ class MpesaStk
 
         $booking = Booking::find_by_booking_id((int) $push->booking_id);
         $links   = 'booking_id=' . (int) $push->booking_id . '&user_id=' . (int) $push->user_id;
-        Notification::create(
+        Notification::create_for_couple(
             (int) $push->user_id,
             (int) $push->booking_id,
             'Asante! Your M-Pesa payment of ' . format_ksh((float) $push->amount, 2)
@@ -1281,7 +1555,7 @@ class MpesaStk
         );
         $plannerId = (int) ($booking->organizer_id ?? 0);
         if ($plannerId > 0) {
-            Notification::create(
+            Notification::create_for_staff(
                 $plannerId,
                 (int) $push->booking_id,
                 'STK M-Pesa deposit of ' . format_ksh((float) $push->amount, 2)
@@ -1385,6 +1659,100 @@ class Revenue
             'sms'           => $sms,
             'total'         => $subscriptions + $commissions + $sms,
         ];
+    }
+
+    /**
+     * Subscribers and revenue per plan — the product view of subscription money.
+     *
+     * "Revenue" is the same recognized figure as monthly_totals()/lifetime_totals()
+     * (paid rows only: status active/expired), so the sum of this table equals the
+     * Subscriptions lifetime card to the cent — the operator can add the rows up
+     * and land on the number printed above them. Trial rows are counted
+     * separately, because they are people but not money.
+     *
+     * A plan key with no definition behind it still gets a row (rendered as
+     * "(no plan recorded)") rather than being dropped: money earned on a key
+     * nobody can explain is exactly what needs to be visible, and dropping it
+     * would also break the sum above. The bucket is not hypothetical — before
+     * v2.8 widened tblsubscriptions.plan past its ENUM, a purchase of an
+     * operator-defined plan was stored as an empty string.
+     *
+     * @return array{plans: array<int, array<string, mixed>>, revenue: float, trials: int}
+     */
+    public static function plan_breakdown(): array
+    {
+        global $db;
+
+        // Usage, grouped by the slug actually stored on the subscription row.
+        // COUNT(DISTINCT user_id) counts PEOPLE: a renewal is a second row for
+        // the same planner and must not inflate the subscriber count.
+        $usage = $db->fetchAll(
+            "SELECT plan,
+                    COUNT(DISTINCT user_id) AS subscribers,
+                    COUNT(*) AS payments,
+                    COALESCE(SUM(amount), 0) AS revenue,
+                    SUM(CASE WHEN status = 'active' AND expiry_date >= CURDATE() THEN 1 ELSE 0 END) AS live_now,
+                    MAX(created_at) AS last_paid_at
+               FROM tblsubscriptions
+              WHERE status IN ('active', 'expired')
+           GROUP BY plan"
+        );
+        $bySlug = [];
+        foreach ($usage as $u) {
+            $bySlug[(string) $u->plan] = $u;
+        }
+
+        $rows  = [];
+        $total = 0.0;
+        foreach ($db->fetchAll('SELECT id, plan_slug, name, price, is_active FROM tblsubscription_plans ORDER BY is_active DESC, price ASC, id ASC') as $d) {
+            $slug = (string) $d->plan_slug;
+            $u    = $bySlug[$slug] ?? null;
+            $rows[] = [
+                'plan_slug'    => $slug,
+                'name'         => (string) $d->name,
+                'price'        => (float) $d->price,
+                'is_active'    => (int) $d->is_active === 1,
+                'subscribers'  => (int) ($u->subscribers ?? 0),
+                'payments'     => (int) ($u->payments ?? 0),
+                'live_now'     => (int) ($u->live_now ?? 0),
+                'revenue'      => (float) ($u->revenue ?? 0),
+                'last_paid_at' => $u->last_paid_at ?? null,
+            ];
+            $total += (float) ($u->revenue ?? 0);
+            unset($bySlug[$slug]);
+        }
+        // Anything left earned money on a key with no definition behind it.
+        foreach ($bySlug as $slug => $u) {
+            $rows[] = [
+                'plan_slug'    => (string) $slug,
+                'name'         => null,
+                'price'        => null,
+                'is_active'    => null,
+                'subscribers'  => (int) $u->subscribers,
+                'payments'     => (int) $u->payments,
+                'live_now'     => (int) $u->live_now,
+                'revenue'      => (float) $u->revenue,
+                'last_paid_at' => $u->last_paid_at,
+            ];
+            $total += (float) $u->revenue;
+        }
+
+        // Money leaders first — the operator is looking for the plan that earns.
+        usort($rows, static function (array $a, array $b): int {
+            return $b['revenue'] <=> $a['revenue']
+                ?: $b['subscribers'] <=> $a['subscribers']
+                ?: strcmp($a['plan_slug'], $b['plan_slug']);
+        });
+        foreach ($rows as $i => $row) {
+            $rows[$i]['share'] = $total > 0.0 ? ($row['revenue'] / $total) * 100.0 : 0.0;
+        }
+
+        $trials = (int) $db->fetchValue(
+            "SELECT COUNT(*) FROM tblsubscriptions
+              WHERE status = 'trial' AND expiry_date >= CURDATE()"
+        );
+
+        return ['plans' => $rows, 'revenue' => $total, 'trials' => $trials];
     }
 
     /**
@@ -1530,14 +1898,115 @@ class Vendor extends DB_Object
         return $stmt->fetchAll(PDO::FETCH_OBJ);
     }
 
+    /**
+     * One APPROVED listing by id, or null.
+     *
+     * The approval predicate is part of the lookup rather than a check the
+     * caller could forget: the public profile page must answer an unapproved
+     * listing exactly as it answers one that does not exist, or the response
+     * itself would confirm a hidden business (and its name) to any visitor
+     * trying ids. find_by_id() stays the staff-side door, where "exists but is
+     * pending" is information the operator is entitled to.
+     */
+    public static function find_approved(int $id): ?object
+    {
+        global $db;
+        if ($id <= 0) {
+            return null;
+        }
+        $stmt = $db->prepare('SELECT * FROM tblvendors WHERE id = :id AND is_approved = 1 LIMIT 1');
+        $stmt->execute([':id' => $id]);
+        $row = $stmt->fetch(PDO::FETCH_OBJ);
+        return $row ?: null;
+    }
+
+    /**
+     * Recompute the two counters a vendor is judged by, from the deals
+     * themselves — never from a tally kept by hand.
+     *
+     * `total_bookings` is how many of the vendor's deals have been confirmed
+     * or delivered; `rating` is the mean of the couple ratings those delivered
+     * deals carry (0 when nobody has rated yet). Called wherever a deal
+     * changes state (admin/vendor_enquiries.php) and when a couple rates a
+     * completed deal (admin/client_vendor_rate.php), so the stars and the
+     * booking count on every card are the numbers the rows support.
+     */
+    public static function recompute_stats(int $vendorId): void
+    {
+        global $db;
+        if ($vendorId <= 0) {
+            return;
+        }
+        $bookings = (int) $db->fetchValue(
+            "SELECT COUNT(*) FROM tblvendor_bookings
+              WHERE vendor_id = :id AND status IN ('confirmed', 'completed')",
+            [':id' => $vendorId]
+        );
+        $average = $db->fetchValue(
+            'SELECT AVG(rating) FROM tblvendor_bookings
+              WHERE vendor_id = :id AND rating IS NOT NULL',
+            [':id' => $vendorId]
+        );
+        $rating = $average === null ? 0.0 : round((float) $average, 1);
+
+        $stmt = $db->prepare('UPDATE tblvendors SET total_bookings = :tb, rating = :rt WHERE id = :id');
+        $stmt->execute([':tb' => $bookings, ':rt' => $rating, ':id' => $vendorId]);
+    }
+
     public static function get_by_user(mixed $user_id): object|false|null
     {
         global $db;
         $sql  = "SELECT * FROM tblvendors WHERE user_id = :uid LIMIT 1";
         $stmt = $db->prepare($sql);
         $stmt->execute([':uid' => (int) $user_id]);
-        $row = $stmt->fetch(PDO::FETCH_OBJ);
+        $row  = $stmt->fetch(PDO::FETCH_OBJ);
         return $row ?: null;
+    }
+
+    /**
+     * EVERY listing owned by one account, in creation order.
+     *
+     * An account may run several businesses — the Kenyan seed ships one owner
+     * with two — while get_by_user() is `LIMIT 1` with no ORDER BY and so hands
+     * back only one of them. Anything that must reach "the vendor" rather than
+     * "a vendor" has to work from this list.
+     *
+     * @return object[]
+     */
+    public static function all_for_user(mixed $user_id): array
+    {
+        global $db;
+        $stmt = $db->prepare('SELECT * FROM tblvendors WHERE user_id = :uid ORDER BY id ASC');
+        $stmt->execute([':uid' => (int) $user_id]);
+        return $stmt->fetchAll(PDO::FETCH_OBJ) ?: [];
+    }
+
+    /**
+     * The listing a vendor session is currently working with.
+     *
+     * Every vendor page used to resolve its listing with get_by_user(), which
+     * pins a multi-listing owner to one arbitrary business: an enquiry sent to
+     * their OTHER listing was invisible to them forever (the couple is told
+     * "They will contact you shortly"), and that listing's profile and packages
+     * could not be managed by anyone.
+     *
+     * A requested id is honoured ONLY when this account really owns it, so the
+     * parameter cannot be used to reach another vendor's rows; anything else
+     * falls back to the first listing, which is the old behaviour.
+     */
+    public static function resolve_for_session(mixed $user_id, mixed $requestedId = null): object|false|null
+    {
+        $requested = (int) $requestedId;
+        if ($requested > 0) {
+            global $db;
+            $stmt = $db->prepare('SELECT * FROM tblvendors WHERE id = :id AND user_id = :uid LIMIT 1');
+            $stmt->execute([':id' => $requested, ':uid' => (int) $user_id]);
+            $owned = $stmt->fetch(PDO::FETCH_OBJ);
+            if ($owned) {
+                return $owned;
+            }
+        }
+        return static::get_by_user($user_id);
     }
 
     /** Active packages of one vendor, cheapest first. (Prepared for the
@@ -1725,6 +2194,67 @@ class SMS
         return ['sent' => $sent, 'failed' => $failed];
     }
 
+    /**
+     * The phone numbers in one of the three audiences the SMS centre names:
+     *
+     *   all        every guest of the booking with a number
+     *   upcountry  guests travelling in (out_of_town = 'y')
+     *   vip        the closest band (priority = 'A' — family and elders)
+     *
+     * Split out from send_bulk so a caller can COUNT and COST an audience before
+     * sending it — which is what the MCP `send_bulk_sms` tool does when it asks a
+     * planner to approve a send, and what the SMS centre shows before the button.
+     *
+     * @return string[] normalised-looking numbers, in priority order
+     */
+    public static function audience_phones(mixed $booking_id, string $audience = 'all'): array
+    {
+        global $db;
+        $sql = "SELECT phone FROM tblguest WHERE booking_id = :bid AND phone IS NOT NULL AND phone <> ''";
+        if ($audience === 'upcountry') {
+            $sql .= " AND out_of_town = 'y'";
+        } elseif ($audience === 'vip') {
+            $sql .= " AND priority = 'A'";
+        }
+        $sql .= ' ORDER BY priority ASC, id ASC';
+        $stmt = $db->prepare($sql);
+        $stmt->execute([':bid' => (int) $booking_id]);
+        $phones = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $phone) {
+            $phone = trim((string) $phone);
+            if ($phone !== '') {
+                $phones[] = $phone;
+            }
+        }
+        return $phones;
+    }
+
+    /**
+     * Send one message to one audience of a booking's guests.
+     *
+     * Each recipient is sent through send(), so every send is logged in
+     * tblsms_logs, costs the same KSh 1 per 160 characters, and is charged to the
+     * SAME staff account's credits — send_bulk's audience, with the filter.
+     * A send that runs out of credits fails its own recipient and is counted as a
+     * failure, so the caller can tell a planner what actually went out.
+     *
+     * @return array{sent:int, failed:int, recipients:int}
+     */
+    public static function send_bulk_audience(mixed $booking_id, string $audience, string $message, int $user_id): array
+    {
+        $sent = 0;
+        $failed = 0;
+        foreach (self::audience_phones($booking_id, $audience) as $phone) {
+            $response = self::send($phone, $message, $user_id, (int) $booking_id);
+            if (!empty($response['success'])) {
+                $sent++;
+            } else {
+                $failed++;
+            }
+        }
+        return ['sent' => $sent, 'failed' => $failed, 'recipients' => $sent + $failed];
+    }
+
     public static function calculate_cost(string $message): float
     {
         $length = mb_strlen($message, 'UTF-8');
@@ -1808,7 +2338,6 @@ class SMS
         ]);
         $response  = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
 
         if ($http_code === 201) {
             return ['success' => true, 'response' => json_decode((string) $response, true)];

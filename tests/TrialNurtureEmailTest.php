@@ -9,7 +9,8 @@ use PHPUnit\Framework\TestCase;
  *
  * Planners on a live trial get a check-in email at the halfway point of the
  * trial and a last-call email the day before expiry (bands 7 and 1 for the
- * default 14-day trial), through the shared tbl_mail_logs outbox. One email
+ * bands derived from WPMS_TRIAL_DAYS — 90 and 1 for the six-month default),
+ * through the shared tbl_mail_logs outbox. One email
  * per band ever (marker-first trial_nurture_band), converted planners never
  * appear, lapsed trials are skipped.
  *
@@ -42,8 +43,13 @@ final class TrialNurtureEmailTest extends TestCase
             );
             self::$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             // ENUM members are invisible to SHOW COLUMNS parses here; just try.
+            // NOTE: the plan column's current shape is VARCHAR(20) since v2.8
+            // (an operator-defined key cannot be stored in the seeded ENUM, which
+            // silently writes ''), and this repair must apply the CURRENT shape —
+            // narrowing it here would put the shared scratch schema back into the
+            // state that breaks plan purchases for every test that runs after.
             try {
-                self::$pdo->exec("ALTER TABLE tblsubscriptions MODIFY plan ENUM('starter','professional','agency','trial') NOT NULL DEFAULT 'starter'");
+                self::$pdo->exec("ALTER TABLE tblsubscriptions MODIFY plan VARCHAR(20) NOT NULL DEFAULT 'starter'");
                 self::$pdo->exec("ALTER TABLE tblsubscriptions MODIFY status ENUM('active','expired','cancelled','pending_renewal','trial') NOT NULL DEFAULT 'active'");
             } catch (Throwable $ignored) {
             }

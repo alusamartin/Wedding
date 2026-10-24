@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require __DIR__ . '/cli_guard.php'; // CLI-only: refuse to run over HTTP
 
 /**
  * One-command demo reset: rebuild the demo database from the seed files and
@@ -16,6 +17,32 @@ declare(strict_types=1);
  *        migrations/v2.3_planner_trial.sql                 (trial ENUM + bcrypt width)
  *        migrations/v2.4_signup_abuse_guard.sql            (signup throttle + verification)
  *        migrations/v2.5_trial_nurture.sql                 (trial nurture band marker)
+ *        migrations/v2.6_staff_password_reset.sql          (reset-token owner table)
+ *        migrations/v2.7_extend_trial_window.sql           (six-month trial backfill)
+ *        migrations/v2.8_plan_pricing_audit.sql             (buyable plan keys + price ledger)
+ *        migrations/v2.9_venue_headcounts.sql              (one venue headcount plan per function)
+ *        migrations/v2.10_vendor_function_scope.sql         (vendor deal function scope)
+ *        migrations/v2.12_user_preferences.sql              (per-account preferences table)
+ *        migrations/v2.13_notification_recipients.sql      (which account a bell/mail row is for)
+ *        migrations/v2.14_public_abuse_guard.sql           (rate limits for the anonymous doors)
+ *        migrations/v2.15_job_heartbeats.sql               (scheduled-job heartbeats + the watchdog)
+ *        migrations/v2.16_api_tokens.sql                   (MCP API tokens)
+ *        migrations/v2.17_mcp_approvals.sql                (MCP write approvals)
+ *        migrations/v2.19_mcp_approval_expiry.sql          (approval expiry)
+ *        migrations/v2.20_mcp_approval_rerequest.sql       (approval re-request)                   
+ *        migrations/v2.21_vendor_ratings.sql                (vendor rating + booking count writers) 
+ *        migrations/v2.24_event_vendor_needs.sql            (per-function vendor service requirements)
+ *        migrations/v2.25_vendor_threads.sql                (the couple/vendor/planner conversation)
+ *        migrations/v2.26_thread_escalation.sql             (the unanswered-thread escalation stamp)
+ *        migrations/v2.25_vendor_threads.sql                (three-way vendor conversation)
+ *        migrations/v2.27_vendor_services.sql               (service catalogue + per-vendor services)
+ *        migrations/v2.28_vendor_preferences.sql            (the couple's taste + budget per category)
+ *        migrations/v2.29_vendor_plan.sql                   (which offering a vendor deal is for)
+ *        migrations/v2.30_proposals.sql                     (the proposal lifecycle: brief, options, choice)
+ *        migrations/v3.1_vendor_service_tiers.sql           (silver/gold/platinum pricing for services and packages)
+ *      NOT imported: migrations/v2.18_mcp_grants.sql — that file is an OPERATOR
+ *      script (CREATE USER + 67 column/table GRANTs against a fixed `dbwedding`
+ *      name), not schema. It has no place in a throwaway demo/test database.
  *   3. Runs the date-shift logic (same rules as scripts/shift_seed_dates.php):
  *      every seed booking moves forward in whole 52-week steps until future,
  *      payments rebase to wedding-30d, calendar widget recomputed. Booking
@@ -54,6 +81,29 @@ $files = [
     __DIR__ . '/../migrations/v2.3_planner_trial.sql',
     __DIR__ . '/../migrations/v2.4_signup_abuse_guard.sql',
     __DIR__ . '/../migrations/v2.5_trial_nurture.sql',
+    __DIR__ . '/../migrations/v2.6_staff_password_reset.sql',
+    __DIR__ . '/../migrations/v2.7_extend_trial_window.sql',
+    __DIR__ . '/../migrations/v2.8_plan_pricing_audit.sql',
+    __DIR__ . '/../migrations/v2.9_venue_headcounts.sql',
+    __DIR__ . '/../migrations/v2.10_vendor_function_scope.sql',
+    __DIR__ . '/../migrations/v2.12_user_preferences.sql',
+    __DIR__ . '/../migrations/v2.13_notification_recipients.sql',
+    __DIR__ . '/../migrations/v2.14_public_abuse_guard.sql',
+    __DIR__ . '/../migrations/v2.15_job_heartbeats.sql',
+    __DIR__ . '/../migrations/v2.16_api_tokens.sql',
+    __DIR__ . '/../migrations/v2.17_mcp_approvals.sql',
+    __DIR__ . '/../migrations/v2.19_mcp_approval_expiry.sql',
+    __DIR__ . '/../migrations/v2.20_mcp_approval_rerequest.sql',
+    __DIR__ . '/../migrations/v2.21_vendor_ratings.sql',
+    __DIR__ . '/../migrations/v2.23_business_pulse_snapshots.sql',
+    __DIR__ . '/../migrations/v2.24_event_vendor_needs.sql',
+    __DIR__ . '/../migrations/v2.25_vendor_threads.sql',
+    __DIR__ . '/../migrations/v2.26_thread_escalation.sql',
+    __DIR__ . '/../migrations/v2.27_vendor_services.sql',
+    __DIR__ . '/../migrations/v2.28_vendor_preferences.sql',
+    __DIR__ . '/../migrations/v2.29_vendor_plan.sql',
+    __DIR__ . '/../migrations/v2.30_proposals.sql',
+    __DIR__ . '/../migrations/v3.1_vendor_service_tiers.sql',
 ];
 foreach ($files as $f) {
     if (!is_file($f)) {
@@ -184,4 +234,38 @@ if ($future !== 5) {
 }
 $demoLogins = $pdo->query("SELECT COUNT(*) FROM tblaccounts WHERE user_id IN (200,201,202,203,204)")->fetchColumn();
 echo "Demo couple accounts: $demoLogins\n";
+
+/*
+ * Truncated-hash guard. If tblusers.password is sized varchar(50) when the seed
+ * runs, MySQL silently cuts every 60-char bcrypt hash down to 50 and the whole
+ * demo becomes unloggable — with a success exit code. Catch it here instead.
+ */
+$hashes = $pdo->query(
+    "SELECT id, LENGTH(password) AS len FROM tblusers"
+    . " WHERE password LIKE '\$2%' AND LENGTH(password) <> 60 ORDER BY id"
+)->fetchAll(PDO::FETCH_KEY_PAIR);
+if ($hashes !== []) {
+    fwrite(STDERR, "VERIFY FAILED — truncated bcrypt hashes (expected 60 chars):\n");
+    foreach ($hashes as $id => $len) {
+        fwrite(STDERR, "  user $id: $len chars\n");
+    }
+    fwrite(STDERR, "HINT: tblusers.password must be varchar(255) BEFORE the seed runs.\n");
+    exit(1);
+}
+$usable = (int) $pdo->query(
+    "SELECT COUNT(*) FROM tblusers WHERE password LIKE '\$2%' AND LENGTH(password) = 60"
+)->fetchColumn();
+echo "Seeded staff logins with intact hashes: $usable\n";
+if ($usable === 0) {
+    fwrite(STDERR, "VERIFY FAILED — no usable staff logins were seeded.\n");
+    exit(1);
+}
+
+// ------------------------------------------------------- final login check
+echo "Verifying a seeded login end-to-end...\n";
+$probe = $pdo->query("SELECT id, password FROM tblusers WHERE id = 5")->fetch(PDO::FETCH_ASSOC);
+if ($probe === false || !password_verify('Admin@2024!', (string) $probe['password'])) {
+    fwrite(STDERR, "VERIFY FAILED — password_verify() rejected the seeded super-admin password.\n");
+    exit(1);
+}
 echo "\nDemo reset complete. Sign in at /login.php — wafula@wpms.co.ke / Admin@2024! (staff), brian.wafula@gmail.com / Test@1234 (couple).\n";

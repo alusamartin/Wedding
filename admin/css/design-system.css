@@ -1,0 +1,73 @@
+/* =====================================================================
+   EVERAFTER — DESIGN SYSTEM OVERRIDES (loaded last, on purpose)
+   A handful of components are redefined inside each page's own <style>
+   block (the stat tiles, the filter bar, the booking table). Those
+   blocks sit in the page <head>, so a sheet loaded from the sidebar
+   lands after them and wins ties without !important gymnastics.
+
+   Keep this file small: only patterns that repeat across pages and must
+   look identical everywhere. Page-specific furniture stays in its page.
+   ===================================================================== */
+
+body{ background:var(--admin-bg); }
+
+/* ---------- Stat tiles (couple, planner, vendor, admin list pages) ---------- */
+.stat-card{
+  background:var(--surface-0);
+  border:1px solid var(--stone-200);
+  border-radius:var(--radius-card);
+  padding:18px 20px;
+  margin-bottom:20px;
+  box-shadow:var(--shadow-soft);
+  border-left:3px solid var(--brand-500);
+  transition:transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.stat-card:hover{ transform:translateY(-2px); box-shadow:var(--shadow-lift); }
+.stat-card.success{ border-left-color:var(--success); }
+.stat-card.info{ border-left-color:var(--info); }
+.stat-card.warning{ border-left-color:var(--warning); }
+.stat-card.danger{ border-left-color:var(--danger); }
+.stat-card h6{
+  font-size:10.5px; text-transform:uppercase; color:var(--text-muted);
+  margin-bottom:6px; letter-spacing:.08em; font-weight:700;
+}
+.stat-card .value{
+  font-size:26px; font-weight:700; color:var(--text-strong);
+  font-variant-numeric:tabular-nums; letter-spacing:-.02em;
+}
+.stat-card .trend{ font-size:11px; color:var(--success-ink); margin-top:5px; }
+.stat-card p, .stat-card .hint{ margin-bottom:0; }
+
+/* ---------- Filter bar ---------- */
+.filter-bar{
+  background:var(--surface-0);
+  padding:14px 15px;
+  border-radius:var(--radius-card);
+  margin-bottom:20px;
+  border:1px solid var(--stone-200);
+  box-shadow:var(--shadow-soft);
+}
+.filter-bar .btn{ margin-right:5px; font-size:12px; }
+.filter-bar .btn.active,
+.filter-bar .btn-primary{ background:var(--brand-700); border-color:var(--brand-700); color:#fff; }
+
+/* ---------- Booking / list tables ---------- */
+.booking-table{
+  background:var(--surface-0);
+  border-radius:var(--radius-card);
+  overflow:hidden;
+  border:1px solid var(--stone-200);
+  box-shadow:var(--shadow-soft);
+}
+.booking-table table{ font-size:12px; margin:0; }
+.booking-table thead th{
+  background:var(--stone-50);
+  border-bottom:1px solid var(--stone-200);
+  font-size:11px; text-transform:uppercase; color:var(--text-muted);
+  letter-spacing:.06em; padding:12px 8px; font-weight:700;
+}
+.booking-table tbody tr:hover{ background:var(--brand-50); }
+
+/* The two utility classes pages already carry but never had a rule. */
+.hint{ font-size:11.5px; line-height:1.5; color:var(--text-muted); }
+.mono{ font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1; }

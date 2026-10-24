@@ -1,15 +1,27 @@
 <?php include 'include/init.php'; ?>
 
 <?php
-     if (!is_staff()) { redirect_to("../");}
+     require_staff_subscribed();
 
-    $booking_id = $_GET['booking_id'];
-    $user_id = $_GET['user_id'];
-    $links='booking_id='.$booking_id.'&user_id='.$user_id;
-    
-    $events =  Events::find_by_event_all($booking_id);
-    
+    $booking_id = (int) ($_GET['booking_id'] ?? 0);
+    $user_id    = (int) ($_GET['user_id'] ?? 0);
+    $links      = 'booking_id=' . $booking_id . '&user_id=' . $user_id;
+
+    /*
+     * Booking-scoped page: resolve the booking before rendering anything. Every
+     * link into here comes from a real booking, but a stale bookmark or a
+     * deleted wedding used to render the whole page against a false row and
+     * warn on ->bride / ->groom. Send those back to the booking list instead.
+     */
     $booking = Booking::find_by_booking_id($booking_id);
+
+    if (!$booking) {
+        $session->message('<div class="alert alert-warning"><strong><i class="mdi mdi-alert"></i></strong> That booking no longer exists.</div>');
+        redirect_to("client.php");
+        die();
+    }
+
+    $events =  Events::find_by_event_all($booking_id);
 
 ?>
 <?php $users_profile = Users::find_by_id($_SESSION['id']); ?>
@@ -20,10 +32,10 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Events - Administrator</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
-    <link href="css/dataTables.bootstrap4.min.css" rel="stylesheet">
+    <link href="css/dataTables.bootstrap4.min.css?v=1.13.11" rel="stylesheet">
     <link rel="stylesheet" type="text/css"
           href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
     <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet">
@@ -113,13 +125,13 @@
 <!-- Bootstrap core JavaScript
 ================================================== -->
 <!-- Placed at the end of the document so the pages load faster -->
-<script src="js/jquery-3.2.1.slim.min.js"></script>
+<script src="js/jquery-3.7.1.slim.min.js"></script>
 <script>window.jQuery || document.write('<script src="../../../../assets/js/vendor/jquery-slim.min.js"><\/script>')</script>
 <script src="js/popper.min.js"></script>
-<script src="../js/jquery.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
-<script src="js/jquery.dataTables.min.js"></script>
-<script src="js/dataTables.bootstrap4.min.js"></script>
+<script src="../js/jquery-3.7.1.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
+<script src="js/jquery.dataTables.min.js?v=1.13.11"></script>
+<script src="js/dataTables.bootstrap4.min.js?v=1.13.11"></script>
 <script src="js/dropzone.js"></script>
 <script>
   

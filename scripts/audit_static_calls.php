@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require __DIR__ . '/cli_guard.php'; // CLI-only: refuse to run over HTTP
 
 /**
  * Audit sweep B — static calls to methods that don't exist.

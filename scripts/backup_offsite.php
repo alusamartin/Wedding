@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require __DIR__ . '/cli_guard.php'; // CLI-only: refuse to run over HTTP
 
 /**
  * Everafter Planner — Weekly OFF-SITE backup upload (S3-compatible)
@@ -154,8 +155,7 @@ function s3_call(
     }
     $raw   = (string) curl_exec($ch);
     $errno = curl_errno($ch);
-    $info  = curl_getinfo($ch);   // MUST be read BEFORE curl_close
-    curl_close($ch);
+    $info  = curl_getinfo($ch);   // must be read before the handle goes out of scope
     if ($errno) {
         return [0, [], 'curl error ' . $errno];
     }

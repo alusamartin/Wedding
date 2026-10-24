@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require __DIR__ . '/cli_guard.php'; // CLI-only: refuse to run over HTTP
 
 /**
  * Cron-safe housekeeping sweeper for the notification archive.
@@ -35,6 +36,7 @@ require_once $root . '/admin/include/db_object.php';
 if (!class_exists('Notification', false)) {
     require_once $root . '/admin/include/Notification.php';
 }
+require_once $root . '/admin/include/JobWatch.php'; // the heartbeat this job leaves (v2.15)
 global $db;
 $db = new Database();
 
@@ -49,14 +51,26 @@ if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
     exit(1);
 }
 
-$before = (int) $db->fetchValue('SELECT COUNT(*) FROM tblnotifications');
-$pruned = Notification::prune_old($readDays, $unreadDays);
-$after  = (int) $db->fetchValue('SELECT COUNT(*) FROM tblnotifications');
+$before    = (int) $db->fetchValue('SELECT COUNT(*) FROM tblnotifications');
+$prunable  = Notification::prunable_count($readDays, $unreadDays);
+$pruned    = Notification::prune_old($readDays, $unreadDays);
+$after     = (int) $db->fetchValue('SELECT COUNT(*) FROM tblnotifications');
 
+$summary = "pruned {$pruned} notifications (before={$before}, after={$after}); "
+    . "read older than {$readDays}d, unread older than {$unreadDays}d";
 if (!$quiet) {
-    echo "pruned {$pruned} notifications (before={$before}, after={$after}); "
-        . "read older than {$readDays}d, unread older than {$unreadDays}d\n";
+    echo $summary . "\n";
 }
+
+/*
+ * The heartbeat the watchdog judges: rows actually removed, against the alerts
+ * sitting past their retention window when this run started. Zero pruned with
+ * zero waiting is a healthy quiet day; zero pruned with a backlog is a sweep
+ * that stopped sweeping, and that is what the operator is told about. The queue
+ * is counted BEFORE the delete and with prune_old()'s own two thresholds, so the
+ * number is the work this run's window held, not a second guess at it.
+ */
+JobWatch::record(JobWatch::NOTIFY_PRUNE, JobWatch::OK, $pruned, $summary, 0, null, $prunable);
 
 flock($lock, LOCK_UN);
 fclose($lock);

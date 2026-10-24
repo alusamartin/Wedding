@@ -11,10 +11,7 @@
  */
 require_once __DIR__ . '/include/init.php';
 
-if (!is_staff()) {
-    redirect_to('../');
-    exit;
-}
+require_staff_subscribed();
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     redirect_to('client.php');
     exit;
@@ -110,7 +107,7 @@ if ($sent !== []) {
     $html .= '</div>';
     $session->message($html);
 
-    Notification::create(
+    Notification::create_for_staff(
         $organizerId,
         $booking_id,
         'Manual RSVP reminders sent to ' . count($sent) . ' guest' . (count($sent) === 1 ? '' : 's')

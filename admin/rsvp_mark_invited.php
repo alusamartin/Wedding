@@ -10,7 +10,9 @@
  * Reached from the RSVP dashboard's bulk bar ("Mark invites sent") next to
  * the SMS / WhatsApp reminder actions.
  */
-require_once __DIR__ . '/include/init.php';
+require_once __DIR__ . '/include/init.php'; // paywall: staff need an active plan to preview any booking
+    if (staff_paywall_locked()) { redirect_to('subscription.php'); exit; }
+
 
 if (!is_staff()) {
     redirect_to('../');
@@ -85,7 +87,7 @@ if ($already !== []) {
 $html .= '</div>';
 $session->message($html);
 
-Notification::create(
+Notification::create_for_staff(
     (int) ($booking->organizer_id ?? 0),
     $booking_id,
     'Invites marked sent for ' . $stamped . ' guest' . ($stamped === 1 ? '' : 's')

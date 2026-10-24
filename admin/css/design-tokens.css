@@ -1,0 +1,119 @@
+/* =====================================================================
+   EVERAFTER — DESIGN TOKENS (dashboards, 2026 refresh)
+   Warm stone + rose-gold. Loaded by include/sidebar.php on every
+   post-login page, so the couple's pages, the planner's desk, the
+   vendor's console and the admin's back office all resolve one palette.
+
+   Only tokens live here — components consume them (modern-admin.css for
+   cards/buttons/tables/forms, app-shell.css for the sidebar and top bar).
+   That is deliberate: one place to restyle the product, no page markup
+   rewritten, and a page can still override a single value locally.
+
+   Contrast, checked against WCAG 2.1 AA (4.5:1 small text, 3:1 for
+   large text and UI boundaries):
+     brand-700 #A8553A on white ......... 5.2:1  → links, button fill (white label)
+     brand-500 #D97757 on white ......... 3.2:1  → icons, rules, decoration; large text only
+     brand-900 #6B3420 on brand-50 ...... 8.4:1  → emphasis on tinted panels
+     stone-900 #1F1D1A on white ........ 15.9:1  → headings
+     stone-700 #4A463D on stone-50 ...... 8.9:1  → body copy
+     text-muted #6B6459 on white ........ 5.8:1  → secondary copy, labels
+     stone-500 #8A8377 on white ......... 3.8:1  → icons and dividers only, never body text
+   ===================================================================== */
+
+:root{
+  /* ---------- Brand: warm rose-gold ---------- */
+  --brand-50:#FFF5F2;
+  --brand-100:#FFE8E0;
+  --brand-300:#F5A887;
+  --brand-500:#D97757;   /* the signature colour */
+  --brand-700:#A8553A;   /* the interactive shade — AA for text and fills */
+  --brand-900:#6B3420;
+
+  /* ---------- Neutrals: warm stone, not cold grey ---------- */
+  --stone-50:#FAFAF8;
+  --stone-100:#F5F3EF;
+  --stone-200:#E8E4DC;
+  --stone-300:#D4CFC4;
+  --stone-500:#8A8377;
+  --stone-700:#4A463D;
+  --stone-900:#1F1D1A;
+
+  --text-strong:#1F1D1A;
+  --text-body:#4A463D;
+  --text-muted:#6B6459;   /* derived darker stone-500 so small copy still passes AA */
+
+  /* ---------- Semantic ---------- */
+  --success:#10B981;
+  --success-ink:#047857;
+  --success-tint:#ECFDF5;
+  --success-line:#A7F3D0;
+
+  --warning:#F59E0B;
+  --warning-ink:#B45309;
+  --warning-tint:#FFFBEB;
+  --warning-line:#FDE68A;
+
+  --danger:#EF4444;
+  --danger-ink:#B91C1C;
+  --danger-tint:#FEF2F2;
+  --danger-line:#FECACA;
+
+  --info:#3B82F6;
+  --info-ink:#1D4ED8;
+  --info-tint:#EFF6FF;
+  --info-line:#BFDBFE;
+
+  /* ---------- Surfaces ---------- */
+  --surface-0:#FFFFFF;
+  --surface-1:#FAFAF8;
+  --surface-2:#F5F3EF;
+  --surface-glass:rgba(255,255,255,.78);
+
+  /* ---------- Sidebar: espresso stone ---------- */
+  --sidebar-bg:#241C18;
+  --sidebar-bg-2:#1A1512;
+  --sidebar-line:rgba(255,255,255,.08);
+  --sidebar-text:#D4CFC4;
+  --sidebar-muted:#9C938682;   /* icons: decorative only */
+  --sidebar-heading:#A79C90;
+  --sidebar-active-text:#FFFFFF;
+
+  /* ---------- Shape, depth, motion ---------- */
+  --radius-card:14px;
+  --radius-control:10px;
+  --radius-pill:999px;
+  --shadow-soft:0 1px 2px rgba(31,29,26,.04), 0 10px 26px -16px rgba(31,29,26,.22);
+  --shadow-lift:0 18px 42px -20px rgba(31,29,26,.30);
+  --focus-ring:0 0 0 3px rgba(217,119,87,.28);
+  --dur:200ms;
+  --ease:cubic-bezier(.2,.7,.2,1);
+
+  /* ---------- Legacy aliases ----------
+     The 2026 sheets and a few pages read these names. Keeping them
+     pointed at the new tokens means an old rule picks up the new palette
+     instead of quietly keeping slate-and-emerald. */
+  --admin-bg:var(--surface-1);
+  --admin-surface:var(--surface-0);
+  --admin-line:var(--stone-200);
+  --admin-text:var(--text-strong);
+  --admin-muted:var(--text-muted);
+  --admin-accent:var(--brand-700);
+  --admin-accent-2:var(--brand-500);
+  --admin-warning:var(--warning-ink);
+  --admin-danger:var(--danger-ink);
+  --radius:var(--radius-card);
+  --radius-sm:var(--radius-control);
+  --shadow:var(--shadow-soft);
+
+  --app-ink:var(--stone-900);
+  --app-emerald:var(--brand-500);       /* name kept; it is the brand accent now */
+  --app-line:var(--stone-200);
+}
+
+/* Selection and focus stay in the brand family everywhere. */
+::selection{ background:var(--brand-100); color:var(--brand-900); }
+:focus-visible{ outline-color:var(--brand-500); }
+
+@media (prefers-reduced-motion:reduce){
+  :root{ --dur:1ms; }
+}

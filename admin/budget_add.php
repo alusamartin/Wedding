@@ -1,6 +1,6 @@
 <?php include 'include/init.php'; ?>
 <?php
-    if (!is_staff()) { redirect_to("../"); }
+    require_staff_subscribed();
 
     $booking_id = (int)($_GET['booking_id'] ?? 0);
     $user_id = (int)($_GET['user_id'] ?? 0);
@@ -18,9 +18,9 @@
             die();
         }
 
-        $event_id = (int)$_POST['event_id'];
-        $payment = floatval($_POST['payment']);
-        $payment_method = clean($_POST['payment_method']);
+        $event_id = (int)($_POST['event_id'] ?? 0);
+        $payment = floatval($_POST['payment'] ?? 0);
+        $payment_method = clean($_POST['payment_method'] ?? '');
         $mpesa_code = strtoupper(trim((string)($_POST['mpesa_code'] ?? '')));
         $cash = 0;
         $credit = 0;
@@ -123,7 +123,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Add Payment - Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">

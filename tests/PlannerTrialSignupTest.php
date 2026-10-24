@@ -5,7 +5,8 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Self-serve planner registration + 14-day trial regressions.
+ * Self-serve planner registration + free-trial regressions (the shipped
+ * trial is six months — see testDefaultTrialLengthIsSixMonths).
  *
  * Integration ('integration' group) — live DB + the curl HTTP harness
  * (same pattern as UnifiedLoginTest).
@@ -27,6 +28,11 @@ final class PlannerTrialSignupTest extends TestCase
     private const FIX_NAME  = 'probe_trial_planner';
     private const FIX_EMAIL = 'probe.trial.planner@example.com';
     private const SCRIPT    = __DIR__ . '/../scripts/subscription_renewals.php';
+    /** Rows a probe planner owns — children first, then the staff row. */
+    private const PROBE_TABLES = [
+        'tblsubscriptions', 'tblmpesa_stk_pushes', 'tblnotifications',
+        'tbl_mail_logs', 'tblsms_logs', 'tblsms_credits',
+    ];
 
     private static ?PDO $pdo = null;
     private static int $staffId = 0;
@@ -69,13 +75,80 @@ final class PlannerTrialSignupTest extends TestCase
         self::cleanup();
     }
 
-    /** Apply the v2.3 columns when the SQL file has not been run yet. */
+    /**
+     * The shipped default IS the product promise: six months.
+     *
+     * Nothing else in this class would notice a silent shrink back to a
+     * fortnight — every other test pins WPMS_TRIAL_DAYS=14 to keep its own
+     * date maths cheap and its window short. A Kenyan planner has to run a
+     * real wedding through the back office before deciding, so the default is
+     * asserted on its own, both as the number and end to end on a real
+     * registration.
+     */
+    #[Group('integration')]
+    public function testDefaultTrialLengthIsSixMonths(): void
+    {
+        $this->requireDb();
+
+        $email = 'probe.six.month.trial@example.com';
+        $prev  = getenv('WPMS_TRIAL_DAYS');
+        putenv('WPMS_TRIAL_DAYS'); // no override → whatever ships
+        try {
+            self::assertSame(180, Subscription::trial_days(), 'the default trial must stay six months (180 days)');
+
+            // End to end down the REAL funnel: registering creates an
+            // unverified staff row only, and the trial opens when the mailbox
+            // is proven (SignupGuard + activate_trial) — so the six months is
+            // measured from verification, not from signup.
+            $r = register_planner('Six', 'Months', $email, '0722999077', 'Sup3rSecret!');
+            self::assertTrue($r['ok'], $r['error'] ?? 'registration failed');
+            $uid = (int) $r['user_id'];
+
+            $plain = SignupGuard::issueVerification($uid);
+            self::assertNotNull($plain, 'registration must issue a verification token');
+            self::assertNotFalse(SignupGuard::verify($plain), 'clicking the link must verify the mailbox');
+            Subscription::activate_trial($uid); // the funnel's single choke point
+
+            // Read the row back rather than trusting a return value: whichever
+            // of the two calls created it, the window must be six months.
+            $sub = Subscription::get_trial($uid);
+            self::assertNotNull($sub, 'verifying the mailbox must open the trial');
+            self::assertSame(
+                date('Y-m-d', strtotime('+180 days')),
+                (string) $sub->expiry_date,
+                'the trial row must expire six months out'
+            );
+            self::assertSame('trial', strtolower((string) $sub->status));
+            self::assertSame(0, (int) $sub->auto_renew, 'a trial has nothing to auto-renew');
+        } finally {
+            if ($prev !== false) {
+                putenv('WPMS_TRIAL_DAYS=' . $prev);
+            }
+            $uid = (int) (self::$pdo->query("SELECT id FROM tblusers WHERE email = '" . $email . "'")->fetchColumn() ?: 0);
+            if ($uid > 0) {
+                self::purgeProbeUser($uid);
+            }
+            self::$pdo->exec("DELETE FROM tbl_mail_logs WHERE to_email = '" . $email . "'");
+            self::$pdo->exec("DELETE FROM tblusers WHERE email = '" . $email . "'");
+        }
+    }
+
+    /**
+     * Apply the columns this suite needs when the migrations have not been run.
+     *
+     * The shape applied must be the CURRENT one, not a historical one: this used
+     * to narrow `plan` back to the seeded three-key ENUM, which was harmless
+     * until v2.8 widened it — after that the repair re-created the very trap it
+     * was meant to clear, because an ENUM stores an operator-defined plan key as
+     * '' with no error (sql_mode here is not strict). VARCHAR(20) matches
+     * tblsubscription_plans.plan_slug and is what the migration now applies.
+     */
     private static function ensureColumns(): void
     {
         $p = self::$pdo;
         // ENUM members are invisible to SHOW COLUMNS parses here; just try.
         try {
-            $p->exec("ALTER TABLE tblsubscriptions MODIFY plan ENUM('starter','professional','agency','trial') NOT NULL DEFAULT 'starter'");
+            $p->exec("ALTER TABLE tblsubscriptions MODIFY plan VARCHAR(20) NOT NULL DEFAULT 'starter'");
             $p->exec("ALTER TABLE tblsubscriptions MODIFY status ENUM('active','expired','cancelled','pending_renewal','trial') NOT NULL DEFAULT 'active'");
         } catch (Throwable $ignored) {
         }
@@ -85,28 +158,68 @@ final class PlannerTrialSignupTest extends TestCase
         }
     }
 
+    /**
+     * The dunning list narrowed to this class's probe planner.
+     *
+     * Subscription::dunning_targets() answers for the whole installation, so
+     * counting the returned list measured the seed (and any leftover row) as
+     * much as the trial under test.
+     *
+     * @param  array<int, array{sub:object, state:string, days_left:int, grace_days_left:int}> $targets
+     * @return array<int, array{sub:object, state:string, days_left:int, grace_days_left:int}>
+     */
+    private static function targetsFor(array $targets): array
+    {
+        $uid = self::$staffId;
+        return array_values(array_filter(
+            $targets,
+            static fn (array $t): bool => (int) $t['sub']->user_id === $uid
+        ));
+    }
+
+    /**
+     * Remove everything a probe planner owns.
+     *
+     * tblsubscriptions has no foreign key on user_id, so deleting the staff
+     * row on its own leaves the subscription behind as an orphan — and an
+     * orphan in a dunning band is indistinguishable from a real planner to
+     * every later run. Deleting the children first is the whole point.
+     */
+    private static function purgeProbeUser(int $uid): void
+    {
+        $p = self::$pdo;
+        foreach (self::PROBE_TABLES as $table) {
+            $p->exec('DELETE FROM ' . $table . ' WHERE user_id = ' . $uid);
+        }
+        $p->exec('DELETE FROM tblusers WHERE id = ' . $uid);
+    }
+
     private static function cleanup(): void
     {
         $p = self::$pdo;
         if ($p === null) {
             return;
         }
-        $uid = (int) ($p->query("SELECT id FROM tblusers WHERE username = '" . self::FIX_NAME . "'")->fetchColumn() ?: 0);
-        if ($uid > 0) {
-            $p->exec('DELETE FROM tblsubscriptions WHERE user_id = ' . $uid);
-            $p->exec('DELETE FROM tblmpesa_stk_pushes WHERE user_id = ' . $uid);
-            $p->exec('DELETE FROM tblnotifications WHERE user_id = ' . $uid);
-            $p->exec('DELETE FROM tbl_mail_logs WHERE user_id = ' . $uid);
-            // Welcome rows carry user_id = 0 (outbox convention) — key on
-            // the probe address too.
-            $p->prepare('DELETE FROM tbl_mail_logs WHERE to_email = ?')->execute([self::FIX_EMAIL]);
-            $p->exec('DELETE FROM tblsms_logs WHERE user_id = ' . $uid);
-            $p->exec('DELETE FROM tblsms_credits WHERE user_id = ' . $uid);
-            $p->exec('DELETE FROM tblusers WHERE id = ' . $uid);
+        // Every uid this class may be holding: the ones still in the table
+        // under either key, plus the one a live test registered. Looking up by
+        // username alone missed the HTTP funnel's planner (keyed by email),
+        // so its trial and its paid row survived the run as orphans.
+        $ids = array_map('intval', $p->query(
+            "SELECT id FROM tblusers WHERE username = '" . self::FIX_NAME . "'"
+            . " OR email = '" . self::FIX_EMAIL . "'"
+        )->fetchAll(PDO::FETCH_COLUMN));
+        if (self::$staffId > 0) {
+            $ids[] = self::$staffId;
         }
-        // Anything registered under the probe email (both account tables —
-        // cross-table uniqueness is a feature under test).
-        $p->exec("DELETE FROM tblusers WHERE email = '" . self::FIX_EMAIL . "'");
+        foreach (array_unique($ids) as $uid) {
+            if ($uid > 0) {
+                self::purgeProbeUser($uid);
+            }
+        }
+        // Welcome/verification rows ride user_id = 0 (outbox convention) — key
+        // on the probe address too, and on the couple table (cross-table email
+        // uniqueness is a feature under test).
+        $p->prepare('DELETE FROM tbl_mail_logs WHERE to_email = ?')->execute([self::FIX_EMAIL]);
         $p->exec("DELETE FROM tblaccounts WHERE user_email = '" . self::FIX_EMAIL . "'");
         self::$staffId = 0;
     }
@@ -121,6 +234,49 @@ final class PlannerTrialSignupTest extends TestCase
     // ------------------------------------------------------------------
     // 1. register_planner()
     // ------------------------------------------------------------------
+
+    /**
+     * Every test starts from a clean slate.
+     *
+     * These methods share one probe address (FIX_EMAIL) and one trial row, and
+     * they used to lean on each other having run first — which is exactly what
+     * breaks when PHPUnit shuffles the methods inside the class. Cleaning up
+     * before each method, plus seedProbePlanner() below, makes any order valid.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+        if (self::$pdo !== null) {
+            self::cleanup();
+        }
+    }
+
+    /**
+     * The shared probe planner in the state a live trial has: staff row via the
+     * real register_planner(), mailbox proven, trial opened, SMS credits seeded.
+     */
+    private static function seedProbePlanner(int $trialDays = 14): int
+    {
+        self::cleanup();
+        putenv('WPMS_TRIAL_DAYS=' . $trialDays);
+        $r = register_planner('Asha', 'Wanjiru', self::FIX_EMAIL, '0722999001', 'Sup3rSecret!');
+        if (!($r['ok'] ?? false)) {
+            self::fail('probe planner registration failed: ' . ($r['error'] ?? 'unknown'));
+        }
+        self::$staffId = (int) $r['user_id'];
+
+        $plain = SignupGuard::issueVerification(self::$staffId);
+        if ($plain === null || SignupGuard::verify($plain) === false) {
+            self::fail('probe planner mailbox could not be verified');
+        }
+        Subscription::activate_trial(self::$staffId);
+
+        $p = self::$pdo;
+        $p->prepare('DELETE FROM tblsms_credits WHERE user_id = ?')->execute([self::$staffId]);
+        $p->prepare('INSERT INTO tblsms_credits (user_id, credits, total_used) VALUES (?, 100, 0)')
+          ->execute([self::$staffId]);
+        return self::$staffId;
+    }
 
     #[Group('integration')]
     public function testRegisterPlannerValidatesInput(): void
@@ -187,9 +343,9 @@ final class PlannerTrialSignupTest extends TestCase
     public function testOneTrialPerAccountEver(): void
     {
         $this->requireDb();
-        self::assertGreaterThan(0, self::$staffId, 'previous test must have created the probe planner');
+        $uid = self::seedProbePlanner();
         self::assertFalse(
-            Subscription::start_trial(self::$staffId),
+            Subscription::start_trial($uid),
             'a second trial must be refused while a live subscription exists'
         );
     }
@@ -202,23 +358,24 @@ final class PlannerTrialSignupTest extends TestCase
     public function testStateFlagsTrialAndFinalDayRoutesToActivation(): void
     {
         $this->requireDb();
-        $s = Subscription::state(self::$staffId);
+        $uid = self::seedProbePlanner(14);
+        $s = Subscription::state($uid);
         self::assertSame('active', $s['state'], 'a trial row is full access');
         self::assertTrue((bool) $s['trial'], 'state() must flag the trial');
         self::assertSame(14, $s['days_left'], 'env override WPMS_TRIAL_DAYS=14 must hold');
 
         // Not the final day → dashboard.
-        $_SESSION = ['id' => self::$staffId];
-        self::assertSame('admin/dashboard.php', login_redirect_target(true, self::$staffId, false));
+        $_SESSION = ['id' => $uid];
+        self::assertSame('admin/dashboard.php', login_redirect_target(true, $uid, false));
 
         // Final day (expiry = today) → subscription.php (the funnel).
-        self::$pdo->exec('UPDATE tblsubscriptions SET expiry_date = CURDATE() WHERE user_id = ' . self::$staffId);
-        self::assertSame('admin/subscription.php', login_redirect_target(true, self::$staffId, false));
+        self::$pdo->exec('UPDATE tblsubscriptions SET expiry_date = CURDATE() WHERE user_id = ' . $uid);
+        self::assertSame('admin/subscription.php', login_redirect_target(true, $uid, false));
 
         // Trial expired + grace off → locked → subscription.php.
         putenv('WPMS_SUB_GRACE=');
-        self::$pdo->exec('UPDATE tblsubscriptions SET expiry_date = DATE_SUB(CURDATE(), INTERVAL 1 DAY) WHERE user_id = ' . self::$staffId);
-        self::assertSame('admin/subscription.php', login_redirect_target(true, self::$staffId, false));
+        self::$pdo->exec('UPDATE tblsubscriptions SET expiry_date = DATE_SUB(CURDATE(), INTERVAL 1 DAY) WHERE user_id = ' . $uid);
+        self::assertSame('admin/subscription.php', login_redirect_target(true, $uid, false));
         putenv('WPMS_SUB_GRACE=1');
         $_SESSION = [];
     }
@@ -231,33 +388,39 @@ final class PlannerTrialSignupTest extends TestCase
     public function testTrialIsNeverARenewalCandidateAndGetsOneTextOnly(): void
     {
         $this->requireDb();
+        $uid = self::seedProbePlanner();
         putenv('WPMS_SUB_GRACE=1'); // this test envs the cron itself
         try {
         // Reset the trial to inside the renewal window.
-        self::$pdo->exec('UPDATE tblsubscriptions SET expiry_date = DATE_ADD(CURDATE(), INTERVAL 2 DAY) WHERE user_id = ' . self::$staffId);
+        self::$pdo->exec('UPDATE tblsubscriptions SET expiry_date = DATE_ADD(CURDATE(), INTERVAL 2 DAY) WHERE user_id = ' . $uid);
         self::assertNull(
-            Subscription::renewal_candidate(self::$staffId),
+            Subscription::renewal_candidate($uid),
             'a trial must never be auto-renewed'
         );
-        self::assertCount(
-            0,
-            Subscription::auto_renew_candidates(3),
+        self::assertNotContains(
+            $uid,
+            array_map(static fn ($r): int => (int) $r->user_id, Subscription::auto_renew_candidates(3)),
             'a trial must never be prompted by the auto-renew leg'
         );
 
-        // Dunning: only on expiry day (band 0), never at 7/3.
-        $t = Subscription::dunning_targets([7, 3, 0]);
-        self::assertCount(0, $t, 'a trial 2 days out must NOT be texted');
+        // Dunning: only on expiry day (band 0), never at 7/3. The list answers
+        // for every planner in the installation, so it is narrowed to the
+        // probe before being counted.
+        self::assertCount(0, self::targetsFor(Subscription::dunning_targets([7, 3, 0])), 'a trial 2 days out must NOT be texted');
 
-        self::$pdo->exec('UPDATE tblsubscriptions SET expiry_date = CURDATE() WHERE user_id = ' . self::$staffId);
-        $t = Subscription::dunning_targets([7, 3, 0]);
+        self::$pdo->exec('UPDATE tblsubscriptions SET expiry_date = CURDATE() WHERE user_id = ' . $uid);
+        $t = self::targetsFor(Subscription::dunning_targets([7, 3, 0]));
         self::assertCount(1, $t, 'on expiry day the trial gets its single text');
         self::assertSame('trial', $t[0]['state']);
 
         $out = (string) shell_exec('php ' . escapeshellarg(self::SCRIPT) . ' --limit=20 2>&1');
-        self::assertStringContainsString('(Trial) | trial', $out, 'the cron must text the trial user (plan Trial, state trial)');
+        self::assertStringContainsString(
+            'texted user ' . $uid . ' (Trial) | trial',
+            $out,
+            'the cron must text the trial user (plan Trial, state trial)'
+        );
         $bells = (int) self::$pdo->query(
-            'SELECT COUNT(*) FROM tblnotifications WHERE user_id = ' . self::$staffId
+            'SELECT COUNT(*) FROM tblnotifications WHERE user_id = ' . $uid
         )->fetchColumn();
         self::assertSame(1, $bells, 'the trial reminder must create the bell notification');
         } finally {
@@ -459,10 +622,8 @@ final class PlannerTrialSignupTest extends TestCase
         $response = curl_exec($ch);
         if ($response === false) {
             $err = curl_error($ch);
-            curl_close($ch);
             throw new RuntimeException('HTTP request failed: ' . $err);
         }
-        curl_close($ch);
 
         $status = 0;
         $location = '';

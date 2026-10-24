@@ -1,6 +1,6 @@
 <?php include 'include/init.php'; ?>
 <?php
-    if (!is_staff()) { redirect_to("../"); }
+    require_staff_subscribed();
 
     $user_id = $_SESSION['id'];
     $booking_id = (int)($_GET['booking_id'] ?? 0);
@@ -17,7 +17,7 @@
     $stmt->execute([':uid' => $user_id]);
     $sms_logs = $stmt->fetchAll(PDO::FETCH_OBJ);
 
-    // Handle SMS purchase
+    // Handle SMS credit purchase — M-Pesa confirmed.
     if (isset($_POST['purchase_sms'])) {
         if (!$session->verify_csrf()) {
             $session->message('<div class="alert alert-danger">Invalid security token.</div>');
@@ -25,17 +25,69 @@
             die();
         }
 
-        $package = clean($_POST['sms_package']);
+        $package = clean($_POST['sms_package'] ?? '');
+        $mpesa_code = clean($_POST['mpesa_code'] ?? '');
         $packages = [
             'basic' => ['credits' => 100, 'price' => 999],
             'standard' => ['credits' => 500, 'price' => 2499],
             'premium' => ['credits' => 9999, 'price' => 4999]
         ];
 
-        if (isset($packages[$package])) {
-            SMS::add_credits($user_id, $packages[$package]['credits']);
-            $session->message('<div class="alert alert-success"><strong><i class="mdi mdi-check"></i></strong> ' . $packages[$package]['credits'] . ' SMS credits added successfully!</div>');
+        if (!isset($packages[$package])) {
+            $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Choose an SMS package first.</div>');
+            redirect_to("sms_center.php?$links");
+            die();
         }
+
+        /*
+         * Credits are a PAID product — the pack prices below are real, and the
+         * form tells the payer to send the money to the Paybill with account
+         * "SMS". This handler used to skip that entirely: one POST granted the
+         * pack with no transaction code, no verification and no record, while
+         * the button advertised "Buy via M-Pesa". The payment step now mirrors
+         * admin/subscription.php — a 10-character code is mandatory, it is
+         * verified against the Daraja callback for the pack price and the
+         * "SMS" account reference, and the callback is consumed so a single
+         * payment cannot be replayed for a second pack.
+         */
+        if (strlen($mpesa_code) !== 10) {
+            $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Enter the 10-character M-Pesa transaction code for your payment.</div>');
+            redirect_to("sms_center.php?$links");
+            die();
+        }
+
+        $price      = (float) $packages[$package]['price'];
+        $callbackId = 0;
+        if (MpesaC2B::verification_enabled()) {
+            $check = MpesaC2B::verify($mpesa_code, $price, 'SMS');
+            if (!$check['verified']) {
+                MpesaC2B::record_reject($mpesa_code, 'SMS credits ' . $package . ': ' . $check['reason'], $price);
+                $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> M-Pesa payment could not be verified: '
+                    . htmlspecialchars($check['reason']) . '. This pack costs ' . format_ksh($price, 0)
+                    . ' — check the code and the amount, or contact the administrator.</div>');
+                redirect_to("sms_center.php?$links");
+                die();
+            }
+            $callbackId = (int) ($check['callback_id'] ?? 0);
+        }
+
+        SMS::add_credits($user_id, $packages[$package]['credits']);
+
+        if ($callbackId > 0) {
+            $creditRowId = (int) $db->fetchValue('SELECT id FROM tblsms_credits WHERE user_id = :u LIMIT 1', [':u' => $user_id]);
+            if ($creditRowId > 0 && !MpesaC2B::mark_consumed($callbackId, 'tblsms_credits', $creditRowId)) {
+                // Lost the race — another request already spent this code, so
+                // take the credits back rather than silently granting twice.
+                SMS::deduct_credits($user_id, $packages[$package]['credits']);
+                $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> That M-Pesa code has already been used.</div>');
+                redirect_to("sms_center.php?$links");
+                die();
+            }
+        }
+
+        $session->message('<div class="alert alert-success"><strong><i class="mdi mdi-check"></i></strong> '
+            . number_format($packages[$package]['credits']) . ' SMS credits added — payment '
+            . htmlspecialchars(strtoupper($mpesa_code)) . ' confirmed.</div>');
         redirect_to("sms_center.php?$links");
     }
 
@@ -47,8 +99,8 @@
             die();
         }
 
-        $send_to = clean($_POST['send_to']);
-        $message = clean($_POST['message']);
+        $send_to = clean($_POST['send_to'] ?? '');
+        $message = clean($_POST['message'] ?? '');
 
         if ($send_to == 'all') {
             // Send to all guests in booking
@@ -72,7 +124,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>SMS Center - Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
@@ -120,11 +172,17 @@
                             <option value="">Select Package</option>
                             <option value="basic">100 SMS — KSh 999</option>
                             <option value="standard">500 SMS — KSh 2,499</option>
-                            <option value="premium">Unlimited — KSh 4,999/mo</option>
+                            <option value="premium">9,999 SMS — KSh 4,999</option>
                         </select>
                     </div>
+                    <div class="form-group">
+                        <label for="smsMpesaCode" style="font-size:12px;">M-Pesa transaction code</label>
+                        <input type="text" name="mpesa_code" id="smsMpesaCode" class="form-control"
+                               placeholder="e.g. QKJ7GH9P2W" maxlength="10" required>
+                        <small class="text-muted">Use the account number <strong>SMS</strong> when you pay, then enter the code Safaricom sends.</small>
+                    </div>
                     <button type="submit" name="purchase_sms" class="btn btn-block btn-success">
-                        <i class="mdi mdi-cellphone"></i> Buy via M-Pesa
+                        <i class="mdi mdi-cellphone"></i> Confirm M-Pesa payment
                     </button>
                 </form>
                 <small class="text-muted d-block mt-2">Paybill: 123456 | Account: SMS</small>

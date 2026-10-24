@@ -1,4 +1,4 @@
-<?php include 'include/init.php'; ?>
+<?php include 'include/init.php'; if (staff_paywall_locked()) { redirect_to('subscription.php'); exit; } ?>
 <?php
 /**
  * Couple's wedding-website builder — the shareable public page.
@@ -17,13 +17,9 @@
         die();
     }
     $booking = Booking::find_by_booking_id($booking_id);
-    if (!is_staff()) {
-        if (!$booking || (int) $booking->user_id !== (int) $_SESSION['id'] || $user_id !== (int) $_SESSION['id']) {
-            redirect_to("client.php");
-            die();
-        }
-    }
-    if (!$booking) {
+    // Clients only touch their own booking's site; staff may preview any
+    // (a missing booking is refused for everyone by the helper).
+    if (!may_open_couple_page($booking, $user_id)) {
         redirect_to("client.php");
         die();
     }
@@ -113,7 +109,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title><?= $is_client_view ? 'Our Wedding Page - Everafter Planner' : 'Couple Wedding Page - Everafter Planner'; ?></title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">

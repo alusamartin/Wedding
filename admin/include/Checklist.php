@@ -7,9 +7,34 @@
  * church booking, banns/21-day registrar notice, committee, final headcount…)
  * seeded on first open of the couple's checklist page. Items are scoped to a
  * booking and toggled by the couple (or staff assisting them).
+ *
+ * Since v2.30 a wedding also gets the milestones that come from what the couple
+ * chose: one "confirm this vendor in writing" line per vendor in the locked
+ * proposal option (see ensure_from_option()). Those are seeded at LOCK, so the
+ * couple's dashboard has real progress the moment the wedding is confirmed,
+ * and progress() is the single calculation the checklist page and the
+ * dashboard both read.
  */
 class Checklist extends DB_Object
 {
+    /**
+     * The phase the milestones a couple's CHOSEN PROPOSAL (v2.30) adds land
+     * in. Kept apart from the Kenyan template's own phases so the couple can
+     * see which tasks exist because of what they actually booked, rather than
+     * because every wedding has them.
+     */
+    public const VENDOR_PHASE = 'Your Vendors';
+
+    /**
+     * When a booked vendor is confirmed in writing: three weeks out.
+     *
+     * Deliberately the same moment as the template's "Confirm every vendor in
+     * writing" line — these tasks ARE that line, split per vendor, because one
+     * tick cannot stand for six suppliers, and a couple chasing them needs the
+     * supplier's name on the item, not "every vendor".
+     */
+    public const VENDOR_CONFIRM_DAYS = 21;
+
     protected static $db_table = "tblchecklist";
     protected static $db_table_fields = array(
         'id', 'booking_id', 'phase', 'title', 'due_offset_days',
@@ -83,25 +108,147 @@ class Checklist extends DB_Object
      */
     public static function ensure_seeded(int $booking_id): void
     {
-        global $db;
+        if ($booking_id <= 0) {
+            return;
+        }
         foreach (self::kenyan_template() as $i => $item) {
-            $sql = "SELECT COUNT(*) FROM tblchecklist WHERE booking_id = :bid AND title = :title";
-            $stmt = $db->prepare($sql);
-            $stmt->execute([':bid' => $booking_id, ':title' => $item['title']]);
-            if ((int) $stmt->fetchColumn() > 0) {
+            self::insert_if_missing($booking_id, $item['phase'], $item['title'], $item['days'], $i);
+        }
+    }
+
+    /**
+     * Seed the milestones that come from what the couple actually chose.
+     *
+     * A proposal option is a list of vendors doing specific jobs; once it is
+     * locked those jobs are the wedding's supply chain, and each one needs its
+     * own "confirm this in writing" task — times, setup, balance. Seeding them
+     * here (rather than on first open of the checklist) means the couple's
+     * dashboard shows real progress from the moment their wedding is confirmed.
+     *
+     * Idempotent by title, exactly like the template: locking twice, or the
+     * template arriving later, never duplicates a line and never touches what
+     * the couple has already ticked.
+     *
+     * @param object[] $items proposal items (tblproposal_items rows: vendor_id, label)
+     * @return int how many rows were actually written
+     */
+    public static function ensure_from_option(int $booking_id, array $items): int
+    {
+        if ($booking_id <= 0 || $items === []) {
+            return 0;
+        }
+        global $db;
+        $position = (int) $db->fetchValue(
+            'SELECT COALESCE(MAX(position), -1) FROM tblchecklist WHERE booking_id = :bid',
+            [':bid' => $booking_id]
+        );
+        $written = 0;
+        foreach ($items as $item) {
+            $vendor_id = (int) ($item->vendor_id ?? 0);
+            if ($vendor_id <= 0) {
                 continue;
             }
-            $ins = "INSERT INTO tblchecklist (booking_id, phase, title, due_offset_days, position)
-                    VALUES (:bid, :phase, :title, :days, :pos)";
-            $stmt = $db->prepare($ins);
-            $stmt->execute([
-                ':bid'   => $booking_id,
-                ':phase' => $item['phase'],
-                ':title' => $item['title'],
-                ':days'  => $item['days'],
-                ':pos'   => $i,
-            ]);
+            $vendor = Vendor::find_by_id($vendor_id);
+            $name   = $vendor ? trim((string) $vendor->business_name) : '';
+            if ($name === '') {
+                continue; // a vendor row that no longer resolves teaches the couple nothing
+            }
+            $label = trim((string) ($item->label ?? ''));
+            $title = 'Confirm ' . $name . ($label !== '' ? ' — ' . $label : '');
+            $written += self::insert_if_missing(
+                $booking_id,
+                self::VENDOR_PHASE,
+                mb_substr($title, 0, 190),
+                self::VENDOR_CONFIRM_DAYS,
+                ++$position
+            );
         }
+        return $written;
+    }
+
+    /**
+     * Progress for one wedding, in ONE place, so the checklist page and the
+     * couple's dashboard cannot disagree about the same checklist.
+     *
+     * Reads only — seeding is the checklist page's job (and the lock's), never
+     * a dashboard render's. Overdue needs a wedding date to be overdue against:
+     * with no date, nothing is late ("we cannot tell", not "everything is").
+     * Once the wedding has passed the nagging stops; the list becomes a
+     * keepsake.
+     *
+     * @return array{total:int, done:int, overdue:int, pct:int, next:?object, wedding_past:bool, seeded:bool}
+     */
+    public static function progress(int $booking_id, ?string $wedding_date = null): array
+    {
+        $items = $booking_id > 0 ? self::find_for_booking($booking_id) : [];
+        $total = count($items);
+        $done  = 0;
+        $next  = null;
+        foreach ($items as $item) {
+            if ((int) $item->is_done === 1) {
+                $done++;
+                continue;
+            }
+            if ($next === null) {
+                $next = $item;
+            }
+        }
+
+        $today   = strtotime('today');
+        $wedding = ($wedding_date !== null && trim($wedding_date) !== '') ? strtotime($wedding_date) : false;
+        $past    = $wedding !== false && $today > $wedding;
+
+        $overdue = 0;
+        if ($wedding !== false && !$past) {
+            foreach ($items as $item) {
+                if ((int) $item->is_done === 1) {
+                    continue;
+                }
+                if ($today > $wedding - ((int) $item->due_offset_days * 86400)) {
+                    $overdue++;
+                }
+            }
+        }
+
+        return [
+            'total'        => $total,
+            'done'         => $done,
+            'overdue'      => $overdue,
+            'pct'          => $total > 0 ? (int) round($done / $total * 100) : 0,
+            'next'         => $next,
+            'wedding_past' => $past,
+            'seeded'       => $total > 0,
+        ];
+    }
+
+    /**
+     * One row, only if the booking does not already have a task with that
+     * title. The check-then-insert is what makes both seeders idempotent; the
+     * title is the identity because the table has no natural key and a
+     * UNIQUE(booking_id, title) would refuse a couple's own wording later.
+     *
+     * @return int 1 when the row was written, 0 when it was already there
+     */
+    private static function insert_if_missing(int $booking_id, string $phase, string $title, int $days, int $position): int
+    {
+        global $db;
+        $stmt = $db->prepare('SELECT COUNT(*) FROM tblchecklist WHERE booking_id = :bid AND title = :title');
+        $stmt->execute([':bid' => $booking_id, ':title' => $title]);
+        if ((int) $stmt->fetchColumn() > 0) {
+            return 0;
+        }
+        $stmt = $db->prepare(
+            'INSERT INTO tblchecklist (booking_id, phase, title, due_offset_days, position)
+             VALUES (:bid, :phase, :title, :days, :pos)'
+        );
+        $stmt->execute([
+            ':bid'   => $booking_id,
+            ':phase' => $phase,
+            ':title' => $title,
+            ':days'  => $days,
+            ':pos'   => $position,
+        ]);
+        return 1;
     }
 
     /** All checklist rows for a booking, in template order. */

@@ -1,0 +1,241 @@
+/*
+ * Everafter Planner — public vendor pages (vendors.php, vendor.php).
+ *
+ * One stylesheet for the anonymous shop window and a single listing, so the
+ * two cannot drift apart. Names are prefixed vd- and the shared --kenya-*
+ * tokens from modern.css are left alone; this file only adds its own.
+ */
+:root {
+    --vd-green: #065F46;
+    --vd-deep: #0C3B2E;
+    --vd-green-dark: #054C38;
+    --vd-gold: #D97706;
+    --vd-ink: #1C1917;
+    --vd-muted: #64748B;
+    --vd-line: #E2E8F0;
+}
+
+body {
+    font-family: 'Montserrat', sans-serif;
+    background: #FAFAF9;
+    color: var(--vd-ink);
+}
+
+/* --- Hero ------------------------------------------------------------- */
+.vd-hero {
+    background: linear-gradient(135deg, var(--vd-deep) 0%, var(--vd-green) 60%, #0E7C66 100%);
+    color: #fff;
+    padding: 120px 20px 56px;
+    text-align: center;
+}
+.vd-hero h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 42px;
+    margin-bottom: 12px;
+}
+.vd-hero p {
+    font-size: 16px;
+    opacity: .92;
+    max-width: 640px;
+    margin: 0 auto;
+}
+.vd-hero .vd-count {
+    display: inline-block;
+    margin-top: 18px;
+    font-size: 12px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    background: rgba(255,255,255,.14);
+    border: 1px solid rgba(255,255,255,.28);
+    border-radius: 999px;
+    padding: 6px 16px;
+}
+
+/* --- Layout ----------------------------------------------------------- */
+.vd-wrap { max-width: 1120px; margin: 0 auto; padding: 34px 20px 60px; }
+.vd-crumbs { font-size: 12.5px; color: var(--vd-muted); margin-bottom: 16px; }
+.vd-crumbs a { color: var(--vd-green); }
+.vd-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; }
+@media (min-width: 992px) {
+    .vd-layout { grid-template-columns: minmax(0, 1.85fr) minmax(0, 1fr); align-items: start; }
+}
+
+/* --- Filters ---------------------------------------------------------- */
+.vd-filters {
+    background: #fff;
+    border: 1px solid var(--vd-line);
+    border-radius: 16px;
+    padding: 16px 18px;
+    margin-bottom: 26px;
+}
+.vd-chip {
+    display: inline-block;
+    border: 1px solid var(--vd-line);
+    background: #fff;
+    color: #44403C;
+    border-radius: 999px;
+    font-size: 12px;
+    padding: 5px 14px;
+    margin: 0 6px 6px 0;
+}
+.vd-chip:hover { text-decoration: none; border-color: var(--vd-green); color: var(--vd-green); }
+.vd-chip.is-active { background: var(--vd-green); border-color: var(--vd-green); color: #fff; }
+.vd-county {
+    border: 1px solid var(--vd-line);
+    border-radius: 999px;
+    font-size: 12px;
+    padding: 5px 12px;
+    color: #44403C;
+    background: #fff;
+}
+
+/* --- Cards / panels --------------------------------------------------- */
+.vd-card {
+    background: #fff;
+    border: 1px solid var(--vd-line);
+    border-radius: 16px;
+    padding: 18px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    transition: box-shadow .2s ease, transform .2s ease;
+}
+.vd-card:hover { box-shadow: 0 10px 26px rgba(12,59,46,.10); transform: translateY(-3px); }
+.vd-panel {
+    background: #fff;
+    border: 1px solid var(--vd-line);
+    border-radius: 16px;
+    padding: 22px;
+}
+.vd-panel + .vd-panel { margin-top: 22px; }
+.vd-panel h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 22px;
+    color: var(--vd-deep);
+    margin-bottom: 14px;
+}
+.vd-avatar {
+    width: 54px; height: 54px; flex: 0 0 54px;
+    border-radius: 14px;
+    background: #F0FDF4;
+    color: var(--vd-green);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px;
+    overflow: hidden;
+}
+.vd-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.vd-avatar--lg { width: 86px; height: 86px; flex: 0 0 86px; border-radius: 20px; font-size: 38px; }
+.vd-name { font-size: 16px; font-weight: 700; line-height: 1.25; margin: 0; }
+.vd-name a { color: inherit; }
+.vd-name a:hover { color: var(--vd-green); text-decoration: none; }
+.vd-name--lg { font-family: 'Playfair Display', serif; font-size: 30px; line-height: 1.2; }
+.vd-cat { font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--vd-muted); }
+.vd-badge {
+    background: linear-gradient(135deg, var(--vd-gold), #B45309);
+    color: #fff; font-size: 10px; padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+}
+.vd-meta { font-size: 12px; color: var(--vd-muted); margin-top: 10px; }
+.vd-meta--lg { font-size: 13.5px; }
+.vd-stars { color: var(--vd-gold); font-size: 12px; }
+.vd-stars--lg { font-size: 15px; }
+.vd-desc { font-size: 12.5px; color: #57534E; margin: 10px 0 0; }
+.vd-prose { font-size: 14px; color: #44403C; line-height: 1.75; }
+.vd-pkgs { margin-top: 12px; border-top: 1px dashed var(--vd-line); padding-top: 6px; }
+.vd-pkg { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 5px 0; font-size: 12.5px; }
+.vd-pkg + .vd-pkg { border-top: 1px dashed var(--vd-line); }
+.vd-pkg-price { font-weight: 700; color: var(--vd-green); white-space: nowrap; }
+.vd-more { font-size: 11px; color: var(--vd-muted); padding-top: 6px; }
+.vd-card-foot { margin-top: auto; padding-top: 14px; }
+
+/* --- Full package list (profile) ------------------------------------- */
+.vd-pkg-full {
+    border: 1px solid var(--vd-line);
+    border-radius: 14px;
+    padding: 16px 18px;
+}
+.vd-pkg-full + .vd-pkg-full { margin-top: 12px; }
+.vd-pkg-full-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.vd-pkg-full-title { font-size: 15.5px; font-weight: 700; color: var(--vd-ink); }
+.vd-pkg-full-price { font-size: 18px; font-weight: 700; color: var(--vd-green); }
+.vd-pkg-full-meta { font-size: 11.5px; color: var(--vd-muted); margin-top: 3px; }
+.vd-pkg-full-desc { font-size: 13px; color: #57534E; margin: 8px 0 0; }
+
+/* --- Spec rows (profile sidebar) ------------------------------------- */
+.vd-spec { border-top: 1px solid var(--vd-line); margin-top: 14px; padding-top: 4px; }
+.vd-spec-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 7px 0;
+    font-size: 12.5px;
+    border-bottom: 1px dashed var(--vd-line);
+}
+.vd-spec-row:last-child { border-bottom: 0; }
+.vd-spec-label { color: var(--vd-muted); }
+.vd-spec-value { text-align: right; font-weight: 600; }
+
+/* --- Buttons ---------------------------------------------------------- */
+.vd-cta {
+    display: block; text-align: center;
+    background: var(--vd-green); color: #fff;
+    border-radius: 999px; font-size: 13px; font-weight: 600;
+    padding: 10px 16px;
+}
+.vd-cta:hover { background: var(--vd-green-dark); color: #fff; text-decoration: none; }
+.vd-cta--block { width: 100%; border: 0; }
+.vd-profile {
+    display: block;
+    text-align: center;
+    font-size: 12px;
+    color: var(--vd-green);
+    margin-top: 9px;
+}
+.vd-profile:hover { color: var(--vd-green-dark); text-decoration: none; }
+.vd-ghost {
+    display: inline-block;
+    border: 1px solid var(--vd-green);
+    color: var(--vd-green);
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 8px 16px;
+}
+.vd-ghost:hover { background: #ECFDF5; color: var(--vd-green); text-decoration: none; }
+
+/* --- Empty / not-found states ---------------------------------------- */
+.vd-empty {
+    background: #fff; border: 1px dashed var(--vd-line); border-radius: 16px;
+    padding: 46px 22px; text-align: center;
+}
+.vd-empty i { font-size: 40px; color: #94A3B8; }
+
+/* --- Vendor invitation band ------------------------------------------ */
+.vd-vendor-band {
+    background: #ECFDF5;
+    border: 1px solid #A7F3D0;
+    border-radius: 16px;
+    padding: 24px;
+    margin-top: 40px;
+}
+.vd-vendor-band h3 { font-family: 'Playfair Display', serif; font-size: 22px; color: var(--vd-deep); margin-bottom: 8px; }
+.vd-vendor-band p { font-size: 13.5px; color: #365314; margin-bottom: 14px; }
+.vd-vendor-band .btn { border-radius: 999px; font-size: 13px; font-weight: 600; }
+
+/* --- Footer ----------------------------------------------------------- */
+footer.vd-footer {
+    background: #0C3B2E; color: rgba(255,255,255,.8);
+    text-align: center; padding: 30px 20px; font-size: 12px;
+}
+footer.vd-footer strong { color: #fff; }
+
+@media (max-width: 575.98px) {
+    .vd-hero { padding-top: 96px; }
+    .vd-hero h1 { font-size: 30px; }
+    .vd-name--lg { font-size: 24px; }
+}

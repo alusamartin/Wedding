@@ -6,7 +6,7 @@
  */
 include 'include/init.php';
 
-if (!is_staff()) { redirect_to("../"); die(); }
+require_staff_subscribed();
 
 $booking_id = (int)($_GET['booking_id'] ?? 0);
 $user_id    = (int)($_GET['user_id'] ?? 0);

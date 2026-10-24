@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require __DIR__ . '/cli_guard.php'; // CLI-only: refuse to run over HTTP
 
 /**
  * WPMS Kenya — end-to-end smoke test against a running dev server.
@@ -34,6 +35,7 @@ const PLANNER_PASS  = 'Test@1234';
 const PUBLIC_PAGES = [
     '/index.php',
     '/login.php',
+    '/vendor_signup.php',
     '/gallery.php',
     '/pricing.php',
     '/contact.php',
@@ -122,7 +124,6 @@ final class Smoke
         $raw   = curl_exec($ch);
         $error = curl_error($ch);
         $info  = curl_getinfo($ch);
-        curl_close($ch);
 
         $headerLen = (int) ($info['header_size'] ?? 0);
         $head      = substr((string) $raw, 0, $headerLen);
@@ -412,10 +413,104 @@ final class Smoke
             }
         }
 
+        // --- 2b. capacity headroom (the staff-only drift view) ---
+        /*
+         * The surface the capacity warnings are derived from
+         * (admin/headroom.php): the weddings running CLOSE to the guest capacity
+         * of a package a vendor is confirmed on, before it becomes a breach. The
+         * full harness walks it with a probe deal it creates and deletes; this is
+         * the fast walk, and it asserts what can break without a fixture — the
+         * page renders its heading, its width chips and the width it drew the
+         * list at, the sidebar badge counts exactly what the page's own stat
+         * counts (and disappears when the number is zero), a listed row reads as
+         * a drifting position (or the empty state says why nothing is), the width
+         * filter takes its own percentages and falls back on anything else, and
+         * reading the whole thing rings no bell. A couple's denial is asserted in
+         * the client flow below.
+         */
+        echo "\nCapacity headroom\n";
+        $smokeDb      = $this->db();
+        $notifsBefore = $smokeDb === null ? -1 : (int) ($smokeDb->fetchValue('SELECT COUNT(*) FROM tblnotifications') ?? -1);
+        $head         = $this->http('GET', '/admin/headroom.php', [], true);
+        $headBody     = $head['body'];
+        $bodyLeaks    = [];
+        if (preg_match_all(BODY_ISSUE_RE, $headBody, $bm)) {
+            $bodyLeaks = array_values(array_unique($bm[0]));
+        }
+        $chips = str_contains($headBody, 'Within 5%')
+            && str_contains($headBody, 'Within 10%')
+            && str_contains($headBody, 'Within 20%');
+        // The width the page OPENS at is the account's own (a planner may have
+        // saved one), so this asserts that it states a width at all — which one
+        // is asserted against the width filter below.
+        $opensAt = static function (string $body): int {
+            return preg_match('~Positions inside (\d+)%~', $body, $m) === 1 ? (int) $m[1] : -1;
+        };
+        $openingWidth = $opensAt($headBody);
+        $this->check('staff capacity headroom view renders its heading, width chips and the width it opened at',
+            $head['status'] === 200 && $bodyLeaks === []
+                && str_contains($headBody, 'Capacity Headroom')
+                && $chips
+                && $openingWidth > 0,
+            'HTTP ' . $head['status']
+                . ($bodyLeaks !== [] ? ' body leaks: ' . implode(' | ', array_slice($bodyLeaks, 0, 3)) : '')
+                . (str_contains($headBody, 'Capacity Headroom') ? '' : ' (no heading)')
+                . ($chips ? '' : ' (width chips missing)')
+                . ($openingWidth > 0 ? '' : ' (no width stat)'));
+
+        // The badge is the whole reason the page is ever opened, and the one
+        // thing that can silently disagree with it: zero must mean NO badge, and
+        // any other number must be the page's own count.
+        preg_match('~Weddings on watch</h6>\s*<div class="value">(\d+)</div>~', $headBody, $onWatch);
+        $listed = isset($onWatch[1]) ? (int) $onWatch[1] : -1;
+        $navItem = '';
+        if (preg_match('~href="headroom\.php".*?</li>~s', $headBody, $li)) {
+            $navItem = $li[0];
+        }
+        preg_match('~badge-warning[^>]*>\s*(\d+)~', $navItem, $badge);
+        $badgeCount = isset($badge[1]) ? (int) $badge[1] : null;
+        $this->check('the headroom badge counts exactly what the page lists, and is absent at zero',
+            $navItem !== '' && $listed >= 0
+                && (($listed === 0 && $badgeCount === null) || ($listed > 0 && $badgeCount === $listed)),
+            $navItem === ''
+                ? 'the navigation has no capacity headroom link'
+                : 'page lists ' . ($listed < 0 ? '(no stat)' : $listed)
+                    . ', badge ' . ($badgeCount === null ? 'absent' : $badgeCount));
+
+        $this->check('a listed wedding reads as a drifting position, or the page says nothing is close',
+            $listed > 0
+                ? (bool) preg_match('~is planned for \d+ — (within \d+ guest|exactly the limit of)~', $headBody)
+                : ($listed === 0 && str_contains($headBody, 'Nothing is running close to a limit')),
+            'page lists ' . ($listed < 0 ? '(no stat)' : $listed)
+                . ($listed > 0 ? ' and states no position' : ' and prints no empty state'));
+
+        $narrow = $this->http('GET', '/admin/headroom.php?within=5', [], true);
+        $junk   = $this->http('GET', '/admin/headroom.php?within=junk', [], true);
+        $this->check('the headroom width filter takes its own percentages and falls back on anything else',
+            $narrow['status'] === 200 && $opensAt($narrow['body']) === 5
+                && $junk['status'] === 200 && $opensAt($junk['body']) === $openingWidth,
+            'within=5 HTTP ' . $narrow['status'] . ' → ' . $opensAt($narrow['body']) . '%'
+                . ', within=junk HTTP ' . $junk['status'] . ' → ' . $opensAt($junk['body']) . '%'
+                . ' (the page opens at ' . $openingWidth . '%)');
+
+        if ($notifsBefore >= 0) {
+            $notifsAfter = (int) ($smokeDb->fetchValue('SELECT COUNT(*) FROM tblnotifications') ?? -1);
+            $this->check('reading the headroom view rings no bell', $notifsAfter === $notifsBefore,
+                "notifications {$notifsBefore} → {$notifsAfter}");
+        } else {
+            $this->note('headroom no-bell check skipped — dev DB not reachable');
+        }
+
         // --- 3. client session (self-service dashboard) ---
         echo "\nClient flow\n";
         if ($this->login('/login.php', $clientEmail, $clientPass, 'client')) {
             $this->expectPage('client dashboard', '/admin/client.php', true);
+            // Staff-only, like the ledger it is derived from: which deals were
+            // sold, and how tight each one is, is not a couple's page.
+            $denied = $this->http('GET', '/admin/headroom.php', [], true);
+            $this->check('client is denied the capacity headroom view',
+                $denied['status'] === 302 && !str_contains($denied['body'], 'Capacity Headroom'),
+                'HTTP ' . $denied['status']);
             // Follow the first Overview link the dashboard renders, if any.
             $dash = $this->http('GET', '/admin/client.php', [], true);
             if (preg_match('~href="(client_manage_account_details\.php\?[^"]+)"~', $dash['body'], $m)) {

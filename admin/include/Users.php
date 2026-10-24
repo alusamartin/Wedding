@@ -131,9 +131,23 @@ class Users extends DB_Object
             if (!empty($this->errors)) {
                 return false;
             }
+            /*
+             * The avatar is OPTIONAL. The Add/Edit Staff and profile forms do
+             * not require one, but a missing upload made set_file() record
+             * "There was no file uploaded here", which the guard above then
+             * turned into a refused INSERT — and the page reported success
+             * anyway, so the operator was told an account existed that was
+             * never written. A real upload still moves its file as before; a
+             * genuinely absent one creates the account with an empty
+             * profile_picture (the column is NOT NULL, so '' not null).
+             *
+             * A file that FAILED validation still reaches the guard above and
+             * is refused here, so a rejected avatar can never be silently
+             * dropped and the account created without it.
+             */
             if (empty($this->profile_picture) || empty($this->tmp_path)) {
-                $this->errors[] = "The file was not available";
-                return false;
+                $this->profile_picture = (string) ($this->profile_picture ?? '');
+                return $this->create();
             }
             $target_path = SITE_ROOT . '/' . $this->upload_directory . '/' . $this->profile_picture;
             if (file_exists($target_path)) {

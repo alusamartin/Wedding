@@ -29,7 +29,7 @@
 Everafter Planner is a comprehensive wedding planning management system designed specifically for the Kenyan wedding industry. It serves three primary user types:
 
 - **Wedding Planners/Organizers** — Manage clients, events, guests, budgets
-- **Vendors** — List services, receive bookings, manage packages
+- **Vendors** — Sign up from the public site (`vendor_signup.php`), list services, receive bookings, manage packages
 - **Couples** — Register weddings, track planning, share wedding websites
 
 ## Key Features
@@ -41,6 +41,8 @@ Everafter Planner is a comprehensive wedding planning management system designed
 | Budget & Payments | M-Pesa integration, payment tracking by method |
 | Event Calendar | FullCalendar with Kenyan wedding event types |
 | Vendor Marketplace | Categorized vendor listings with booking system |
+| Vendor Services | Each vendor lists what it sells — from a seeded 39-item catalogue or their own — always with a unit (per guest, flat, per day…), a price, quantity window, inclusions and taste tags, so two vendors can be compared and a couple's budget checked |
+| Taste & Budget per Category | Each couple states, per vendor category, the taste they want (free-text tags) and what they can spend (an optional floor and a cap), with a note for their planner. The marketplaces then mark every service **Fits / Partly fits / Over budget / Off your taste / Quote needed**, with the estimate shown and an explicit "quote needed" wherever a total cannot be worked out honestly. The couple's marketplace can filter to what fits; the planner sees the same marks for the wedding they are shopping for. **Split a total** turns one figure — the package price, or any number they prefer — into a cap per category from editable shares: it previews the result, places caps in whole KSh 500 blocks so they add up to the total, leaves out a category whose share is 0 without touching the cap it already had, and prefers the couple's own floor where that is higher than the share. Nothing is written until "Apply these caps", and applying changes caps only — tags, floors and notes stay |
 | SMS Center | Bulk SMS via Africa's Talking for invitations/reminders |
 | Wedding Websites | Public-facing pages with RSVP, gallery, countdown |
 | Subscription System | SaaS monetization with 3 tiers |
@@ -136,7 +138,8 @@ Wedding/
 │   ├── dashboard.php             ← Admin dashboard with stats
 │   ├── subscription.php          ← SaaS subscription management
 │   ├── vendors.php               ← Vendor marketplace
-│   ├── vendor_register.php       ← Vendor registration form
+│   ├── vendor_signup.php         ← Public vendor self-registration (account + listing)
+│   ├── vendor_register.php       ← Vendor profile form (invited vendors)
 │   ├── sms_center.php            ← SMS credits & sending
 │   ├── client.php                ← Client list (pending/confirmed)
 │   ├── client_add.php            ← Add new client
@@ -288,9 +291,24 @@ the page your role needs automatically:
 | Role | Email | Password | Lands on |
 |---|---|---|---|
 | Super Admin | `wafula@wpms.co.ke` | `Admin@2024!` | `admin/dashboard.php` |
-| Wedding Planner | `amina@wpms.co.ke` | `Test@1234` | `admin/dashboard.php` |
+| Super Admin (alt) | `abdi@wpms.co.ke` | `Admin@2024!` | `admin/dashboard.php` |
+| Wedding Planner | `amina@wpms.co.ke` | `Test@1234` | `admin/dashboard.php` — `admin/subscription.php` first while the plan is locked |
+| Planner | `njeri@wpms.co.ke` | `Test@1234` | same |
+| Planner | `otieno@wpms.co.ke` | `Test@1234` | same |
+| Vendor Lead | `kamau@nyamachoma.co.ke` | `Vendor@2024` | `admin/vendor_home.php` |
+| Vendor | `chebet@floral.co.ke` | `Vendor@2024` | `admin/vendor_home.php` |
 | Couple (client) | `brian.wafula@gmail.com` | `Test@1234` | `admin/client.php` |
 | Couple (client) | `faith.njeri@yahoo.com` | `Test@1234` | `admin/client.php` |
+| Couple (client) | `otieno.kisumu@outlook.com` | `Test@1234` | `admin/client.php` |
+| Couple (client) | `chebet.eldoret@gmail.com` | `Test@1234` | `admin/client.php` |
+| Couple (client) | `abdi.garissa@gmail.com` | `Test@1234` | `admin/client.php` |
+
+> The seeded subscription dates are relative to the day the seed was imported,
+> so a database seeded weeks ago has every plan expired: planners then land on
+> the subscription page instead of the dashboard until they renew (super admins
+> are exempt). The full per-role access map — what each role may actually open,
+> measured with a signed-in session per role — is in
+> [`docs/XAMPP_LOGINS_AND_ROLES.md`](docs/XAMPP_LOGINS_AND_ROLES.md).
 
 Routing rules:
 
@@ -323,7 +341,7 @@ admin/upload/users/
 
 # 4. DATABASE SCHEMA
 
-## Core Tables (11)
+## Core Tables (12)
 
 ### tblusers — Admin Users
 | Column | Type | Description |
@@ -478,6 +496,73 @@ admin/upload/users/
 | date_issue | VARCHAR(100) | Payment date |
 | date_modified | VARCHAR(100) | Last modified |
 
+### tbluser_prefs — Per-Account Preferences (v2.12)
+| Column | Type | Description |
+|--------|------|-------------|
+| user_id | INT PK | `tblusers.id` — staff and vendor accounts (couples have no rows) |
+| pref_key | VARCHAR(40) PK | Preference name, e.g. `headroom_width` |
+| pref_value | VARCHAR(190) | Stored value; the READER validates it (`admin/include/UserPrefs.php`) |
+| updated_at | TIMESTAMP | Last write |
+
+> One row per (account, preference). A table rather than a column on `tblusers`
+> because that table is read on every login and the next preference must not be
+> another `ALTER` on it. The first preference is the capacity headroom view's
+> width: the page (`admin/headroom.php`) lists the weddings running within 5%,
+> 10% or 20% of a booked package's guest limit, and a planner's choice is stored
+> here so the page opens at it again — chosen with the Remember button under the
+> width chips, dropped with Forget, both of which are CSRF-protected POSTs. An
+> explicit `?within=` in the address bar changes that one view and never writes,
+> and an account with no row is simply on the page's default of ten per cent.
+> The stored value is a hint, not a policy: it is validated against the widths
+> the feature offers when it is read, so a row edited by hand reads as the
+> default instead of widening every page load. Installing this table is optional
+> (`migrations/v2.12_user_preferences.sql`): the page works without it and says
+> it cannot remember the width.
+
+### tblops_snapshots — Weekly Business-Pulse History (v2.23)
+| Column | Type | Description |
+|--------|------|-------------|
+| scope_id | INT PK | `tblusers.id` whose thresholds shaped the snapshot; `0` = shared/default mailbox |
+| iso_week | VARCHAR(8) PK | ISO week key, e.g. `2026-W43` |
+| payload | MEDIUMTEXT | The `OpsPulse::snapshot()` figures that week's brief was rendered from (aggregates and internal ids only) |
+| captured_at | TIMESTAMP | Last write |
+
+> One row per (account, week). The Monday brief (`scripts/business_pulse_email.php`,
+> `admin/include/BusinessPulse.php`) reads the most recent row **strictly before**
+> its own week and prints each figure's signed change — counts as `+3`, money as
+> `+95,000`, the RSVP rate as `+2.1pp`. The row is written only after the mail
+> transport accepted the message, so a preview or a failed send never becomes the
+> next baseline; a resend inside the same week replaces that week's row instead of
+> competing with it. The writer keeps 26 weeks per account, so there is no pruning
+> cron. Optional (`migrations/v2.23_business_pulse_snapshots.sql`): without the
+> table the brief still sends and says the comparison is off.
+
+### tblevent_vendor_needs — Required Vendor Services per Function (v2.24)
+| Column | Type | Description |
+|--------|------|-------------|
+| booking_id | INT PK | `tblweddingbook.booking_id` the function belongs to |
+| event_id | INT PK | `events.id`; `0` = the wedding as a whole (no calendar functions yet) |
+| categories | VARCHAR(255) | Required `tblvendors.category` values, comma-separated in canonical order; empty = nothing needed |
+| updated_at | TIMESTAMP | Last write |
+| updated_by | INT | `tblusers.id` who saved the list |
+
+> One row per (wedding, function). The coverage board
+> (`admin/vendor_coverage.php`, `admin/include/VendorCoverage.php`) draws every
+> calendar function against the ten vendor categories and judges only the cells
+> this list marks as required — booked when a deal is confirmed or completed,
+> pending while the only deal is an enquiry, missing when nothing is recorded.
+> A function with **no row** starts from all ten, so an existing wedding keeps
+> its whole matrix and a hole is never hidden by an empty default; a stored empty
+> string is the planner's decision that the function needs no vendor service.
+> A deal in a category that was unticked stays visible but muted, because the
+> platform must never hide money already committed. Requirements are intent, not
+> agreements: deals and amounts stay in `tblvendor_bookings`, and changing a
+> requirement never touches a deal. The only writer is the board's editor — an
+> explicit POST with the session's CSRF token — and a function that is not this
+> wedding's is refused even with a valid token. Optional
+> (`migrations/v2.24_event_vendor_needs.sql`): without the table the board still
+> renders, counting all ten per function, and says the list cannot be edited.
+
 ## Monetization Tables (11)
 
 ### tblsubscriptions — User Subscriptions
@@ -485,12 +570,12 @@ admin/upload/users/
 |--------|------|-------------|
 | id | INT PK | Auto-increment |
 | user_id | INT FK | Admin user ID |
-| plan | ENUM('starter','professional','agency') | Plan type |
+| plan | VARCHAR(20) | Plan key — matches `tblsubscription_plans.plan_slug` |
 | amount | DECIMAL(10,2) | Amount paid |
 | mpesa_code | VARCHAR(20) | M-Pesa code |
 | start_date | DATE | Subscription start |
 | expiry_date | DATE | Subscription expiry |
-| status | ENUM('active','expired','cancelled') | Status |
+| status | ENUM('active','expired','cancelled','pending_renewal','trial') | Status |
 | created_at | TIMESTAMP | Creation time |
 | updated_at | TIMESTAMP | Last update |
 
@@ -503,7 +588,25 @@ admin/upload/users/
 | price | DECIMAL(10,2) | Monthly price |
 | wedding_limit INT | Annual wedding limit |
 | features | TEXT | Feature list |
-| is_active | TINYINT(1) | Active status |
+| is_active | TINYINT(1) | Active status (0 = retired, still resolves for existing subscribers) |
+
+### tblsubscription_plan_changes — Plan Change Ledger (v2.8)
+Each edit to a plan definition writes one row per changed FIELD, so "who moved
+this price, and when" is a query rather than a guess. Written by
+`Subscription::create_plan() / update_plan() / set_plan_active()`; read by the
+plan editor (last price change + full history) . No foreign key, deliberately:
+history must not be erasable by deleting its subject.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| plan_id | INT | The plan definition that changed (indexed, not a FK) |
+| plan_slug | VARCHAR(20) | Key at the time of the change |
+| field_name | VARCHAR(30) | name \| price \| wedding_limit \| features \| is_active |
+| old_value | VARCHAR(255) | Previous value; NULL when the plan was defined |
+| new_value | VARCHAR(255) | New value |
+| user_id | INT | Operator who made the change; NULL for CLI/cron |
+| changed_at | TIMESTAMP | When |
 
 ### tblsubscription_payments — Payment History
 | Column | Type | Description |
@@ -543,10 +646,116 @@ admin/upload/users/
 | title | VARCHAR(200) | Package name |
 | description | TEXT | Description |
 | price | DECIMAL(10,2) | Price (KSh) |
-| capacity | INT | Guest capacity |
+| capacity | INT | Guest capacity (NULL/0 = no limit stated) |
 | duration_hours | INT | Service duration |
 | is_active | TINYINT(1) | Active status |
 | created_at | TIMESTAMP | Creation time |
+
+### tblservice_catalog — The Shared Service Vocabulary (v2.27)
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| vendor_category | ENUM(...) | Same ten values as `tblvendors.category` (named `vendor_category` so a bare `category` stays unique in the schema) |
+| name | VARCHAR(120) | Human name, e.g. "Buffet, per guest" |
+| slug | VARCHAR(120) | Stable key, so re-running the seed updates instead of duplicating |
+| default_unit | ENUM('flat','per_guest','per_day','per_hour','per_item','per_km','per_staff') | **Mandatory** — how the service is normally quoted |
+| description | VARCHAR(255) | Default wording |
+| sort_order | SMALLINT | Picker order inside a category |
+| is_active | TINYINT(1) | A retired item is not offered to new rows |
+| created_at | TIMESTAMP | Creation time |
+
+> Platform-owned, not vendor-editable: that is what stops "buffet", "buffet service"
+> and "self-service buffet" becoming three different things.
+
+### tblvendor_services — What One Vendor Sells (v2.27)
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| vendor_id | INT FK | Vendor ID (cascades with the listing) |
+| catalog_id | INT FK NULL | Catalogue item, or NULL when the vendor added their own |
+| title | VARCHAR(160) | Service name |
+| description | TEXT | Details |
+| pricing_unit | ENUM(...) | How the price is quoted (named `pricing_unit`, not `unit`, to keep the property name unique) |
+| price | DECIMAL(12,2) | KSh per pricing unit |
+| min_qty / max_qty | INT NULL | e.g. minimum 100 guests / capacity 250 |
+| lead_time_days | SMALLINT NULL | How far ahead the vendor must be booked |
+| includes | VARCHAR(500) | Short inclusions line (staff, fuel, setup) |
+| tags | VARCHAR(255) | Comma-separated taste markers (rustic, halal, outdoor) |
+| is_active | TINYINT(1) | Published / hidden |
+| created_at / updated_at | TIMESTAMP | Lifecycle stamps |
+
+> A service is a **piece**, not a bundle: `tblvendor_packages` stays the thing a
+> couple buys and is unaffected by this table. Vendor → My Services
+> (`admin/vendor_services.php`) writes it; the staff marketplace, the couple
+> marketplace and the public profile read it with `VendorService::price_line()`,
+> which always states the unit ("KSh 1,200 / guest (min 100)").
+
+### tblvendor_service_tiers / tblvendor_package_tiers — Silver, Gold, Platinum (v3.1)
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| service_id / package_id | INT FK | The offering this level belongs to (cascades with it) |
+| tier | ENUM('silver','gold','platinum') | The level; UNIQUE with the offering |
+| price | DECIMAL(12,2) | KSh, in the offering's own unit |
+| includes / excludes | VARCHAR(500) | What this level buys, and what it leaves out |
+| created_at / updated_at | TIMESTAMP | Lifecycle stamps |
+
+> `tblvendor_services.price` / `tblvendor_packages.price` stay the **Silver**
+> price and are written whenever tiers are saved, so everything that reads a
+> single price keeps working and means "entry level". See §7.9 for the rules
+> (all three or none, Silver < Gold < Platinum) and where the levels show.
+
+### tblvendor_preferences — The Couple's Taste & Budget (v2.28)
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| booking_id | INT FK | Wedding (cascades with the booking) |
+| service_category | ENUM(ten) | Which kind of vendor this applies to |
+| taste_tags | VARCHAR(255) | Comma-separated, the same words vendors tag services with |
+| budget_min | DECIMAL(12,2) NULL | Optional floor |
+| budget_max | DECIMAL(12,2) NULL | The cap for this category |
+| notes | VARCHAR(500) | The couple's own words, shown to their planner |
+| updated_by | INT NULL | Who last saved it |
+| created_at / updated_at | TIMESTAMP | Lifecycle stamps |
+
+> One row per (wedding, category); an empty form deletes the row, so "no
+> preference" is one state. Fit is **computed on read** (`VendorFit`) and never
+> stored per vendor: per-guest prices use the couple's guest list (or the
+> vendor's stated minimum), flat takes the price, per-item/per-staff use the
+> vendor's minimum quantity, and per-hour/per-km say **Quote needed** rather
+> than inventing a total.
+
+### tblproposals — One Wedding's Proposal (v2.30)
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| booking_id | INT UNIQUE FK | The wedding; one proposal per booking |
+| planner_id | INT | tblusers id of the planner who owns it; 0 = waits in the shared queue |
+| preferred_planner_id | INT | The planner the couple asked for at sign-up, kept after reassignment |
+| status | ENUM | proposal → acknowledged → options → chosen → locked, plus tweak_requested and declined |
+| guests / budget | INT / DECIMAL NULL | What the couple stated; NULL means "not stated", never 0 |
+| venue / taste_tags / couple_note | VARCHAR | The rest of their brief, in their words |
+| tweak_note / decline_note | VARCHAR | Their request for a change, or why they walked away |
+| acknowledged_at/by, published_at, chosen_at, locked_at/by | stamps | When each move happened and who made it |
+
+### tblproposal_options / tblproposal_items — The Priced Options (v2.30)
+| Column | Type | Description |
+|--------|------|-------------|
+| options.title / tier / summary | VARCHAR | What the couple reads: "The Garden Wedding", recommended, and one paragraph |
+| options.total | DECIMAL | The quote as it was saved — the sum of its items at that moment |
+| options.is_chosen | TINYINT | Set when the couple picks it (exactly one per proposal) |
+| items.option_id | INT FK | The option this line belongs to (cascades) |
+| items.vendor_id | INT | The vendor doing it |
+| items.kind | ENUM | service / package / custom (an agreed arrangement outside the catalogue) |
+| items.service_id / package_id | INT NULL FK | The catalogue row bought; NULL for a custom line |
+| items.service_qty | INT NULL | The multiplier behind the amount (guests, hours, items) |
+| items.label / note | VARCHAR | What it is, frozen at save time, plus the planner's note |
+| items.deal_id | INT NULL | The tblvendor_bookings row it became when the option was locked |
+
+> At least **three** priced options must exist before the couple can be asked
+to choose. An option's total is stored because it is a QUOTE the couple was
+shown; live prices do not rewrite it. Locking copies the amounts once into
+`tblvendor_bookings`, which stays the single record of what was dealt.
 
 ### tblvendor_bookings — Vendor Bookings
 | Column | Type | Description |
@@ -554,13 +763,176 @@ admin/upload/users/
 | id | INT PK | Auto-increment |
 | vendor_id | INT FK | Vendor ID |
 | booking_id | INT FK | Wedding booking ID |
-| package_id | INT FK | Package ID |
+| package_id | INT FK | The package this deal was sold on |
+| service_id | INT FK NULL | (v2.29) The individual service the deal is for; NULL for a package deal, a custom arrangement, or a pre-v2.29 row |
+| service_qty | INT NULL | (v2.29) The quantity the amount was planned at — guests, days, items, hours: the multiplier behind `amount` |
+| features_id | INT FK | The function the deal covers (NULL = the whole wedding) |
 | event_date | DATE | Event date |
 | amount | DECIMAL(10,2) | Booking amount |
 | commission | DECIMAL(10,2) | Everafter Planner commission |
 | status | ENUM('pending','confirmed','completed','cancelled') | Status |
 | notes | TEXT | Notes |
 | created_at | TIMESTAMP | Creation time |
+
+> A confirmed or completed deal is what the headcount brief is built from, and its
+> `package_id` is what the capacity warning is built from: the package's `capacity`
+> (its guest limit) is checked against the planned headcount of every function the
+> deal covers, one function at a time. A function planned past that limit warns the
+> vendor holding the deal and the wedding's planner, and the venue sheet prints it
+> beside the numbers. A pending enquiry is not an assignment and is never warned
+> about; a deal with no package, or a package with no capacity stated, has no limit
+> to outgrow.
+>
+> The warning carries the way out as well: the same vendor's active packages are
+> read for the smallest one that covers the crowd (cheapest first when two are
+> equal), and the planner is told what it costs against the package already sold —
+> "Next package up: … — KSh 60,000 more". When the vendor has nothing bigger, that
+> is said plainly (`their biggest is …`, or `ask them for a quote`) rather than left
+> blank. `package_id`, `amount` and `commission` are then re-priced in one step from
+> the deal's row in Vendor Enquiries — the staff-only "Re-price" control, which the
+> sheet's "Re-price this deal" link opens with that row focused — and the notes
+> trail records the move, who made it, and both amounts. What a re-price never
+> touches: `status` (a re-price is not a re-negotiation of whether the vendor is
+> booked) and `features_id` (the scope is set on the deal's own scope control).
+>
+> **The same limit is checked when the deal is recorded**, not only when the
+> numbers move — a couple can pick a package too small for a plan that has not
+> changed since, and the next headcount save may never come. Four doors judge the
+> single deal they are writing with `PackageCapacity::deal_position()`: the
+> couple's enquiry (`admin/client_vendor_enquiry.php`, where nothing is sold yet,
+> so the copy reads *"the package you asked X for"* and names every function it
+> cannot hold plus the way out; the planner gets the short form on the enquiry
+> alert they already receive), the staff confirm and the vendor's own accept
+> (`admin/vendor_enquiries.php` / `admin/vendor_home.php`, where the deal is
+> genuinely recorded — the page states the warning with the way out, the planner
+> and the vendor holding the package are belled, and the vendor's copy never
+> carries the planner's price difference), and a confirmed deal's `features_id`
+> being widened onto a function the package cannot cover (the ledger's scope
+> control, only when the scope actually changed). The warning fires only on the
+> transition INTO `confirmed`: re-saving a confirmed deal is not a new sale. A
+> deal recorded on a package that covers the plan says nothing at all, and a
+> *pending* enquiry is still never counted as an assignment — the enquiry's own
+> note is advice to the two people choosing, not a breach.
+>
+> **Drift, the step before all of it** (`admin/headroom.php`, staff only). A
+> wedding whose plan is running *close* to a booked package's limit is not over
+> it, and may never be: nobody is warned and nothing is emailed, because a bell
+> per wobble of a guest count is noise. The page lists those weddings instead —
+> one row each, tightest first, stating the function, the crowd, the package and
+> the limit it is closing on, with the venue sheet linked so the planner can act
+> where the numbers are. "Close" is a share of the package's OWN capacity rather
+> than a head count, so it means the same thing on a 33-seat matatu and a
+> 400-seat hall: the margin (`capacity − planned`) inside 5%, 10% or 20% of the
+> capacity, ten by default, chosen with the chips at the top of the page. The
+> sidebar badge counts exactly the weddings the page lists (one query, not a walk
+> over every wedding), and a wedding already OVER a limit is counted separately
+> and said in red on the page rather than dropped from it — an empty list must
+> never be read as "nothing wrong here". A deal with no package chosen, a package
+> with no capacity stated, an unplanned function and a pending enquiry all state
+> no limit to run out of and are never listed. The width is remembered per
+> account (`tbluser_prefs`, v2.12): Remember stores the width that is on screen
+> and the page opens at it next visit; Forget drops it. A `?within=` in the URL
+> changes one view without touching either, so a shared link never edits anyone's
+> settings.
+
+### tblvendor_messages — Deal Conversation (v2.25)
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INT PK | Auto-increment |
+| deal_id | INT FK | `tblvendor_bookings.id` the message belongs to (cascades with the deal) |
+| author_role | ENUM('couple','vendor','planner') | Which side of the deal wrote it |
+| author_id | INT | `tblaccounts.user_id` for a couple, `tblusers.id` for a vendor or planner |
+| author_name | VARCHAR(120) | The name shown on the bubble, kept if the account is renamed |
+| body | TEXT | The message, plain text, up to 2,000 characters |
+| created_at | TIMESTAMP | When it was written |
+| read_couple_at | DATETIME | NULL = this couple has not read it |
+| read_vendor_at | DATETIME | NULL = this vendor has not read it |
+| read_planner_at | DATETIME | NULL = this couple's planner has not read it |
+| escalated_at | DATETIME | v2.26 — when the couple's planner was told this message has waited too long. NULL = not told |
+
+> **One conversation, three readers.** Every deal now carries its own thread
+> instead of a single `notes` string that each side prepended to, so authorship
+> and order survive and anybody can answer. `notes` is untouched and remains the
+> deal's audit trail (confirmations, availability flags, staff edits); the thread
+> starts empty on an existing deal and shows the couple's original enquiry above
+> the composer as **Original enquiry**, recovered from `notes`.
+>
+> **Read state is per message, not per viewer.** A role's unread count is
+> "messages by the other two roles whose stamp for me is NULL", so there is no
+> per-viewer join table and no rows for people who never opened the thread. A
+> message stamps its own author as having read it. Reading a thread goes through
+> `admin/vendor_thread_open.php`, which authorises again, clears only that role's
+> badge and returns to the ledger with the panel open; bells point at the same
+> door, so one click both opens the conversation and clears the badge.
+>
+> **"Whose move is it" is derived, never stored** (`VendorThread::stage()`), from
+> the deal's status and the last message's author: the couple reads *"the vendor
+> replied — your turn"* or *"waiting on X"*, the vendor reads *"reply needed"* or
+> *"waiting on the couple"*, the planner reads *"follow up with X"*, *"loop the
+> couple in"* or *"introduce yourself"*, and a confirmed deal reads **Booked** for
+> everyone. A cancelled deal reads **Closed**, a completed one **Wrapped up**.
+> Because nothing is stored, a stage cannot go stale after a confirmation or a
+> reply. Each role also gets four quick replies, so a vendor answers availability
+> from a phone in one tap and a couple never has to compose *"how do I ask
+> this?"*.
+>
+> **The badge follows the reader, not the platform.** `VendorThread::unread_total()`
+> counts the unread messages on the deals ONE role may open — a planner's scoped
+> weddings, a vendor's own listings, a couple's own wedding — and the sidebar
+> shows that count on the ledger the badge links to: **Vendor Enquiries** for
+> staff, **My Bookings** for a vendor, and a **Vendor enquiries** entry for a
+> couple that opens their own wedding's marketplace (the count is limited to
+> that wedding, so the number and the page always agree). Clicking a badged
+> entry does not land on the list: it opens the OLDEST unread thread
+> (`VendorThread::oldest_unread()`), because a badge is a queue and the message
+> that has waited longest should be answered first. With nothing waiting, the
+> same entry is the ledger list it always was, and the badge disappears.
+>
+> **Working the queue.** Vendor Enquiries carries an **Unread (N)** chip beside
+> the status chips: it counts threads with messages the planner has not read and
+> filters the ledger to just those, so the queue can be worked in one place. It
+> is served **longest waiting first** — the rows are re-ordered by the oldest
+> unread message on each deal (`VendorThread::waiting_first`), which is the same
+> order the sidebar badge walks, so the first row is the conversation the badge
+> would have opened and the couple who has been ignored longest is answered
+> first. A row kept on screen only because its panel is open has nothing
+> waiting, so it drops to the bottom rather than blocking the top.
+> Every row with unread words also says **how long** it has been waiting beside
+> its *N new* pill — *waiting 8 min*, *waiting 3 h*, *waiting 2 days* — with the
+> exact time since the message arrived in the tooltip. The duration is read
+> from the same message the order sorts on, so "top of the queue" and
+> "waiting longest" can never tell two different stories.
+> The chip combines with a status chip rather than replacing it, and the chip toggles
+> back to the whole ledger. Opening a thread from the queue keeps the filter
+> (the row's link and the opener both carry `status`/`unread`), and the deal
+> that was just read stays on screen even though it has left the filter — the
+> panel the planner asked for is never pulled out from under them. When the
+> queue is clear the page says **Nothing waiting** instead of showing a blank
+> table.
+>
+> **The vendor works the same queue.** My Bookings carries the same **Unread
+> (N)** chip, counting the threads on the vendor's own bookings that hold a
+> message from the couple or their planner they have not read — the vendor's
+> answer to "who is waiting on me?". It behaves exactly like the planner's:
+> counts threads rather than messages, orders the queue longest waiting first,
+> dates every waiting row ("waiting 3 h"), combines with the status chips, keeps
+> the listing being read, carries
+> `status`/`unread` into the row's link, the opener and the Accept/Decline form
+> (so acting on a deal returns to the queue), and keeps the just-read row on
+> screen while its panel is open.
+>
+> **Nobody has to be looking.** A labelled row still needs somebody at the
+> ledger. Once a day (08:30), `scripts/thread_escalation.php` finds every deal
+> whose NEWEST message is not the vendor's and is at least a day old, and rings
+> the couple's planner — bell plus the platform's usual email — with one
+> sentence: *"Linda & Brian have been waiting 2 days for Nyama Choma Masters to
+> reply. Open the thread and give them a nudge."* The link opens the thread, so
+> the next step is a phone call rather than a search. Reading the question does
+> not stop the alert (a vendor who opened it and said nothing is the case most
+> worth reporting), it is sent once per unanswered message (so a re-run is
+> silent, and a later message is escalated in its own turn), and completed
+> deals, cancelled deals and weddings already held are left alone. The couple is
+> never told their vendor is silent — that conversation belongs to the planner.
 
 ### tblsms_logs — SMS History
 | Column | Type | Description |
@@ -638,10 +1010,36 @@ admin/upload/users/
 
 ## Access Control
 
+> **Enforced, with one switch.** The "Own" / "All" columns are now the gate:
+>
+> - The per-planner split **is** implemented (`Helper.php`:
+>   `staff_may_open_organizer()`, `planner_scope_sql()`). A planner sees the
+>   weddings whose `tblweddingbook.organizer_id` is their own id, plus the ones
+>   nobody has been assigned yet; a super admin sees every wedding; a couple
+>   sees its own booking; a vendor sees none of it. That applies to the
+>   booking list (`client.php`), the enquiries ledger (`vendor_enquiries.php`,
+>   including its status tallies and its POST handlers), the dashboard count,
+>   the MCP tools and documents, and every other staff page that names a
+>   `booking_id` — `init.php` refuses the request before the page body runs.
+> - The escape hatch is `WPMS_PLANNER_SCOPING=0`, which restores the old
+>   whole-platform view for a single-planner install. "Unassigned is visible to
+>   every planner" is deliberate: a new booking must be reachable so somebody
+>   can take it.
+> - The `❌` cells mark surfaces an operator uses, not pages a planner is
+>   refused. `users.php`, the blog/gallery/service pages and the rest are gated
+>   by `require_staff_subscribed()` / `require_staff()`, so a planner on an
+>   active plan reaches them (the role simulation's P4 walks 22 of them as a
+>   planner). The exceptions that really are operator-only are **Plan
+>   Definitions** (`subscription_plans.php`, page-level) and **vendor approval /
+>   premium placement** (`vendors.php` actions, plus the pending-listings block).
+>
+> `docs/XAMPP_LOGINS_AND_ROLES.md` §4 has the measured page-by-page gate table;
+> `docs/ROLE_SIMULATION_REPORT.md` P4–P7 covers the planner-vs-operator split.
+
 | Feature | Super Admin | Planner | Vendor | Couple |
 |---------|-------------|---------|--------|--------|
 | Dashboard | ✅ | ✅ | ❌ | ❌ |
-| Client Management | ✅ All | ✅ Own | ❌ | ❌ |
+| Client Management | ✅ All | ✅ Own + unassigned (scoped by `organizer_id` — see note) | ❌ | ❌ |
 | Vendor Marketplace | ✅ | ✅ | ✅ Own | ❌ |
 | SMS Center | ✅ | ✅ | ❌ | ❌ |
 | Subscription | ✅ | ✅ Own | ❌ | ❌ |
@@ -969,6 +1367,95 @@ Subscription::get_all_plans()          // Get all active plans
 - **Premium Vendors**: 15% commission (higher visibility)
 - Commission stored in `tblvendor_bookings.commission`
 
+### Vendor Availability (Double-Booking Check)
+A vendor booked for two weddings on one Saturday is a wedding-day failure, so
+every door a deal is made at asks it: **is this vendor already committed that
+day?**
+
+- The day a deal occupies is its own `event_date`, else the day of the function
+  it is scoped to, else the wedding's date.
+- Only **confirmed** or **completed** deals at **another** wedding count. A
+  pending enquiry is not an assignment, a cancelled deal is history, and two
+  deals at the same wedding are one wedding's supplier working one day.
+- **Planner confirm** (`admin/vendor_enquiries.php`) refuses the confirmation
+  until *Book them anyway* is ticked, then writes the acknowledgement and the
+  other wedding into the notes trail.
+- **Couple enquiry** (`admin/client_vendor_enquiry.php`) is still recorded, but
+  the couple sees the warning and the planner's bell leads with it.
+- **Planner inquiry** (`admin/vendors.php`) saves the warning on the deal's
+  notes as well as the toast.
+- **Vendor dashboard** (`admin/vendor_home.php`) shows "You are also booked" on
+  the row before Accept. Vendors are never blocked: a studio with two teams can
+  cover two weddings, and they are the ones who know their capacity. The
+  planner is told when they accept anyway.
+- **Coverage board** (`admin/vendor_coverage.php`) marks a booked cell whose only
+  covering vendor is committed elsewhere that day: red chip with a warning icon,
+  red cell, and a list above the board naming the function, service, vendor and
+  the other wedding, each linking to the deal. The headline cards carry a
+  **Double-booked cover** count (grey at zero, red with the number of booked
+  services it comes from when not) so the risk is visible before scrolling; click
+  it to open the board filtered to just the functions at risk, with a **Show all
+  functions** link to get the full matrix back. The cell still counts as booked
+  (the deal exists); a cell covered by two confirmed
+  vendors where only one clashes is not marked, because somebody unencumbered is
+  covering it.
+
+No table is involved — the check is computed from `tblvendor_bookings` with one
+query per page (`VendorAvailability::commitments()`).
+
+### The Wedding's Vendor Plan (v2.29)
+The coverage board answers "what does this wedding still need", the enquiry
+ledger answers "what has been asked of whom", and the budget records what has
+been **paid**. None of them answers the question a couple asks first: *who is
+doing our wedding, and what does it all come to?* **Vendor Plan**
+(`admin/vendor_plan.php`, staff only) is that answer for one wedding.
+
+- **It is a view, not a table.** `tblvendor_bookings` already means "this
+  wedding chose this vendor", so `VendorPlan::build()` groups the wedding's
+  deals by the ten categories and totals them. A second plan table would be a
+  second truth about the same money.
+- **Three figures, kept apart.** *Committed* is confirmed or completed deals;
+  *Awaiting reply* is pending ones; *cancelled* deals stay on the record with
+  their amount and are never added. The total is committed + awaiting reply, so
+  an unanswered enquiry never reads as a cost the couple has taken on.
+- **Against what the couple said.** Each category shows the cap from their
+  Taste & Budget (v2.28) and how much is left, the headline compares the total
+  with the package price, and a category over its cap is red.
+- **A row says what the money bought.** v2.29 adds `service_id` and
+  `service_qty`, so a line reads *Classic buffet × 180 guests — KSh 1,200 /
+  guest*, not just a figure. Package deals name their package; a custom
+  arrangement reads "custom arrangement".
+- **Adding a vendor sends the enquiry.** The picker lists every approved
+  vendor's active services and packages in category order, priced with the same
+  unit line the marketplaces use. Submitting (POST + CSRF) creates the same
+  **pending** deal a marketplace enquiry creates and bells the vendor, so the
+  vendor sees it on My Bookings and the planner confirms the amount in Vendor
+  Enquiries as usual. Availability clashes are checked at the same moment and
+  written into the deal's notes.
+- **Money is never recomputed.** An amount the planner types stands, and where
+  the vendor has since re-priced a *pending* service the row says "their price
+  is now X" instead of rewriting the deal. A confirmed amount is an agreement,
+  not arithmetic.
+- **No total is invented.** An offering with no published price needs an agreed
+  amount typed in, and a per-hour or per-km service needs the hours or the
+  distance — the page asks for the number rather than counting the deal at zero.
+- **The couple reads the same plan.** **Vendor Plan & Total**
+  (`admin/client_vendor_plan.php`) is read-only and shows their caps, their
+  confirmed and waiting figures, and the same total; nothing on it can change
+  what a vendor was promised.
+- **And it is on their dashboard.** The same total is a **Vendor Costs** tile on
+  `admin/client.php`: the cost, what is left of the couple's caps (or of the
+  package price until they set caps), and "over your budget" stated in words in
+  red rather than left for them to work out. The tile links to the plan. Staff
+  dashboards carry no such tile — they list every wedding, so one vendor figure
+  there would mix couples together.
+- **Without v2.29** package deals and agreed amounts still build and total, the
+  page says which migration is missing, and only "plan a specific service" is
+  refused.
+
+No table is involved. The only storage is the two columns on the deal
+(`migrations/v2.29_vendor_plan.sql`).
+
 ### Premium Vendor Features
 - Priority listing (appears first)
 - "Premium" badge on profile
@@ -984,8 +1471,12 @@ Vendor::get_by_user($user_id)    // Get vendor by owner
 
 ### Key Files
 - `admin/include/Monetization.php` — Vendor class
+- `admin/include/VendorAvailability.php` — same-day commitment check and its wording
+- `admin/include/VendorSignup.php` — public self-registration (account + unapproved listing + services + package, one transaction)
+- `vendor_signup.php` — the public sign-up page
+- `admin/vendor_register.php` — profile form for invited vendors
 - `admin/vendors.php` — Marketplace UI
-- `admin/vendor_register.php` — Registration form
+- `admin/vendor_enquiries.php` — Deal ledger, confirm gate
 
 ---
 
@@ -1241,6 +1732,107 @@ MpesaStk::enabled(): bool
 
 # 8. ADMIN WORKFLOWS
 
+## 7.8 The Proposal Lifecycle (v2.30)
+
+A couple's registration is the start of a conversation, not a booking. The
+lifecycle turns it into a priced wedding they choose from and a confirmed plan:
+
+```
+registration → proposal → acknowledged → options (>= 3, priced) → chosen → locked (confirmed)
+```
+
+| Step | Who | Where | What happens |
+|------|-----|-------|--------------|
+| 1. Register | couple (public) | `index.php` (hero form) | Account, booking and **proposal** are created in one request. The optional "Tell us about the day" block adds guests, budget, venue, style, a line in their words and a preferred planner |
+| 2. Pick it up | planner | `admin/proposals.php` → `admin/proposal_view.php` | **Acknowledge** claims it and tells the couple (bell + queued email) that a planner is on it |
+| 3. Price it | planner | `admin/proposal_view.php` | Build **at least three options** from the same vendor offerings the marketplace and vendor plan use — a package, a service × quantity, or a custom agreed amount. Each option shows its own total |
+| 4. Send them | planner | same page | **Send the options**; refused below three priced options, because one option is not a choice |
+| 5. Choose | couple | `admin/client_proposal.php` | The three options side by side, each compared with their budget. **Choose**, **ask for a change** (in their words) or **decline** |
+| 6. Lock it in | planner | `admin/proposal_view.php` | Re-checks every vendor's calendar and listing, creates one **pending deal per line** through the vendor plan's own door (so each vendor is notified), and confirms the wedding |
+
+The seven states are `proposal`, `acknowledged`, `options`, `tweak_requested`,
+`chosen`, `locked`, `declined`. Only the owner moves each one: the planner
+acknowledges, prices and locks; the couple chooses, asks for a tweak or
+declines. Every move is a POST + CSRF, authorises the role that owns it, and
+rings the other side's bell.
+
+**Why the proposal is not a booking status.** `tblaccounts_detail.status` stays
+the platform's two-state record (`pending` / `confirm`). A proposal row lives
+beside the booking: the booking stays `pending` while the couple decides and is
+set to `confirm` only at lock — the same state `client_assign.php` has always
+written. So nothing that reads a booking status changed, and a wedding confirmed
+before v2.30 simply has no proposal.
+
+**Two things the lock refuses.** A refused line (a vendor no longer approved, a
+service hidden after the couple chose) rolls the whole thing back — no
+half-confirmed wedding. A vendor already booked on another wedding that day
+**blocks** the lock until the planner ticks "book them anyway" (the clash is then
+recorded on the deal), because a double-booked wedding is the one failure the
+couple would discover on the day.
+
+**The checklist follows the choice.** Locking also seeds the wedding's
+checklist: the Kenyan milestone template, plus one **"Confirm *vendor* —
+*service*"** line per vendor in the chosen option (`Checklist::ensure_from_option`,
+in its own *Your Vendors* phase, due three weeks out). The template's single
+"Confirm every vendor in writing" line cannot stand for six suppliers — a couple
+chasing them needs the supplier's name on the task. Seeding happens at **lock**,
+not on first opening the checklist page, so the couple's dashboard can show real
+progress the moment they are confirmed; both seeders are idempotent by title, so
+a re-run, a late template addition or a couple who already ticked items loses
+nothing.
+
+**One progress calculation.** `Checklist::progress()` returns done, total, the
+percentage, the next open item and the overdue count, and both the checklist
+page and the couple's dashboard card render those numbers — they cannot
+disagree. Overdue needs a wedding date to be late against (a wedding without a
+date has nothing overdue, not everything), and once the day has passed nothing
+nags. The function only reads: opening the dashboard never seeds, ticks or
+resets anything, and the card is couple-only (staff dashboards list every
+wedding, so one bar would mix couples up).
+
+**Switching it off.** `WPMS_PROPOSAL_FLOW=0` in the environment turns the whole
+lifecycle off: sign-up creates an ordinary pending booking and the proposal
+pages say so. It is on by default, because a flow nobody can find is not a flow.
+The migration is separate — without `migrations/v2.30_proposals.sql` the signup
+still registers the couple and the pages name the missing migration.
+
+## 7.9 Tiered Pricing on What a Vendor Sells (v3.1)
+
+A vendor does not sell "catering at KSh 1,200": they sell a working buffet, one
+with a live grill, and one with imported crockery and two chefs. With a single
+price column, a planner comparing two caterers was comparing one vendor's
+cheapest tier with the other's best, and calling the difference a bargain.
+
+| Table | What it holds |
+|-------|---------------|
+| `tblvendor_service_tiers` | One row per (service, tier): `price`, `includes`, `excludes`. Cascades with the service |
+| `tblvendor_package_tiers` | The same three levels for a whole-wedding bundle, kept as its own table so both keep a real foreign key |
+| `tblproposal_items.tier` | Which level a quote line was priced at — `NULL` for custom arrangements and pre-v3.1 rows |
+
+**The one rule that keeps everything working.** `tblvendor_services.price` and
+`tblvendor_packages.price` stay the **Silver** price and are written whenever
+tiers are saved (`VendorTier::save_service()` / `save_package()`). Every surface
+that already reads a single price — marketplace cards, `VendorFit`'s
+arithmetic, the coverage board, the vendor plan, the proposal picker — keeps
+working and now means "entry level". A plain edit that posts one price is
+followed by `VendorTier::sync_base()`, so the card can never drift away from the
+cheapest level the vendor is actually offering.
+
+**The rules on saving.** All three prices or none (a two-tier offer cannot be
+lined up against another vendor's three); every price above zero; Silver <
+Gold < Platinum. A tier a vendor has not priced cannot be chosen in the
+builder — the line is refused rather than quietly charged at Silver while the
+couple is told they bought Gold. Inclusions and exclusions are optional per
+tier, and the "Leaves out" column is where the half of the deal couples usually
+discover late finally gets written down.
+
+**Where it shows.** Vendor → **My Services** and **My Packages** edit the three
+levels; the planner's marketplace, the couple's marketplace and the public
+profile print them under the offering's own unit; the proposal builder lists
+each priced tier as its own choice ("Nyama Choma Masters — Classic buffet —
+Gold KSh 1,500"), and the couple's options page reads the level back on the
+line.
+
 ## 8.1 Daily Operations
 
 ### Morning Checklist
@@ -1322,17 +1914,23 @@ Vendors are staff accounts with `access_level 0` and sign in through the same
 `login.php` door as everyone else. They land on their own self-service area,
 not the staff dashboard.
 
-### Registration (self-service)
-1. Log in at `login.php` with your vendor account — first-time vendors land
-   on `admin/vendor_register.php` automatically
-2. Fill business information (name, category, phone, location, county)
-3. Add one or more service packages (name + price, KSh)
-4. Submit — the listing enters **pending approval**; an administrator
-   approves it from the staff Vendor Marketplace
+### Registration (self-service, no invitation needed)
+1. Open **`vendor_signup.php`** — linked from the "Are you a wedding vendor?"
+   band on the public Vendor Marketplace, or send the link directly
+2. Fill your account (name, email, phone, password), your business (name,
+   category, description, town, county) and up to three services with the unit
+   each price is quoted in (flat, per guest, per day…), plus one optional package
+3. Submit — **your account works immediately** and you are signed in; the
+   listing itself is created **pending approval**, and an administrator approves
+   it from the staff Vendor Marketplace ("Awaiting approval")
 
-While unapproved you can already edit your profile and packages on
-`admin/vendor_profile.php` and `admin/vendor_packages.php`; couples simply
-cannot see or enquire with you yet.
+Until it is approved, couples cannot see or enquire with you. You can still
+prepare everything from your dashboard: add services on
+`admin/vendor_services.php`, packages on `admin/vendor_packages.php`, and your
+logo and details on `admin/vendor_profile.php`.
+
+An invited vendor who already has a login but no business profile yet lands on
+`admin/vendor_register.php` instead — same form, one step fewer.
 
 ### Your pages
 | Page | What you do there |
@@ -1780,10 +2378,13 @@ realpath_cache_size=4096K
 tblusers ──┬── tblsubscriptions ─── tblsubscription_payments
            ├── tblsms_credits
            ├── tblsms_logs
-           └── tblvendors ─── tblvendor_packages
+           └── tblvendors ──┬── tblservice_catalog  (the platform's vocabulary)
+                            ├── tblvendor_services (what this business sells)
+                            ├── tblvendor_packages (bundles it sells)
                             └── tblvendor_bookings
 
 tblaccounts ─── tblaccounts_detail ─── tblweddingbook ──┬── tblguest
+                                                        ├── tblvendor_preferences
                                                         ├── tbl_liquidation
                                                         ├── events
                                                         ├── tbleventbooking

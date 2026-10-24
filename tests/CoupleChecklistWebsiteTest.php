@@ -185,6 +185,50 @@ final class CoupleChecklistWebsiteTest extends TestCase
         }
     }
 
+    /**
+     * The dashboard card is the same calculation the checklist page renders, so
+     * the two can never disagree — and opening the dashboard must not be what
+     * seeds or ticks anything (the card only reads).
+     */
+    #[Group('integration')]
+    public function testTheCoupleDashboardShowsTheProgressCardWithoutWritingAnything(): void
+    {
+        $this->requireDb();
+        self::loginCouple();
+
+        // The checklist page owns seeding; open it first, exactly as a couple would.
+        self::http('GET', '/admin/client_checklist.php?booking_id=' . self::BOOKING_ID . '&user_id=200');
+        $countBefore = self::countItems();
+
+        $dashboard = self::http('GET', '/admin/client.php');
+        self::assertSame(200, $dashboard['status'], 'the couple dashboard must render');
+        self::assertStringContainsString('Planning progress', $dashboard['body'], 'the dashboard must carry the progress card');
+        self::assertStringContainsString(
+            'client_checklist.php?booking_id=' . self::BOOKING_ID,
+            $dashboard['body'],
+            'the card must link to the checklist it summarises'
+        );
+
+        // The figures are the checklist's own rows, not a second opinion.
+        $total = (int) self::$db->fetchValue(
+            'SELECT COUNT(*) FROM tblchecklist WHERE booking_id = :b',
+            [':b' => self::BOOKING_ID]
+        );
+        $done = (int) self::$db->fetchValue(
+            'SELECT COUNT(*) FROM tblchecklist WHERE booking_id = :b AND is_done = 1',
+            [':b' => self::BOOKING_ID]
+        );
+        $pct = $total > 0 ? (int) round($done / $total * 100) : 0;
+        self::assertStringContainsString(
+            '<strong>' . $done . ' of ' . $total . '</strong> milestones done',
+            $dashboard['body'],
+            'the card states the same done/total the checklist holds'
+        );
+        self::assertStringContainsString('>' . $pct . '%</strong>', $dashboard['body'], 'and the same percentage');
+
+        self::assertSame($countBefore, self::countItems(), 'rendering the dashboard must not seed or change the checklist');
+    }
+
     // ------------------------------------------------------------------
     // Wedding website builder
     // ------------------------------------------------------------------
@@ -481,10 +525,8 @@ final class CoupleChecklistWebsiteTest extends TestCase
         $response = curl_exec($ch);
         if ($response === false) {
             $err = curl_error($ch);
-            curl_close($ch);
             throw new RuntimeException('HTTP request failed: ' . $err);
         }
-        curl_close($ch);
 
         $status = 0;
         $location = '';

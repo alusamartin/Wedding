@@ -22,6 +22,7 @@
                 <li class="nav-item"><a class="nav-link" href="pricing.php">Pricing <span style="font-size:10px; background:var(--kenya-cream); border:1px solid #FDE68A; color:#92400E; padding:1px 6px; border-radius:999px; margin-left:4px;">KSh</span></a></li>
                 <li class="nav-item"><a class="nav-link" href="real-weddings.php">Inspiration</a></li>
                 <li class="nav-item"><a class="nav-link" href="gallery.php">Gallery</a></li>
+                <li class="nav-item"><a class="nav-link" href="vendors.php">Vendors</a></li>
                 <li class="nav-item"><a class="nav-link" href="about.php">About</a></li>
                 <li class="nav-item"><a class="nav-link" href="contact.php">Contact</a></li>
             </ul>

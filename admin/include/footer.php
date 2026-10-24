@@ -6,23 +6,30 @@
 <!-- Bootstrap core JavaScript
 ================================================== -->
 <!-- Placed at the end of the document so the pages load faster -->
-<script src="js/jquery-3.2.1.slim.min.js"></script>
+<script src="js/jquery-3.7.1.slim.min.js"></script>
 <script>window.jQuery || document.write('<script src="../../../../assets/js/vendor/jquery-slim.min.js"><\/script>')</script>
 <script src="js/popper.min.js"></script>
-<script src="../js/jquery.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
-<script src="js/jquery.dataTables.min.js"></script>
-<script src="js/dataTables.bootstrap4.min.js"></script>
+<script src="../js/jquery-3.7.1.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
+<script src="js/jquery.dataTables.min.js?v=1.13.11"></script>
+<script src="js/dataTables.bootstrap4.min.js?v=1.13.11"></script>
 <script src="js/dropzone.js"></script>
 <script>
-  
+  /*
+   * Only touch plugins a page actually loaded. This footer is shared by every
+   * admin page, and most of them do not include bootstrap-datepicker or a
+   * DataTable — an unguarded call threw a TypeError inside $(ready) and stopped
+   * the rest of this handler (tooltips included) on those pages. Feature-test
+   * instead of assuming the page layout.
+   */
     $(document).ready(function() {
-        $('#wedding_date').datepicker();
-        $('#example').DataTable();
-        $('#features').DataTable();
+        if ($.fn.datepicker) { $('#wedding_date').datepicker(); }
+        if ($.fn.DataTable) {
+            $('#example').DataTable();
+            $('#features').DataTable();
+        }
         $('[data-toggle="tooltip"]').tooltip();
     });
-    
 </script>
 
 </body>
@@ -64,12 +71,17 @@
 </script>
 
 <script>
-document.getElementById('links').onclick = function (event) {
-    event = event || window.event;
-    var target = event.target || event.srcElement,
-        link = target.src ? target.parentNode : target,
-        options = {index: link, event: event},
-        links = this.getElementsByTagName('a');
-    blueimp.Gallery(links, options);
-};
+/* Gallery is only present on pages that load blueimp; a null #links used to
+   throw here on every other page. */
+var wpmsLinks = document.getElementById('links');
+if (wpmsLinks && window.blueimp && window.blueimp.Gallery) {
+    wpmsLinks.onclick = function (event) {
+        event = event || window.event;
+        var target = event.target || event.srcElement,
+            link = target.src ? target.parentNode : target,
+            options = {index: link, event: event},
+            links = this.getElementsByTagName('a');
+        blueimp.Gallery(links, options);
+    };
+}
 </script>

@@ -9,7 +9,15 @@ date_default_timezone_set('Africa/Nairobi');
  * dev machine (it also makes database.php die() with the real PDO message).
  */
 $debug = in_array(strtolower(trim((string) getenv('WPMS_DEBUG'))), ['1', 'true', 'yes', 'on'], true);
-define('WPMS_DEBUG', $debug);
+/*
+ * Every constant below is guarded: a headless entry point (mcp.php) or a test
+ * that required models.php first has already defined DS, and an unguarded
+ * redefinition raised "Constant DS already defined" on PHP 8.2. The guards are
+ * order-independent, so init.php can be loaded before OR after models.php.
+ */
+if (!defined('WPMS_DEBUG')) {
+    define('WPMS_DEBUG', $debug);
+}
 error_reporting(E_ALL);
 ini_set('display_errors', $debug ? '1' : '0');
 ini_set('display_startup_errors', $debug ? '1' : '0');
@@ -21,57 +29,55 @@ ini_set('log_errors', '1');
  * docroot, /home/user/public_html, …) with zero edits. Previously this was
  * hard-coded to C:/xampp/htdocs/Wedding and broke on every other layout.
  */
-define('DS', DIRECTORY_SEPARATOR);
-define('SITE_ROOT', dirname(__DIR__));      // …/Wedding/admin
-define('INCLUDES_PATH', __DIR__);            // …/Wedding/admin/include
-require_once(INCLUDES_PATH.DS."Helper.php");
-require_once(INCLUDES_PATH.DS."config.php");
-require_once(INCLUDES_PATH.DS."database.php");
-require_once(INCLUDES_PATH.DS."db_object.php");
-require_once(INCLUDES_PATH.DS."Session.php");
-require_once(INCLUDES_PATH.DS."Accounts.php");
-require_once(INCLUDES_PATH.DS."Account_Details.php");
-require_once(INCLUDES_PATH.DS."Booking.php");
-require_once(INCLUDES_PATH.DS."Guest.php");
-require_once(INCLUDES_PATH.DS."Checklist.php");
-require_once(INCLUDES_PATH.DS."InstallmentPlan.php");
-require_once(INCLUDES_PATH.DS."Categories.php");
-require_once(INCLUDES_PATH.DS."Features.php");
-require_once(INCLUDES_PATH.DS."EventWedding.php");
-require_once(INCLUDES_PATH.DS."Gallery.php");
-require_once(INCLUDES_PATH.DS."Users.php");
-require_once(INCLUDES_PATH.DS."Events.php");
-require_once(INCLUDES_PATH.DS."Liquidation.php");
-require_once(INCLUDES_PATH.DS."LoginThrottle.php");
-require_once(INCLUDES_PATH.DS."SignupGuard.php");
-require_once(INCLUDES_PATH.DS."Monetization.php");
-require_once(INCLUDES_PATH.DS."Notification.php");
-require_once(INCLUDES_PATH.DS."PasswordReset.php");
-
-/**
- * Is the current session a staff (planner/admin) account?
- * Client accounts (tblaccounts) are stamped privilege '0'; staff (tblusers)
- * carry a numeric access_level (1 = planner, 2 = super admin) or a legacy
- * designation string.
- */
-function is_staff(): bool
-{
-    if (!isset($_SESSION['id'])) {
-        return false;
-    }
-    $level = $_SESSION['privilege_level'] ?? 'user';
-    if ((string) $level === '0') {
-        return false;
-    }
-    if (is_numeric($level)) {
-        return (int) $level >= 1;
-    }
-    return in_array(
-        strtolower((string) $level),
-        ['super admin', 'admin', 'planner', 'wedding planner', 'staff'],
-        true
-    );
+if (!defined('DS')) {
+    define('DS', DIRECTORY_SEPARATOR);
 }
+if (!defined('SITE_ROOT')) {
+    define('SITE_ROOT', dirname(__DIR__));  // …/Wedding/admin
+}
+if (!defined('INCLUDES_PATH')) {
+    define('INCLUDES_PATH', __DIR__);        // …/Wedding/admin/include
+}
+/*
+ * The model/class include set now lives in ONE place — models.php — because
+ * mcp.php (the MCP endpoint) must load the same classes WITHOUT the session
+ * and the redirect guards below. It was a hand-kept second list before, and a
+ * missing file there is exactly how "Class "Accounts" not found" reached a
+ * couple's token. Everything that used to be required here (and the notes on
+ * why each one matters) is in models.php, in the same order.
+ */
+require_once(INCLUDES_PATH.DS."models.php");
+
+/*
+ * ApiToken must come BEFORE McpApprovals: the approval table is judged
+ * installed through ApiToken::AUDIT_TABLE (the audit columns v2.17 adds), and
+ * available() catches Throwable — so a web request that had McpApprovals but
+ * not ApiToken did not crash, it answered "Not installed yet" on
+ * admin/mcp_approvals.php and silently reported 0 on the sidebar's waiting
+ * badge. mcp.php loads both itself (it never uses this file); this is the web
+ * side of the same pair, and it is a class definition with no side effects.
+ */
+require_once(INCLUDES_PATH.DS."ApiToken.php");
+/*
+ * McpApprovals is the human half of a Tier-3 MCP write. The write tools that
+ * touch money or messages (send_bulk_sms, record_payment, initiate_stk_deposit,
+ * assign_planner) refuse to act on their own authority: they record a request and
+ * a signed-in planner approves that exact payload on admin/mcp_approvals.php,
+ * which mints a short-lived, single-use, HMAC-signed string. That page and the
+ * sidebar's "waiting" badge both need this class, and it is a class definition
+ * with no side effects at include time, so it belongs here with the rest of the
+ * web bootstrap rather than as a per-page require.
+ */
+require_once(INCLUDES_PATH.DS."McpApprovals.php");
+
+/*
+ * Role predicates (is_staff / is_vendor / is_super_admin) live in Helper.php:
+ * they are pure $_SESSION reads, and this bootstrap is web-request-only while
+ * Helper.php is ALSO loaded by CLI scripts, PHPUnit and composer's files
+ * autoload. A predicate left here would work in a browser and then fatal with
+ * "Call to undefined function is_staff()" for the first command-line caller.
+ * The guards below may stay: they HTTP-redirect, so they are web-only anyway.
+ */
 
 /** Gate for staff-only pages. */
 function require_staff(): void
@@ -84,29 +90,11 @@ function require_staff(): void
 
 /*
  * Subscription grace/gate helpers (subscription_state_for_session,
- * subscription_in_grace, require_staff_subscribed, subscription_banner)
- * live in Helper.php so CLI scripts, tests and composer's files-autoload
- * all see them — this file is web-request-only.
+ * subscription_in_grace, require_staff_subscribed, staff_paywall_locked,
+ * is_super_admin, subscription_banner) live in Helper.php so CLI scripts,
+ * tests and composer's files-autoload all see them — this file is
+ * web-request-only.
  */
-
-/**
- * Is the current session a vendor account?
- * Vendors are staff rows (tblusers) with access_level 0 — planners/admins
- * are 1/2. Clients (tblaccounts) are ALSO stamped '0', so the account_type
- * flag set at login is the only reliable discriminator: clients are never
- * vendors even though the numeric level matches.
- */
-function is_vendor(): bool
-{
-    if (!isset($_SESSION['id']) || is_staff()) {
-        return false;
-    }
-    if (($_SESSION['account_type'] ?? '') !== 'staff') {
-        return false; // client session (tblaccounts) — never a vendor
-    }
-    $level = $_SESSION['privilege_level'] ?? 'user';
-    return is_numeric($level) && (int) $level === 0;
-}
 
 /** Gate for vendor self-service pages: only vendor accounts (access_level 0). */
 function require_vendor(): void
@@ -145,7 +133,9 @@ function login_redirect_target(bool $staff, int $user_id, bool $from_admin_dir =
         // paid) is diverted to subscription.php first, as before.
         $s = Subscription::state((int) $user_id);
         $trialFinalDay = !empty($s['trial']) && $s['state'] === 'active' && $s['days_left'] === 0;
-        $page = ($s['state'] === 'locked' || $trialFinalDay) ? 'subscription.php' : 'dashboard.php';
+        // The operator is never sent to the paywall (see is_super_admin()).
+        $locked = !is_super_admin() && ($s['state'] === 'locked' || $trialFinalDay);
+        $page = $locked ? 'subscription.php' : 'dashboard.php';
         return $from_admin_dir ? $page : 'admin/' . $page;
     }
     return $from_admin_dir ? 'client.php' : 'admin/client.php';
@@ -162,4 +152,66 @@ function vendor_redirect_target(int $user_id, bool $from_admin_dir = false): str
     $page = vendor_profile_of($user_id) !== null ? 'vendor_home.php' : 'vendor_register.php';
     return $from_admin_dir ? $page : 'admin/' . $page;
 }
+
+/**
+ * Per-planner scoping AT THE DOOR — one check that covers every staff page.
+ *
+ * `booking_visible_to_session()` answers the question for a page that already
+ * resolved its wedding, and that is what the couple pages, the venue and guest
+ * sheets, the MCP tools and admin/mcp_approvals.php all call. But the staff
+ * back office has eighteen pages that take a `booking_id` (budget, guests,
+ * gallery, SMS centre, RSVP tools, the calendar…) and each one resolves the
+ * row its own way. Adding the predicate to each of them is eighteen chances to
+ * forget one — and the nineteenth page, written next month, would simply not
+ * have it.
+ *
+ * So the rule is applied once, here, to the REQUEST: a scoped planner must be
+ * able to open the wedding they are naming, whichever page they are naming it
+ * to, in the query string or in a form. Nothing else changes for a super admin,
+ * a couple, a vendor, an install with `WPMS_PLANNER_SCOPING=0`, or a request
+ * that names no booking at all (every list page).
+ *
+ * A refusal is the house refusal: a flash message and back to the bookings list,
+ * never a blank 403 — the planner needs to know why the page they clicked did
+ * not open. It runs before any page body, so nothing is read or written first.
+ *
+ * This lives in init.php (not Helper.php) because it needs `$session` and it
+ * REDIRECTS — the same reason require_staff() lives here while the predicates
+ * themselves live in Helper.php for the CLI and test tier.
+ */
+function planner_scope_guard_request(): void
+{
+    if (planner_scope_planner_id() <= 0) {
+        return; // not a scoped planner: nothing to narrow
+    }
+    $requested = (int) ($_POST['booking_id'] ?? $_GET['booking_id'] ?? 0);
+    if ($requested <= 0) {
+        return; // a list page, or a page that takes no wedding
+    }
+    if (booking_visible_to_session(Booking::find_by_booking_id($requested))) {
+        return;
+    }
+
+    global $session;
+
+    /*
+     * WHICH refusal, when both apply. A lapsed planner is turned away by the
+     * paywall, and that gate outranks scoping: they cannot use the product at
+     * all, so the honest answer is the screen where they can pay — not a
+     * bookings list that would bounce them there a hop later. (It also keeps the
+     * paywall's deep-link guarantee intact: a locked planner aiming a booking id
+     * at any staff page still lands on subscription.php in one step.)
+     */
+    if (staff_paywall_locked()) {
+        redirect_to('subscription.php');
+    }
+
+    if (isset($session) && $session instanceof Session) {
+        $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-lock"></i></strong> '
+            . 'Wedding #' . $requested . ' is not one of yours. Ask an administrator to assign the planner on it if it should be.</div>');
+    }
+    redirect_to('client.php');
+}
+
+planner_scope_guard_request();
 ?>

@@ -1,7 +1,56 @@
 <?php include 'admin/include/init.php'; ?>
 <?php 
-    $id = $_GET['id'];
-    $category = Category::find_by_id($id);
+    /*
+     * ?id=N is mandatory — index.php and pricing.php only ever link here with
+     * one. A bare or stale hit (crawler, old bookmark, hand-typed URL) used to
+     * fall through with $category === false and die on ->wedding_type a few
+     * hundred lines down; resolve the not-found case up front instead.
+     */
+    $id = (int) ($_GET['id'] ?? 0);
+    /*
+     * The package id travels through the signup form as booking_id. Resolve it
+     * BEFORE the CSRF check so a rejected token still redirects back to the
+     * package the visitor was looking at ($bid used to be assigned below that
+     * check, so the redirect dropped the id and warned on an undefined var).
+     */
+    $bid = (int) ($_POST['booking_id'] ?? $id);
+    $category = $id > 0 ? Category::find_by_id($id) : false;
+
+    if ($category === false || $category === null) {
+        http_response_code(404);
+?>
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Package Not Found - Everafter Planner</title>
+    <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
+    <link rel="stylesheet" href="css/bootstrap.min.css?v=4.6.2">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/modern.css">
+</head>
+<body>
+<?php include 'include/nav.php'; ?>
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8 mt-5">
+            <div class="text-center p-5 bg-white" style="border-radius:20px; box-shadow:0 12px 40px rgba(11,15,20,.08);">
+                <h2 style="font-family:'Plus Jakarta Sans','Inter',sans-serif; font-weight:800; letter-spacing:-.02em;">We can't find that package</h2>
+                <p class="lead text-muted mx-auto" style="max-width:480px; font-size:15px;">It may have been renamed or retired. Browse the current Everafter packages and pick the one that fits your day.</p>
+                <div class="mt-4 d-flex justify-content-center flex-wrap" style="gap:.6rem;">
+                    <a href="pricing.php" class="btn wpms-cta btn-lg"><i class="mdi mdi-tag-outline mr-1"></i> View Packages</a>
+                    <a href="index.php" class="btn wpms-cta-ghost btn-lg"><i class="mdi mdi-arrow-left mr-1"></i> Back to Home</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
+<?php
+        exit;
+    }
 
     $count = 0;
     $error =$user_firstname = $user_lastname = $user_password = $user_email = $wedding_date = '';
@@ -23,7 +72,6 @@
         $user_phone     = trim((string) ($_POST['user_phone'] ?? ''));
         $user_password  = (string) ($_POST['user_password'] ?? '');
         $wedding_date   = trim((string) ($_POST['wedding_date'] ?? ''));
-                $bid = (int) ($_POST['booking_id'] ?? 0);
         if (!filter_var($user_email, FILTER_VALIDATE_EMAIL)) {
             $session->message('<div class="alert alert-warning alert-dismissible fade show" role="alert"><strong>Incorrect email format.</strong></div>');
             redirect_to("package_detail.php?id=" . $bid);
@@ -51,9 +99,9 @@
     <link href="https://fonts.googleapis.com/css?family=Open+Sans|Roboto" rel="stylesheet">
     <link rel="stylesheet" type="text/css"
           href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
-    <link rel="stylesheet" href="css/bootstrap.min.css">
+    <link rel="stylesheet" href="css/bootstrap.min.css?v=4.6.2">
     <link rel="stylesheet" href="css/style.css"></link><link rel="stylesheet" href="css/modern.css">
-    <link rel="stylesheet" href="css/bootstrap-datepicker.css">
+    <link rel="stylesheet" href="css/bootstrap-datepicker.css?v=1.10.1">
     <style>
         body {
             margin-top: 6%;
@@ -210,11 +258,11 @@
 
 <!-- Optional JavaScript -->
 <!-- jQuery first, then Popper.js, then Bootstrap JS -->
-<script src="js/jquery-3.2.1.slim.min.js"></script>
-<script src="js/jquery.min.js"></script>
+<script src="js/jquery-3.7.1.slim.min.js"></script>
+<script src="js/jquery-3.7.1.min.js"></script>
 <script src="js/popper.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
-<script src="js/bootstrap-datepicker.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
+<script src="js/bootstrap-datepicker.min.js?v=1.10.1"></script>
 
 <script>
 

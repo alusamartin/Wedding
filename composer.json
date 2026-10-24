@@ -30,15 +30,28 @@
     },
     "scripts": {
         "test": "phpunit --testdox",
+        "test:db": "@php scripts/demo_reset.php --yes --db=wpms_test",
         "migrate:db-compat": "php scripts/migrate_mysqli_to_pdo.php",
         "lint": "@php scripts/lint.php admin",
         "code-audit": [
             "@php scripts/audit_db_object.php",
             "@php scripts/audit_static_calls.php",
-            "@php scripts/audit_sql_columns.php"
+            "@php scripts/audit_sql_columns.php",
+            "@php scripts/audit_promises.php",
+            "@php scripts/audit_enum_values.php",
+            "@php scripts/audit_fixtures.php",
+            "@php scripts/audit_unbound_sql.php",
+            "@php scripts/audit_request_reads.php"
         ],
         "smoke": "@php scripts/smoke.php",
-        "demo:reset": "@php scripts/demo_reset.php --yes"
+        "coverage": "@php scripts/coverage.php",
+        "demo:reset": "@php scripts/demo_reset.php --yes",
+        "ci": [
+            "@lint",
+            "@test:db",
+            "@code-audit",
+            "@php vendor/bin/phpunit --no-coverage"
+        ]
     },
     "config": {
         "optimize-autoloader": true,

@@ -1,9 +1,9 @@
 <?php
 declare(strict_types=1);
-require_once __DIR__ . '/include/init.php'; require_staff();
+require_once __DIR__ . '/include/init.php'; require_staff_subscribed();
 
 if (isset($_POST["id"])) {
-    $categoryId = (int) $_POST['id'];
+    $categoryId = (int)($_POST['id'] ?? 0);
 
     $output = '
       <div class="table-responsive">

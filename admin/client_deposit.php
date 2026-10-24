@@ -1,4 +1,4 @@
-<?php include 'include/init.php'; ?>
+<?php include 'include/init.php'; if (staff_paywall_locked()) { redirect_to('subscription.php'); exit; } ?>
 <?php
     $booking_id = (int) ($_GET['booking_id'] ?? 0);
     $user_id = (int) ($_GET['user_id'] ?? 0);
@@ -7,11 +7,13 @@
         redirect_to("../");
         die();
     }
-    // Ownership gate (IDOR): the booking row itself must belong to this client.
+    // Ownership gate (IDOR): the booking row itself must belong to this client —
+    // and the session must BE a couple account, not just a number that matches
+    // (a vendor's tblusers id can equal a couple's tblaccounts id).
     // die() after the redirect so the POST handler below cannot overwrite the
     // Location header (the gate must always win over any later redirect).
     $booking = Booking::find_by_booking_id($booking_id);
-    if (!$booking || (int) $booking->user_id !== (int) $_SESSION['id'] || $user_id !== (int) $_SESSION['id']) {
+    if (!may_open_couple_page($booking, $user_id)) {
         redirect_to("client.php");
         die();
     }
@@ -95,7 +97,7 @@
                             $result['mpesa_code'],
                             format_ksh($newBalance, 2)
                         );
-                        Notification::create(
+                        Notification::create_for_staff(
                             $plannerId,
                             $booking_id,
                             $plannerMessage,
@@ -116,7 +118,7 @@
                         $result['mpesa_code'],
                         format_ksh($newBalance, 2)
                     );
-                    Notification::create(
+                    Notification::create_for_couple(
                         $user_id,
                         $booking_id,
                         $receiptMessage,
@@ -143,7 +145,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Deposit via M-Pesa - Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
@@ -261,8 +263,8 @@
 
         <div class="col-md-4">
             <div class="stat-card"><h6>Package Price</h6><div class="value"><?= format_ksh($package_price); ?></div></div>
-            <div class="stat-card" style="border-left-color:#059669"><h6>Paid To Date</h6><div class="value"><?= format_ksh($amount_paid, 2); ?></div></div>
-            <div class="stat-card" style="border-left-color:#D97706"><h6>Balance Due</h6><div class="value due"><?= format_ksh($balance_due, 2); ?></div></div>
+            <div class="stat-card" style="border-left-color:var(--success)"><h6>Paid To Date</h6><div class="value"><?= format_ksh($amount_paid, 2); ?></div></div>
+            <div class="stat-card" style="border-left-color:var(--warning)"><h6>Balance Due</h6><div class="value due"><?= format_ksh($balance_due, 2); ?></div></div>
             <div class="card shadow-sm" style="border:none; border-radius:14px;">
                 <div class="card-body mpesa-note">
                     <i class="mdi mdi-shield-check-outline mr-1" style="color:#065F46"></i>
@@ -274,8 +276,8 @@
     </div>
 </div>
 
-<script src="js/jquery-3.2.1.slim.min.js"></script>
+<script src="js/jquery-3.7.1.slim.min.js"></script>
 <script src="js/popper.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
 </body>
 </html>

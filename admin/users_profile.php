@@ -1,8 +1,6 @@
 <?php include 'include/init.php'; ?>
 <?php
-     if (!is_staff()) {
-         redirect_to("../");
-     }
+     require_staff_subscribed();
 ?>
 <?php $users_profile = Users::find_by_id($_SESSION['id']); ?>
 <?php 
@@ -15,13 +13,13 @@
                 die();
             }
 
-            $firstname   = clean($_POST['firstname']);
-            $lastname    = clean($_POST['lastname']);
-            $address     = clean($_POST['address']);
-            $email       = clean($_POST['email']);
-            $username    = clean($_POST['username']);
-            $gender      = clean($_POST['gender']);
-            $designation = clean($_POST['designation']);
+            $firstname   = clean($_POST['firstname'] ?? '');
+            $lastname    = clean($_POST['lastname'] ?? '');
+            $address     = clean($_POST['address'] ?? '');
+            $email       = clean($_POST['email'] ?? '');
+            $username    = clean($_POST['username'] ?? '');
+            $gender      = clean($_POST['gender'] ?? '');
+            $designation = clean($_POST['designation'] ?? '');
 
              if (empty($firstname) || empty($lastname) || empty($address) || empty($email) || empty($username)) {
                 $session->message("
@@ -79,12 +77,12 @@
     <title>Edit Profile Detail - Administrator</title>
 
     <!-- Bootstrap core CSS -->
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
 
     <!-- Custom styles for this template -->
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
-    <link href="css/dataTables.bootstrap4.min.css" rel="stylesheet">
+    <link href="css/dataTables.bootstrap4.min.css?v=1.13.11" rel="stylesheet">
 <!--    <link href="css/bootstrap.css" rel="stylesheet">-->
     <link rel="stylesheet" type="text/css"
           href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">

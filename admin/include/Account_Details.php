@@ -38,15 +38,9 @@ class Account_Details extends DB_Object
     public static function count_user() {
         global $db;
         $sql = "SELECT count(id) FROM tblaccounts_detail";
-        $result_count = $db->query($sql);
+        $result_count = $db->execute($sql);
         $row = $result_count->fetch(PDO::FETCH_ASSOC);
         return array_shift($row);
     }
 
 }
-
-
-
-?>
-
-

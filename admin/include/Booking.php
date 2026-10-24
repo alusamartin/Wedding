@@ -41,7 +41,7 @@ class Booking extends DB_Object
     {
         global $db;
         $sql = "SELECT * FROM tblaccounts_detail INNER JOIN tblweddingbook ON tblweddingbook.user_id = tblaccounts_detail.user_id WHERE tblaccounts_detail.status = 'pending' ORDER BY booking_id ASC";
-        $stmt = $db->query($sql);
+        $stmt = $db->execute($sql);
         $arr = [];
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $arr[] = static::instantiation($row);
@@ -53,7 +53,7 @@ class Booking extends DB_Object
     {
         global $db;
         $sql = "SELECT * FROM tblaccounts_detail INNER JOIN tblweddingbook ON tblweddingbook.user_id = tblaccounts_detail.user_id WHERE tblaccounts_detail.status = 'confirm' ORDER BY booking_id ASC";
-        $stmt = $db->query($sql);
+        $stmt = $db->execute($sql);
         $arr = [];
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $arr[] = static::instantiation($row);
@@ -61,11 +61,24 @@ class Booking extends DB_Object
         return $arr;
     }
 
-    public static function count_booking(): int
+    /**
+     * How many bookings — on the whole platform, or inside a caller's scope.
+     *
+     * The optional `$scope` is the shape `planner_scope_sql()` returns
+     * (`['sql' => condition, 'params' => [...]]`), empty when nothing is
+     * scoped. It is passed IN rather than looked up here on purpose: the model
+     * has no business reading $_SESSION, and the scripts and tests that
+     * legitimately want the platform-wide number keep calling it with no
+     * arguments.
+     *
+     * @param array{sql?:string, params?:array<string,int>} $scope
+     */
+    public static function count_booking(array $scope = []): int
     {
         global $db;
-        $sql = "SELECT count(booking_id) FROM " . self::$db_table;
-        return (int) $db->fetchValue($sql);
+        $sql = 'SELECT count(booking_id) FROM ' . self::$db_table
+            . (!empty($scope['sql']) ? ' WHERE ' . $scope['sql'] : '');
+        return (int) $db->fetchValue($sql, $scope['params'] ?? []);
     }
 
     /** Pending bookings owned by one client account (client portal scope). */

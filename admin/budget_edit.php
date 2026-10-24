@@ -2,7 +2,7 @@
 <?php
 
 
-    if (!is_staff()) { redirect_to("../"); }
+    require_staff_subscribed();
     
     $booking_id = (int)($_GET['booking_id'] ?? 0);
     $user_id = (int)($_GET['user_id'] ?? 0);
@@ -26,9 +26,9 @@
             die();
         }
 
-        $event_id = (int) clean($_POST['event_id']);
-        $payment = (float) clean($_POST['payment']);
-        $cash = (float) clean($_POST['cash']);
+        $event_id = (int) clean($_POST['event_id'] ?? '');
+        $payment = (float) clean($_POST['payment'] ?? '');
+        $cash = (float) clean($_POST['cash'] ?? '');
 
         if ($event_id <= 0 || $payment <= 0 || $payment < $cash) {
             $session->message('
@@ -86,7 +86,7 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
         <title>Add New Events - Administrator</title>
-        <link href="css/bootstrap.min.css" rel="stylesheet">        <link href="css/dashboard.css" rel="stylesheet">
+        <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">        <link href="css/dashboard.css" rel="stylesheet">
         <link href="css/modern-admin.css" rel="stylesheet">
         <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
         <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet">
@@ -165,10 +165,10 @@
 <!-- Bootstrap core JavaScript
 ================================================== -->
 <!-- Placed at the end of the document so the pages load faster -->
-<script src="js/jquery-3.2.1.slim.min.js"></script>
+<script src="js/jquery-3.7.1.slim.min.js"></script>
 <script>window.jQuery || document.write('<script src="../../../../assets/js/vendor/jquery-slim.min.js"><\/script>')</script>
 <script src="js/popper.min.js"></script>
-<script src="../js/jquery.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
+<script src="../js/jquery-3.7.1.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
 </body>
 </html>

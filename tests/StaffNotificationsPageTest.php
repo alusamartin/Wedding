@@ -222,22 +222,36 @@ final class StaffNotificationsPageTest extends TestCase
         }
     }
 
-    /** Seed $n probe notifications for the wafula admin; last $unread unread. */
-    private static function seedProbes(int $n, int $unread): void
+    /**
+     * Seed $n probe notifications for the wafula admin; the last $unread are
+     * unread.
+     *
+     * Returns the new row ids in order: another method in this class seeds 30
+     * rows with the very same message numbers, so a page assertion that keys on
+     * "probe notification 1" answers about whichever batch ran first. The ids
+     * are unique to this call.
+     *
+     * @return int[]
+     */
+    private static function seedProbes(int $n, int $unread): array
     {
         global $db;
         $stmt = $db->prepare(
-            'INSERT INTO tblnotifications (user_id, booking_id, message, link, is_read) '
-            . 'VALUES (:uid, 0, :msg, "dashboard.php", :read)'
+            'INSERT INTO tblnotifications (user_id, booking_id, recipient_type, message, link, is_read) '
+            . 'VALUES (:uid, 0, \'user\', :msg, "dashboard.php", :read)'
         );
+        $ids = [];
         for ($i = 1; $i <= $n; $i++) {
             $stmt->execute([
                 ':uid'  => self::$staffId,
                 ':msg'  => '[page-test] probe notification ' . $i,
                 ':read' => $i <= ($n - $unread) ? 1 : 0,
             ]);
-            self::$probeIds[] = (int) $db->the_insert_id();
+            $id = (int) $db->the_insert_id();
+            self::$probeIds[] = $id;
+            $ids[] = $id;
         }
+        return $ids;
     }
 
     private static function unreadForStaff(): int
@@ -300,7 +314,7 @@ final class StaffNotificationsPageTest extends TestCase
     public function testArchiveRendersRowsAndPagination(): void
     {
         $this->requireHttp();
-        self::seedProbes(30, 5); // 25 read + 5 unread → >1 page at 25/page
+        $ids = self::seedProbes(30, 5); // 25 read + 5 unread → >1 page at 25/page
 
         $total = self::totalForStaff();
         $pages = (int) ceil($total / self::PER_PAGE);
@@ -314,13 +328,25 @@ final class StaffNotificationsPageTest extends TestCase
         self::assertStringContainsString('Notifications', $page1['body']);
         self::assertStringContainsString($total . ' total', $page1['body'], 'footer must show the DB total');
         self::assertStringContainsString('Page 1 of ' . $pages, $page1['body']);
-        self::assertStringContainsString('[page-test] probe notification 30', $page1['body'], 'newest rows render first');
+        // Placement asserted on the row ids this call created, never on the
+        // message text: six methods seed "[page-test] probe notification <n>", so
+        // a text assertion answers about whichever batch happens to sit there.
+        $rowLink = static fn (int $id): string => 'notifications.php?action=read&id=' . $id . '"';
+        self::assertStringContainsString($rowLink(max($ids)), $page1['body'], 'the newest seeded row renders first');
         self::assertStringContainsString('notifications.php?page=2', $page1['body'], 'older link must be offered');
 
         $last = self::http('GET', '/admin/notifications.php?page=' . $pages);
         self::assertSame(200, $last['status']);
         self::assertStringContainsString('Page ' . $pages . ' of ' . $pages, $last['body']);
-        self::assertStringContainsString('[page-test] probe notification 1', $last['body'], 'oldest rows on the last page');
+        // The oldest row ON FILE, read from the database, rather than "the first
+        // row of my batch": another class or an earlier run may own older rows,
+        // and then this batch's first row is legitimately not on the last page.
+        $oldest = (int) self::$db->fetchValue(
+            'SELECT MIN(id) FROM tblnotifications WHERE user_id = :u',
+            [':u' => self::$staffId]
+        );
+        self::assertGreaterThan(0, $oldest, 'the archive must have rows to page through');
+        self::assertStringContainsString($rowLink($oldest), $last['body'], 'oldest rows on the last page');
     }
 
     #[Group('integration')]
@@ -358,24 +384,26 @@ final class StaffNotificationsPageTest extends TestCase
     public function testUnreadOnlyFilterShowsOnlyUnreadRows(): void
     {
         $this->requireHttp();
-        self::seedProbes(5, 2); // 3 read + 2 unread
+        $ids = self::seedProbes(5, 2); // 3 read + 2 unread
 
         $body = self::http('GET', '/admin/notifications.php?filter=unread')['body'];
         self::assertStringContainsString('value="unread" checked', $body, 'the toggle must reflect the active filter');
 
-        // Scope to the archive card: the sidebar dropdown always lists the
-        // 8 latest regardless of filter, so whole-body assertions would be
-        // meaningless here.
-        $posDropdown = strpos($body, 'dropdown-menu');
-        $posCard     = strpos($body, 'card shadow-sm');
+        // Scope to the archive card: the shell's own bell list always shows the
+        // latest few rows regardless of filter, so whole-body assertions would
+        // be meaningless here. The card is the last thing on the page, so a
+        // slice from its opening tag excludes every shell-rendered row.
+        $posCard = strpos($body, 'card shadow-sm');
         self::assertNotSame(false, $posCard, 'archive card must render');
-        $card = $posDropdown !== false && $posDropdown < $posCard
-            ? substr($body, $posCard)
-            : $body;
-        self::assertStringContainsString('probe notification 4', $card, 'unread rows must render');
-        self::assertStringContainsString('probe notification 5', $card, 'unread rows must render');
-        self::assertStringNotContainsString('probe notification 1', $card, 'read rows must be filtered out of the card');
-        self::assertStringNotContainsString('probe notification 3', $card, 'read rows must be filtered out of the card');
+        $card = substr($body, (int) $posCard);
+        // Keyed on the row ids this call created: message numbers repeat across
+        // the class's batches, ids do not.
+        $rowLink = static fn (int $id): string => 'action=read&id=' . $id . '"';
+        self::assertStringContainsString($rowLink($ids[3]), $card, 'unread rows must render');
+        self::assertStringContainsString($rowLink($ids[4]), $card, 'unread rows must render');
+        self::assertStringNotContainsString($rowLink($ids[0]), $card, 'read rows must be filtered out of the card');
+        self::assertStringNotContainsString($rowLink($ids[1]), $card, 'read rows must be filtered out of the card');
+        self::assertStringNotContainsString($rowLink($ids[2]), $card, 'read rows must be filtered out of the card');
     }
 
     #[Group('integration')]
@@ -385,8 +413,8 @@ final class StaffNotificationsPageTest extends TestCase
         global $db;
         // One row whose message contains literal LIKE metacharacters.
         $stmt = $db->prepare(
-            'INSERT INTO tblnotifications (user_id, booking_id, message, link, is_read) '
-            . 'VALUES (:uid, 0, :msg, "dashboard.php", 0)'
+            'INSERT INTO tblnotifications (user_id, booking_id, recipient_type, message, link, is_read) '
+            . 'VALUES (:uid, 0, \'user\', :msg, "dashboard.php", 0)'
         );
         $stmt->execute([':uid' => self::$staffId, ':msg' => '[page-test] deposit 100% confirmed _today_']);
         self::$probeIds[] = (int) $db->the_insert_id();
@@ -441,8 +469,8 @@ final class StaffNotificationsPageTest extends TestCase
         // expired-unread, and a fresh control. Only the control must survive.
         $db = self::$db;
         $insert = $db->prepare(
-            'INSERT INTO tblnotifications (user_id, booking_id, message, link, is_read, created_at) '
-            . 'VALUES (:uid, 0, :msg, "dashboard.php", :read, :created)'
+            'INSERT INTO tblnotifications (user_id, booking_id, recipient_type, message, link, is_read, created_at) '
+            . 'VALUES (:uid, 0, \'user\', :msg, "dashboard.php", :read, :created)'
         );
         $cases = [
             ['[page-test] prune expired read', 1, '-90 days'],
@@ -470,8 +498,8 @@ final class StaffNotificationsPageTest extends TestCase
 
         // Mail-log rows must travel with their notification.
         $db->execute(
-            "INSERT INTO tbl_mail_logs (notification_id, user_id, booking_id, to_email, subject, body, status) "
-            . "VALUES (:nid, :uid, 0, 'probe@example.com', 'probe', 'probe body', 'sent')",
+            "INSERT INTO tbl_mail_logs (notification_id, user_id, booking_id, recipient_type, to_email, subject, body, status) "
+            . "VALUES (:nid, :uid, 0, 'user', 'probe@example.com', 'probe', 'probe body', 'sent')",
             [':nid' => $ids['[page-test] prune fresh control'], ':uid' => self::$staffId]
         );
         $mailId = (int) $db->the_insert_id();

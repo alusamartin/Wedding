@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require __DIR__ . '/cli_guard.php'; // CLI-only: refuse to run over HTTP
 
 /**
  * WPMS Kenya v2.1 — mysqli → PDO Migration Scanner / Auto-Fixer

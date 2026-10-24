@@ -22,7 +22,13 @@ function redirect_to($location): never {
 }
 
 function clean($string) {
-    return htmlentities(strip_tags(trim($string)));
+    /*
+     * Null-safe: a missing form field (or any legacy caller that reads
+     * $_POST['x'] without a default) reaches here as null, and PHP 8.2
+     * deprecates passing null to trim(). Casting first keeps every caller
+     * honest without each one needing its own `?? ''`.
+     */
+    return htmlentities(strip_tags(trim((string) $string)));
 }
 
 function time_elapsed_string($datetime, $full = false) {
@@ -30,8 +36,26 @@ function time_elapsed_string($datetime, $full = false) {
     $ago = new DateTime($datetime);
     $diff = $now->diff($ago);
 
-    $diff->w = floor($diff->d / 7);
-    $diff->d -= $diff->w * 7;
+    /*
+     * DateInterval is a built-in class and has NO `w` (week) part, so the
+     * historical `$diff->w = floor($diff->d / 7)` attached a dynamic property
+     * to it. That is deprecated in PHP 8.2 and was firing on every page that
+     * prints a relative time (44 hits during one simulation run) — while PHP
+     * 8.2 gives no public `w`, so the value is derived into locals instead of
+     * being stuffed onto the interval. Same output, no dynamic property.
+     */
+    $weeks = (int) floor($diff->d / 7);
+    $days  = $diff->d - ($weeks * 7);
+
+    $parts = array(
+        'y' => $diff->y,
+        'm' => $diff->m,
+        'w' => $weeks,
+        'd' => $days,
+        'h' => $diff->h,
+        'i' => $diff->i,
+        's' => $diff->s,
+    );
 
     $string = array(
         'y' => 'year',
@@ -44,12 +68,13 @@ function time_elapsed_string($datetime, $full = false) {
     );
 
     foreach ($string as $k => &$v) {
-        if ($diff->$k) {
-            $v = $diff->$k . ' ' . $v . ($diff->$k > 1 ? 's' : '');
+        if (!empty($parts[$k])) {
+            $v = $parts[$k] . ' ' . $v . ($parts[$k] > 1 ? 's' : '');
         } else {
             unset($string[$k]);
         }
     }
+    unset($v);
 
     if (!$full) $string = array_slice($string, 0, 1);
     return $string ? implode(', ', $string) . ' ago' : 'just now';
@@ -164,6 +189,38 @@ function site_base_url(): string
     $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
     $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
     return $scheme . '://' . $host;
+}
+
+/**
+ * Absolute URL for a site-relative path — a page, an asset or an upload.
+ *
+ * Built on site_base_url() with one correction that page links need and API
+ * base URLs must not have: with NO WPMS_SITE_URL configured (dev, tests, a
+ * fresh XAMPP copy) the install FOLDER is read from SCRIPT_NAME, so a site
+ * living in http://localhost/Wedding/ produces
+ * http://localhost/Wedding/vendor.php?id=200 rather than a link to the web
+ * server's root. A configured WPMS_SITE_URL is the site's own base and is
+ * used as given — on cPanel it already carries the folder, and appending it
+ * again would double it.
+ *
+ * Query values are encoded here so callers pass raw ids and get a URL that is
+ * safe to put in an attribute (and still escape it when printing).
+ */
+function public_url(string $path, array $query = []): string
+{
+    $path = ltrim(str_replace('\\', '/', $path), '/');
+    $base = site_base_url();
+
+    if (trim((string) getenv('WPMS_SITE_URL')) === '') {
+        $dir = str_replace('\\', '/', dirname((string) ($_SERVER['SCRIPT_NAME'] ?? '/index.php')));
+        $dir = rtrim($dir, '/');
+        if ($dir !== '' && $dir !== '.') {
+            $base .= $dir;
+        }
+    }
+
+    $url = rtrim($base, '/') . '/' . $path;
+    return $query === [] ? $url : $url . '?' . http_build_query($query);
 }
 
 /**
@@ -289,6 +346,100 @@ function empty_state(string $title, string $text, string $icon = 'mdi-inbox-outl
     echo '</div>';
 }
 
+/**
+ * Where the PUBLIC vendor pages (vendors.php, vendor.php) send someone who is
+ * ready to enquire.
+ *
+ * One answer for both pages, so a card and a profile cannot disagree about
+ * where "Enquire" goes. An anonymous visitor has one door — login.php — and
+ * that page already offers the "join" route; a signed-in account is sent to
+ * the portal its role actually works in. Vendors are not customers here: a
+ * vendor session browsing another business gets its own bookings ledger, which
+ * is the only thing that link could usefully mean for them.
+ *
+ * @return array{href:string,label:string}
+ */
+function vendor_enquiry_cta(): array
+{
+    if (!isset($_SESSION['id']) && !isset($_SESSION['user_email'])) {
+        return ['href' => 'login.php', 'label' => 'Sign in to enquire'];
+    }
+    if (is_staff()) {
+        return ['href' => 'admin/dashboard.php', 'label' => 'Enquire from your dashboard'];
+    }
+    if (is_vendor()) {
+        return ['href' => 'admin/vendor_home.php', 'label' => 'Go to your bookings'];
+    }
+    return ['href' => 'admin/client.php', 'label' => 'Enquire for your wedding'];
+}
+
+/**
+ * Resolve the vendor listing a session is currently working on, remembering it.
+ *
+ * The chosen listing is kept in the session because a vendor page is a mix of
+ * links and forms: resolving from the query string alone would make every POST
+ * fall back to the account's first listing, so a vendor who switched to their
+ * second business and saved a package would write it — or try to — against the
+ * wrong one. `Vendor::resolve_for_session()` still validates the id against
+ * ownership on every request, so a stale or foreign session value can only ever
+ * fall back to the caller's own listing.
+ *
+ * @param object[] $listings every listing the signed-in account owns
+ */
+function current_vendor_listing(int $user_id, array $listings): object|false|null
+{
+    $requested = (int) ($_REQUEST['vendor_id'] ?? 0);
+    if ($requested > 0) {
+        $_SESSION['vendor_listing_id'] = $requested;
+    } elseif (!empty($_SESSION['vendor_listing_id'])) {
+        $requested = (int) $_SESSION['vendor_listing_id'];
+    }
+    return Vendor::resolve_for_session($user_id, $requested);
+}
+
+/**
+ * Listing switcher for vendor accounts that run more than one business.
+ *
+ * A vendor account can own several `tblvendors` rows — the Kenyan seed ships
+ * one owner with two. Every vendor page acts on ONE listing at a time, so
+ * without a way to pick it the owner of a second business could not read that
+ * business's enquiries, edit its profile or manage its packages: the pages
+ * resolved the listing with `Vendor::get_by_user()`, which is `LIMIT 1` with no
+ * `ORDER BY`, and silently acted on the first one only.
+ *
+ * Renders nothing for the ordinary single-listing vendor. The chosen id is
+ * validated against ownership by `Vendor::resolve_for_session()` on arrival,
+ * so this only ever offers listings the account actually owns.
+ *
+ * @param object[]             $listings every listing the signed-in account owns
+ * @param array<string,scalar> $query    extra query params to carry across
+ */
+function vendor_listing_switcher(array $listings, int $currentId, string $page, array $query = []): void
+{
+    if (count($listings) < 2) {
+        return;
+    }
+    echo '<form method="get" action="' . htmlspecialchars($page) . '" class="form-inline mt-2">';
+    foreach ($query as $name => $value) {
+        echo '<input type="hidden" name="' . htmlspecialchars((string) $name)
+            . '" value="' . htmlspecialchars((string) $value) . '">';
+    }
+    echo '<label class="mr-2 mb-0 text-muted" style="font-size:12px;">Business</label>';
+    echo '<select name="vendor_id" class="form-control form-control-sm" onchange="this.form.submit()">';
+    foreach ($listings as $listing) {
+        $id = (int) $listing->id;
+        $label = (string) ($listing->business_name ?? '');
+        if ((int) ($listing->is_approved ?? 0) !== 1) {
+            $label .= ' (pending approval)';
+        }
+        echo '<option value="' . $id . '"' . ($id === $currentId ? ' selected' : '') . '>'
+            . htmlspecialchars($label) . '</option>';
+    }
+    echo '</select>';
+    echo '<noscript><button type="submit" class="btn btn-sm btn-outline-secondary ml-2">Switch</button></noscript>';
+    echo '</form>';
+}
+
 /** Empty-state rendered as a full-width table row (keeps DataTables happy). */
 function empty_state_row(int $colspan, string $title, string $text, string $icon = 'mdi-inbox-outline', string $ctaHref = '', string $ctaLabel = '', string $ctaIcon = 'mdi-plus'): void
 {
@@ -379,9 +530,13 @@ function register_client(
         if (!$booking->create()) {
             throw new RuntimeException('tblweddingbook insert failed');
         }
+        $bookingId = (int) $db->the_insert_id();
 
         $db->execute('COMMIT');
-        return ['ok' => true];
+        // The ids are returned so the caller can immediately attach what
+        // belongs to this registration — the proposal (v2.30) is created in the
+        // same request, from the brief the couple typed on the same form.
+        return ['ok' => true, 'error' => '', 'user_id' => $userId, 'booking_id' => $bookingId];
     } catch (Throwable $e) {
         try {
             $db->execute('ROLLBACK');
@@ -394,7 +549,7 @@ function register_client(
 
 /**
  * Self-serve planner registration: create the staff account UNVERIFIED, in
- * ONE transaction. The 14-day trial does NOT start here — it starts when the
+ * ONE transaction. The trial does NOT start here — it starts when the
  * planner proves the mailbox with the verification token (SignupGuard +
  * verify_planner.php), so trial farming needs one working inbox per account.
  *
@@ -471,6 +626,358 @@ function register_planner(string $firstname, string $lastname, string $email, st
     }
 }
 
+/*
+ * ---------------------------------------------------------------------------
+ * Role predicates — pure $_SESSION reads.
+ *
+ * These live HERE, not in init.php, because init.php is web-request-only while
+ * this file is also loaded by CLI scripts, PHPUnit and composer's files
+ * autoload. A predicate left in init.php looks identical from a browser and
+ * then fatals with "Call to undefined function is_staff()" the first time a
+ * command-line caller (a cron script, a test, `php -r`) touches anything that
+ * reads it — staff_paywall_locked() did exactly that. Everything in this file
+ * must be usable with nothing but this file loaded; anything that HTTP-
+ * redirects (require_staff / require_vendor) stays in init.php.
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * Is the current session a staff (planner/admin) account?
+ * Client accounts (tblaccounts) are stamped privilege '0'; staff (tblusers)
+ * carry a numeric access_level (1 = planner, 2 = super admin) or a legacy
+ * designation string.
+ */
+function is_staff(): bool
+{
+    if (!isset($_SESSION['id'])) {
+        return false;
+    }
+    $level = $_SESSION['privilege_level'] ?? 'user';
+    if ((string) $level === '0') {
+        return false;
+    }
+    if (is_numeric($level)) {
+        return (int) $level >= 1;
+    }
+    return in_array(
+        strtolower((string) $level),
+        ['super admin', 'admin', 'planner', 'wedding planner', 'staff'],
+        true
+    );
+}
+
+/**
+ * Is the current session a vendor account?
+ * Vendors are staff rows (tblusers) with access_level 0 — planners/admins
+ * are 1/2. Clients (tblaccounts) are ALSO stamped '0', so the account_type
+ * flag set at login is the only reliable discriminator: clients are never
+ * vendors even though the numeric level matches.
+ */
+function is_vendor(): bool
+{
+    if (!isset($_SESSION['id']) || is_staff()) {
+        return false;
+    }
+    if (($_SESSION['account_type'] ?? '') !== 'staff') {
+        return false; // client session (tblaccounts) — never a vendor
+    }
+    $level = $_SESSION['privilege_level'] ?? 'user';
+    return is_numeric($level) && (int) $level === 0;
+}
+
+/**
+ * Is the signed-in session a COUPLE account (a tblaccounts row)?
+ *
+ * Couples live in tblaccounts (primary key `user_id`); planners, admins and
+ * vendors live in tblusers (primary key `id`). Those are two separate
+ * auto-increment sequences, so their ids are two number spaces that merely
+ * look alike — 200 in tblusers and 200 in tblaccounts are different people.
+ *
+ * This matters because a VENDOR is a tblusers row with access_level 0, and
+ * is_staff() is therefore FALSE for it. Any ownership test written as
+ * `!is_staff() && $booking->user_id === $_SESSION['id']` compares a
+ * tblaccounts id (the booking's owner) against a tblusers id (the vendor's
+ * session) and hands the vendor the bookings of whichever couple happens to
+ * hold that number: every couple-facing page, until this predicate existed.
+ */
+function is_client_account(): bool
+{
+    if (!isset($_SESSION['id'])) {
+        return false;
+    }
+    // Vendor rows are tblusers rows too (access_level 0 + account_type staff).
+    return !is_staff() && !is_vendor();
+}
+
+/**
+ * The bell feed THIS session owns: which account table its id belongs to, and
+ * the id itself.
+ *
+ * `tblusers.id` (staff and vendor leads) and `tblaccounts.user_id` (couples)
+ * are two separate auto-increment sequences, so an id alone does not say which
+ * of them it came from — 203 in one table and 203 in the other are different
+ * people. `Notification` keys every read and write on the pair, and this is the
+ * one place a session resolves to one: `is_client_account()` names the table,
+ * and `$_SESSION['id']` is the id either way (login binds it from the account
+ * row it authenticated).
+ *
+ * A signed-out session gets id 0, which no account holds, so the feed is empty
+ * rather than somebody's.
+ *
+ * @return array{0: string, 1: int} [Notification::FOR_USER|FOR_ACCOUNT, id]
+ */
+function notification_recipient_for_session(): array
+{
+    $id = (int) ($_SESSION['id'] ?? 0);
+    if ($id <= 0) {
+        return [Notification::FOR_USER, 0];
+    }
+    return [is_client_account() ? Notification::FOR_ACCOUNT : Notification::FOR_USER, $id];
+}
+
+/*
+ * ---------------------------------------------------------------------------
+ * Per-planner scoping — who owns a wedding, and what that hides.
+ *
+ * Until this existed, `organizer_id` was a label: `client.php`,
+ * `Booking::getBooking()` and `vendor_enquiries.php` had no organizer
+ * predicate, so EVERY planner saw EVERY booking and every enquiry, and the
+ * dashboard counted them all. This is the one place that answers the question,
+ * so the pages, the write gates and the MCP tools cannot answer it differently.
+ *
+ * THE RULE, in one sentence: a planner sees the weddings assigned to them
+ * (`tblweddingbook.organizer_id`) PLUS the ones nobody has been assigned yet; a
+ * super admin sees everything; a couple sees its own booking; a vendor sees
+ * none of it.
+ *
+ * Why unassigned counts as visible: `organizer_id` starts at 0 — admin/client_add.php
+ * creates a booking before anyone owns it, and Helper.php's own booking builder
+ * sets 0 explicitly. If an unassigned wedding were hidden from every planner, a
+ * new couple's booking would be invisible to the whole team until an operator
+ * assigned it, and the assignment page (which needs someone to open the booking
+ * first) would be reachable only by super admins. "Unassigned is everyone's to
+ * pick up" is the only rule that does not create that hole; assigning it is what
+ * takes it away from everyone else.
+ *
+ * The switch: `WPMS_PLANNER_SCOPING=0` turns the whole thing off (a
+ * single-planner install, or a staging box where the seed assigns everything to
+ * one account and the operator wants the old view back). It defaults ON — the
+ * behaviour asked for is the behaviour you get, and the escape hatch is one
+ * environment variable rather than a code change.
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * Is per-planner scoping on for this install? On unless explicitly switched off.
+ *
+ * Reads the environment on every call (no static cache): a CLI script that
+ * `putenv()`s the switch before including anything must not be able to be told
+ * "already read" by a page-shaped value cached earlier in the same process.
+ */
+function planner_scoping_enabled(): bool
+{
+    $value = strtolower(trim((string) getenv('WPMS_PLANNER_SCOPING')));
+    return !in_array($value, ['0', 'off', 'no', 'false'], true);
+}
+
+/**
+ * The `tblusers.id` whose weddings this session is limited to — 0 when nothing
+ * is limited (scoping off, a super admin, a couple, a vendor, signed out).
+ *
+ * Super admins are exempt exactly as they are from the paywall: they run the
+ * platform, and an operator who cannot open a wedding a planner left half-
+ * assigned cannot fix it.
+ */
+function planner_scope_planner_id(): int
+{
+    if (!planner_scoping_enabled() || !is_staff() || is_super_admin()) {
+        return 0;
+    }
+    return (int) ($_SESSION['id'] ?? 0);
+}
+
+/**
+ * May a STAFF session open the wedding owned by this `organizer_id`?
+ *
+ * This is the rule; `booking_visible_to_session()` is its front door for a
+ * resolved row, and `planner_scope_sql()` is the same rule as SQL for the
+ * queries that must not FETCH what a page would then refuse. An id <= 0 means
+ * unassigned, which is visible to every planner (see the block comment above).
+ */
+function staff_may_open_organizer(int $organizer_id): bool
+{
+    $me = planner_scope_planner_id();
+    if ($me <= 0) {
+        return true; // scoping off, or an exempt session
+    }
+    $organizer_id = (int) $organizer_id;
+    return $organizer_id === $me || $organizer_id <= 0;
+}
+
+/**
+ * The scoping rule as a bound SQL CONDITION, for list queries.
+ *
+ * `sql` is a complete, parenthesised condition — never a bare fragment a caller
+ * has to splice — and an empty string when nothing is scoped, so a caller can
+ * always `if ($scope['sql'] !== '')` and add it to its own WHERE list. It is
+ * deliberately the SAME rule as `staff_may_open_organizer()` — "owns it, or
+ * nobody owns it yet" — and `PlannerScopingTest` asserts the two agree case by
+ * case (own, another planner's, unassigned, NULL, super admin, switch off),
+ * because a list that disagrees with the page it links to is exactly how this
+ * kind of feature leaks quietly.
+ *
+ * `$column` is the already-aliased column to test, e.g. `b.organizer_id`; it is
+ * never taken from request data, only written into the calling query by hand.
+ *
+ * @return array{sql:string, params:array<string,int>}
+ */
+function planner_scope_sql(string $column = 'organizer_id'): array
+{
+    $me = planner_scope_planner_id();
+    if ($me <= 0) {
+        return ['sql' => '', 'params' => []];
+    }
+    return [
+        'sql'    => '(' . $column . ' = :planner_scope_me OR ' . $column . ' IS NULL OR ' . $column . ' = 0)',
+        'params' => [':planner_scope_me' => $me],
+    ];
+}
+
+/**
+ * May this session open this booking at all? Staff may preview/assist the
+ * weddings they are scoped to (a planner: their own, plus the unassigned ones;
+ * a super admin: all of them); a couple only the booking their own account row
+ * owns; a vendor or any other session, nothing. The booking is passed resolved,
+ * and a missing one is never open to anybody (staff included) — a false row
+ * would otherwise fall through to the page body and warn on every property.
+ *
+ * A row that did not carry `organizer_id` reads as 0 (unassigned) and is
+ * therefore open, which is the permissive side on purpose: every caller here
+ * passes a Booking resolved from `tblweddingbook` (`Booking::find_by_booking_id()`
+ * selects `*`, and the field is declared on the model), so a missing
+ * `organizer_id` means the row was not shaped like a booking — not that the
+ * wedding belongs to somebody who must be kept out.
+ */
+function booking_visible_to_session(object|false $booking): bool
+{
+    if (!is_object($booking)) {
+        return false;
+    }
+    if (is_staff()) {
+        return staff_may_open_organizer((int) ($booking->organizer_id ?? 0));
+    }
+    return is_client_account() && (int) $booking->user_id === (int) ($_SESSION['id'] ?? 0);
+}
+
+/**
+ * The couple-facing page rule, in ONE place and ONE shape: `?booking_id=N`
+ * must resolve to a booking this session may open, and `?user_id=N` must be
+ * the session's own id (staff may pass any couple's — that is the documented
+ * preview/assist path). Every couple page and every couple-scoped endpoint
+ * calls this instead of re-deriving the comparison, so the vendor hole above
+ * cannot be re-introduced one page at a time.
+ */
+function may_open_couple_page(object|false $booking, int $user_id): bool
+{
+    if (!booking_visible_to_session($booking)) {
+        return false;
+    }
+    return is_staff() || $user_id === (int) ($_SESSION['id'] ?? 0);
+}
+
+/**
+ * May this STAFF session manage a proposal (v2.30)?
+ *
+ * The same rule as a booking, expressed on the proposal's own owner because a
+ * proposal is claimed before the wedding is assigned: a planner works the ones
+ * they own plus the ones nobody has claimed (`planner_id = 0`), a super admin
+ * everything, and a couple or vendor nothing — pricing a wedding is not theirs
+ * to do. `Proposal::queue()` applies exactly this rule in SQL, so the list and
+ * the page it links to cannot disagree.
+ */
+function staff_may_open_proposal(object|false $proposal): bool
+{
+    if (!is_object($proposal) || !is_staff()) {
+        return false;
+    }
+    $me = planner_scope_planner_id();
+    if ($me <= 0) {
+        return true; // scoping off, or a super admin
+    }
+    $owner = (int) ($proposal->planner_id ?? 0);
+    return $owner === $me || $owner <= 0;
+}
+
+/**
+ * Is this session the account that owns this vendor listing?
+ *
+ * Vendors are staff rows (tblusers, access_level 0) and `tblvendors.user_id`
+ * holds a tblusers id, so — unlike the couple rule above — both sides of this
+ * comparison come from the SAME table and there is no cross-table id confusion
+ * to defend against. What it defends is the two ways it can still go wrong: a
+ * session that is not a vendor at all (planner, admin, couple) working on a
+ * listing, and a listing that did not resolve (`false`) being treated as
+ * harmless. Staff get no bypass on purpose: they manage vendors through
+ * vendor_enquiries.php and vendors.php, while the self-service pages are the
+ * vendor's own.
+ *
+ * Resolution already validates ownership (Vendor::resolve_for_session), so this
+ * is the predicate every vendor-facing page can be held to — one rule, one
+ * shape, instead of each page testing for null and calling that a guard.
+ */
+function vendor_listing_visible_to_session(object|false $listing): bool
+{
+    if (!is_object($listing)) {
+        return false; // nothing resolved is never "harmless"
+    }
+    if (!is_vendor()) {
+        return false; // planners, admins and couples are not the owner
+    }
+    return (int) $listing->user_id === (int) ($_SESSION['id'] ?? 0);
+}
+
+/**
+ * Turn a set of ids into a BOUND `IN (...)` fragment — the shared builder for a
+ * scoped id list.
+ *
+ * Vendor pages scope their queries to every listing the account owns, which
+ * means an `IN` list per page; Guest::mark_invited() needs the same thing for a
+ * set of guests. Inlining those ids (the old vendor_enquiries.php did
+ * `implode(',', ...)`) is safe only for as long as every id was cast first, so
+ * the ids are bound instead. Returns the ids (de-duped, positive only), the
+ * placeholder fragment to interpolate, and the parameters to execute with.
+ *
+ * An empty list yields an empty fragment, so callers must skip the query in that
+ * case (as vendor_enquiries.php does) rather than emit `IN ()`.
+ *
+ * (The RSVP bulk pages still build positional `?` lists inline with
+ * array_fill(): their statements mix positional and named parameters, which PDO
+ * refuses to do in one statement.)
+ *
+ * @param int[] $ids
+ * @return array{ids: int[], sql: string, params: array<string, int>}
+ */
+function bound_id_list(array $ids): array
+{
+    $clean = [];
+    foreach ($ids as $id) {
+        $id = (int) $id;
+        if ($id > 0) {
+            $clean[$id] = true; // int keys de-dupe for free
+        }
+    }
+    $clean = array_map('intval', array_keys($clean));
+
+    $holders = [];
+    $params  = [];
+    foreach ($clean as $i => $id) {
+        $key       = ':own' . $i;
+        $holders[] = $key;
+        $params[$key] = $id;
+    }
+    return ['ids' => $clean, 'sql' => implode(', ', $holders), 'params' => $params];
+}
+
 /** The session user's trial row, or null (convenience for banners/pages). */
 function trial_for_session(): ?object
 {
@@ -478,6 +985,24 @@ function trial_for_session(): ?object
         return null;
     }
     return Subscription::get_trial((int) $_SESSION['id']);
+}
+
+/**
+ * Is the current session the SaaS operator?
+ *
+ * Super admins (tblusers.access_level 2) own the platform, so subscription
+ * rules never apply to them: an operator whose own plan lapsed must still
+ * be able to reach every page, or nobody is left who can renew anyone's plan.
+ * Used by the paywall gate and by login routing, which must agree — otherwise
+ * a super admin gets greeted by the paywall on every sign-in.
+ *
+ * Lives here (not init.php) because init.php is web-request-only while this
+ * file is also loaded by CLI scripts, tests and composer's files-autoload;
+ * a gate defined here would otherwise fatal with "undefined function".
+ */
+function is_super_admin(): bool
+{
+    return isset($_SESSION['id']) && (int) ($_SESSION['privilege_level'] ?? 0) === 2;
 }
 
 /**
@@ -518,14 +1043,39 @@ function require_staff_subscribed(): void
         redirect_to('../');
         exit;
     }
+
+    /*
+     * Super admins (access_level 2) are the SaaS operator and are never locked
+     * out of their own back office by an expired plan — see is_super_admin()
+     * in init.php, which login routing uses as well so the two never disagree.
+     */
+    if (is_super_admin()) {
+        return;
+    }
+
     $page = basename($_SERVER['PHP_SELF'] ?? '');
     if ($page === 'subscription.php' || $page === 'stk_status.php') {
         return; // always reachable — this is where a lapsed user pays
     }
-    if (subscription_state_for_session() === 'locked') {
+    if (staff_paywall_locked()) {
         redirect_to('subscription.php');
         exit;
     }
+}
+
+/**
+ * The paywall's single decision: is this a STAFF session to hold back?
+ *
+ * Lives here so the full-page gate and the pages couples share have one
+ * source of truth. The shared ones — client.php, the client_* previews, the
+ * printable sheets — let a staff session open ANY couple's booking, so a
+ * lapsed planner could otherwise read the whole CRM by deep-linking around
+ * the gate. Couples and vendors are never affected: their sessions are not
+ * staff, and neither has ever been billed a subscription.
+ */
+function staff_paywall_locked(): bool
+{
+    return is_staff() && !is_super_admin() && subscription_state_for_session() === 'locked';
 }
 
 /** Render the grace/urgency banner (call once per staff page, after the header include). */
@@ -537,8 +1087,10 @@ function subscription_banner(): string
     $s = Subscription::state((int) ($_SESSION['id'] ?? 0));
     if ($s['state'] === 'active') {
         if (!empty($s['trial'])) {
-            // Trial urgency beats the paid-plan ladder: the whole funnel
-            // depends on converting before day 14, so show it from day 10.
+            // Trial urgency beats the paid-plan ladder. Nothing shows for the
+            // bulk of a six-month trial — this is the end-of-window nudge only
+            // (the halfway check-in is an email, not a banner; see
+            // Subscription::trial_nurture_targets).
             $left = $s['days_left'];
             if ($left > 4) {
                 return '';

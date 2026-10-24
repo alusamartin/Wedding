@@ -44,6 +44,7 @@ require_once __DIR__ . '/admin/include/Liquidation.php';
 require_once __DIR__ . '/admin/include/Booking.php';
 require_once __DIR__ . '/admin/include/Categories.php';
 require_once __DIR__ . '/admin/include/Notification.php';
+require_once __DIR__ . '/admin/include/PublicGuard.php';
 
 /** Acknowledge to Daraja and stop. */
 function stk_reply(int $code, string $desc): never
@@ -78,6 +79,25 @@ $data = json_decode($raw, true);
 if (!is_array($data)) {
     error_log('[WPMS][mpesa_stk_callback] non-JSON body: ' . substr($raw, 0, 300));
     stk_reply(1, 'Rejected: body must be a Daraja STK result notification');
+}
+
+/*
+ * Shared abuse guard (PublicGuard, v2.14). Everything below this line WRITES:
+ * a forensic row now, and — when the CheckoutRequestID is a live push — a
+ * fulfilment receipt (bell + email). Over the ceiling this caller writes
+ * nothing, and the answer stays 200 because Daraja treats anything else as a
+ * reason to retry-storm us. Logged with the identifiers so a genuine result
+ * refused under a flood can still be reconciled by hand.
+ */
+$guardWait = PublicGuard::attempt(PublicGuard::CALLBACK, 'stk');
+if ($guardWait > 0) {
+    $peek = $data['Body']['stkCallback'] ?? [];
+    error_log(sprintf(
+        '[WPMS][mpesa_stk_callback] flood guard: caller paused for %ds — payload NOT logged or applied (CheckoutRequestID %s)',
+        $guardWait,
+        (string) (($peek['CheckoutRequestID'] ?? '') !== '' ? $peek['CheckoutRequestID'] : '?')
+    ));
+    stk_reply(0, 'Accepted');
 }
 
 // Keep the raw payload for forensics before any validation decision.

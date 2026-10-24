@@ -12,7 +12,7 @@
     <title>Inspiration Couples</title>
     <link href="https://fonts.googleapis.com/css?family=Open+Sans|Roboto" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
-    <link rel="stylesheet" href="css/bootstrap.min.css">
+    <link rel="stylesheet" href="css/bootstrap.min.css?v=4.6.2">
     <link rel="stylesheet" href="css/datepicker.css">
     <link rel="stylesheet" href="css/style.css"></link><link rel="stylesheet" href="css/modern.css">
     <style>
@@ -98,9 +98,9 @@ include "include/nav.php";
 
 <!-- Optional JavaScript -->
 <!-- jQuery first, then Popper.js, then Bootstrap JS -->
-<script src="js/jquery-3.2.1.slim.min.js"></script>
-<script src="js/jquery.min.js"></script>
+<script src="js/jquery-3.7.1.slim.min.js"></script>
+<script src="js/jquery-3.7.1.min.js"></script>
 <script src="js/popper.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
 </body>
 </html>

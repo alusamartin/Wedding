@@ -216,7 +216,7 @@ final class CoupleNotificationLoopTest extends TestCase
         // The signed-in couple sees THEIR feed (with at least the probe row).
         self::loginCouple();
         $seed = self::$db->prepare(
-            'INSERT INTO tblnotifications (user_id, booking_id, message, link) VALUES (:u, :b, :m, :l)'
+            'INSERT INTO tblnotifications (user_id, booking_id, recipient_type, message, link) VALUES (:u, :b, \'account\', :m, :l)'
         );
         $seed->execute([
             ':u' => self::COUPLE_ID,
@@ -320,10 +320,8 @@ final class CoupleNotificationLoopTest extends TestCase
         $response = curl_exec($ch);
         if ($response === false) {
             $err = curl_error($ch);
-            curl_close($ch);
             throw new RuntimeException('HTTP request failed: ' . $err);
         }
-        curl_close($ch);
 
         $status = 0;
         foreach ($headers as $h) {

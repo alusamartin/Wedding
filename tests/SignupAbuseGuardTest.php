@@ -90,6 +90,7 @@ final class SignupAbuseGuardTest extends TestCase
         $this->requireDb();
         putenv('WPMS_LOGIN_THROTTLE_OFF=');
         $ip = '203.0.113.77';
+        $started = microtime(true);
 
         for ($i = 0; $i < SignupGuard::MAX_PER_IP; $i++) {
             SignupGuard::recordAttempt("flood{$i}@example.com", true, $ip);
@@ -100,7 +101,13 @@ final class SignupAbuseGuardTest extends TestCase
         // The cap is full — even a brand-new email from this IP must wait.
         $wait = SignupGuard::secondsRemaining('fresh@example.com', $ip);
         self::assertGreaterThan(0, $wait, 'per-IP cap must block a fresh email once the IP is flooded');
-        self::assertLessThanOrEqual(3600, $wait);
+        // The wait is measured from the OLDEST row, in whole seconds, against
+        // MySQL's own clock — so the honest upper bound is the hour plus however
+        // long this loop itself took to write the rows (a busy machine can spend
+        // a second on it, which used to turn a correct answer of 3601 into a
+        // failure). The claim under test is the window, not the stopwatch.
+        $loopSeconds = (int) ceil(microtime(true) - $started);
+        self::assertLessThanOrEqual(3600 + $loopSeconds, $wait);
         self::assertGreaterThan(3540, $wait, 'the window opens when the OLDEST row ages out (~1h away)');
     }
 
@@ -449,10 +456,8 @@ final class SignupAbuseGuardTest extends TestCase
         $response = curl_exec($ch);
         if ($response === false) {
             $err = curl_error($ch);
-            curl_close($ch);
             throw new RuntimeException('HTTP request failed: ' . $err);
         }
-        curl_close($ch);
 
         $status = 0;
         $location = '';

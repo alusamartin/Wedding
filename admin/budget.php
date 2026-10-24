@@ -1,6 +1,6 @@
 <?php include 'include/init.php'; ?>
 <?php
-    if (!is_staff()) { redirect_to("../"); }
+    require_staff_subscribed();
 
     $booking_id = (int)($_GET['booking_id'] ?? 0);
     $user_id = (int)($_GET['user_id'] ?? 0);
@@ -19,10 +19,10 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Budget - Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
-    <link href="css/dataTables.bootstrap4.min.css" rel="stylesheet">
+    <link href="css/dataTables.bootstrap4.min.css?v=1.13.11" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
     <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet">
     <style>
@@ -63,19 +63,19 @@
         </div>
     </div>
     <div class="col-md-3">
-        <div class="stat-card" style="border-left-color: #059669;">
+        <div class="stat-card" style="border-left-color: var(--success);">
             <h6>Total Paid</h6>
             <div class="value"><?= format_ksh($totals['grand_total'] ?? 0); ?></div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="stat-card" style="border-left-color: #D97706;">
+        <div class="stat-card" style="border-left-color: var(--warning);">
             <h6>Balance Due</h6>
             <div class="value"><?= format_ksh(($category_details->price ?? 0) - ($totals['grand_total'] ?? 0)); ?></div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="stat-card" style="border-left-color: #0EA5A0;">
+        <div class="stat-card" style="border-left-color: var(--info);">
             <h6>Budget Items</h6>
             <div class="value"><?= count($budget_items); ?></div>
         </div>
@@ -160,11 +160,11 @@
 
 </div></div>
 
-<script src="js/jquery-3.2.1.slim.min.js"></script>
+<script src="js/jquery-3.7.1.slim.min.js"></script>
 <script src="js/popper.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
-<script src="js/jquery.dataTables.min.js"></script>
-<script src="js/dataTables.bootstrap4.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
+<script src="js/jquery.dataTables.min.js?v=1.13.11"></script>
+<script src="js/dataTables.bootstrap4.min.js?v=1.13.11"></script>
 <script>
     $(document).ready(function() {
         $('#budget_table').DataTable({ pageLength: 25, order: [[0, 'desc']] });

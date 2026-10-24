@@ -1,32 +1,33 @@
-<?php include 'include/init.php'; ?>
+<?php include 'include/init.php'; if (staff_paywall_locked()) { redirect_to('subscription.php'); exit; } ?>
 <?php
-    // Any signed-in user: planners get staff alerts, couples get their own
-    // (booking confirmed/cancelled, vendor enquiry updates). Every query is
-    // scoped to the session id, so a couple only ever sees their own feed.
+    // Any signed-in user: planners and vendors get staff alerts, couples get
+    // their own (booking confirmed/cancelled, vendor enquiry updates). The feed
+    // is scoped to the session's id AND to the account table that id belongs to
+    // — staff live in tblusers (`id`) and couples in tblaccounts (`user_id`) on
+    // separate auto-increment sequences, so the number alone does not identify
+    // the account it belongs to (notification_recipient_for_session).
     if (!isset($_SESSION['id'])) {
         redirect_to("../");
         die();
     }
     $plannerId = (int) $_SESSION['id'];
+    [$recipientType, $accountId] = notification_recipient_for_session();
     $action = (string) ($_GET['action'] ?? '');
 
     // Action endpoints (kept GET for deep links from the sidebar dropdown).
     if ($action === 'read' && isset($_GET['id'])) {
-        // Mark one notification read, then follow its deep link.
-        $id = (int) $_GET['id'];
-        global $db;
-        $stmt = $db->prepare(
-            'SELECT link FROM tblnotifications WHERE id = :id AND user_id = :uid LIMIT 1'
-        );
-        $stmt->execute([':id' => $id, ':uid' => $plannerId]);
-        $link = (string) ($stmt->fetchColumn() ?: '');
-        Notification::mark_read($id, $plannerId);
+        // Mark one notification read, then follow its deep link. Both steps name
+        // the account table: a collapsed id can only ever read its own row, and
+        // the link comes back only when the row belongs to this account.
+        $id = (int)($_GET['id'] ?? 0);
+        $link = Notification::link_for($recipientType, $id, $accountId);
+        Notification::mark_read($recipientType, $id, $accountId);
         redirect_to($link !== '' ? $link : (is_staff() ? 'dashboard.php' : 'client.php'));
         die();
     }
 
     if ($action === 'readall') {
-        Notification::mark_all_read($plannerId);
+        Notification::mark_all_read($recipientType, $accountId);
         // Origin-safe return: path (+query) only, never a foreign host.
         $back = (string) ($_SERVER['HTTP_REFERER'] ?? '');
         $path = parse_url($back, PHP_URL_PATH) ?: (is_staff() ? 'dashboard.php' : 'client.php');
@@ -42,12 +43,12 @@
     $qRaw     = trim((string) ($_GET['q'] ?? ''));
     $q        = mb_substr($qRaw, 0, 100);
     $unreadOnly = (($_GET['filter'] ?? '') === 'unread');
-    $total    = Notification::count_for($plannerId, $unreadOnly, $q);
+    $total    = Notification::count_for($recipientType, $accountId, $unreadOnly, $q);
     $pages    = (int) ceil($total / $perPage);
     $pageNo   = min(max((int) ($_GET['page'] ?? 1), 1), max($pages, 1));
     $offset   = ($pageNo - 1) * $perPage;
-    $archiveRows = Notification::page($plannerId, $offset, $perPage, $unreadOnly, $q);
-    $unread   = Notification::unread_count($plannerId);
+    $archiveRows = Notification::page($recipientType, $accountId, $offset, $perPage, $unreadOnly, $q);
+    $unread   = Notification::unread_count($recipientType, $accountId);
     // Couples land here from their own bell; staff deep-link from the sidebar.
     $isStaffView = is_staff();
     $homeLink    = $isStaffView ? 'dashboard.php' : 'client.php';
@@ -68,7 +69,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Notifications - Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
@@ -172,7 +173,7 @@
     </div>
 </div>
 
-<script src="js/jquery.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
+<script src="js/jquery-3.7.1.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
 </body>
 </html>

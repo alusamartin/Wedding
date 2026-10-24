@@ -9,10 +9,7 @@
  * phone check); rejected rows carry the reason a user-typed code failed
  * verification (wrong amount, wrong account, already used, unknown code).
  */
-    if (!is_staff()) {
-        redirect_to("../");
-        die();
-    }
+    require_staff_subscribed();
 
     $filter = clean($_GET['filter'] ?? '');
     $valid_filters = ['pending', 'verified', 'rejected', ''];
@@ -27,7 +24,7 @@
             redirect_to('mpesa_ledger.php');
             die();
         }
-        $id = (int) $_POST['accept_id'];
+        $id = (int)($_POST['accept_id'] ?? 0);
         // Only a pending row can be accepted; verified_at is stamped with the
         // accepting admin's email in reject_reason='accepted-by ...' style notes.
         $stmt = $db->prepare(
@@ -81,7 +78,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>M-Pesa Ledger - Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/7.4.47/css/materialdesignicons.min.css">
@@ -122,9 +119,9 @@
 
     <div class="row">
         <div class="col-md-3"><div class="stat-card"><h6>Verified</h6><div class="value"><?= $stats['verified']; ?></div></div></div>
-        <div class="col-md-3"><div class="stat-card" style="border-left-color:#D97706"><h6>Pending review</h6><div class="value"><?= $stats['pending']; ?></div></div></div>
-        <div class="col-md-3"><div class="stat-card" style="border-left-color:#DC2626"><h6>Rejected</h6><div class="value"><?= $stats['rejected']; ?></div></div></div>
-        <div class="col-md-3"><div class="stat-card" style="border-left-color:#0F172A"><h6>Verified value</h6><div class="value mono"><?= format_ksh($stats['total_ksh']); ?></div></div></div>
+        <div class="col-md-3"><div class="stat-card" style="border-left-color:var(--warning)"><h6>Pending review</h6><div class="value"><?= $stats['pending']; ?></div></div></div>
+        <div class="col-md-3"><div class="stat-card" style="border-left-color:var(--danger)"><h6>Rejected</h6><div class="value"><?= $stats['rejected']; ?></div></div></div>
+        <div class="col-md-3"><div class="stat-card" style="border-left-color:var(--stone-700)"><h6>Verified value</h6><div class="value mono"><?= format_ksh($stats['total_ksh']); ?></div></div></div>
     </div>
 
     <div class="mb-3">
@@ -221,9 +218,9 @@
     <h5 class="mt-4 mb-3"><i class="mdi mdi-cellphone-vibrate mr-1"></i> STK pushes</h5>
     <div class="row mb-3">
         <div class="col-md-3"><div class="stat-card"><h6>Pending</h6><div class="value"><?= (int) ($stkStats->pending ?? 0); ?></div></div></div>
-        <div class="col-md-3"><div class="stat-card" style="border-left-color:#059669"><h6>Succeeded</h6><div class="value"><?= (int) ($stkStats->success ?? 0); ?></div></div></div>
-        <div class="col-md-3"><div class="stat-card" style="border-left-color:#DC2626"><h6>Failed / cancelled</h6><div class="value"><?= (int) ($stkStats->failed ?? 0); ?></div></div></div>
-        <div class="col-md-3"><div class="stat-card" style="border-left-color:#0F172A"><h6>Collected</h6><div class="value mono"><?= format_ksh((float) ($stkStats->total_ksh ?? 0)); ?></div></div></div>
+        <div class="col-md-3"><div class="stat-card" style="border-left-color:var(--success)"><h6>Succeeded</h6><div class="value"><?= (int) ($stkStats->success ?? 0); ?></div></div></div>
+        <div class="col-md-3"><div class="stat-card" style="border-left-color:var(--danger)"><h6>Failed / cancelled</h6><div class="value"><?= (int) ($stkStats->failed ?? 0); ?></div></div></div>
+        <div class="col-md-3"><div class="stat-card" style="border-left-color:var(--stone-700)"><h6>Collected</h6><div class="value mono"><?= format_ksh((float) ($stkStats->total_ksh ?? 0)); ?></div></div></div>
     </div>
     <div class="card shadow-sm" style="border:none; border-radius:14px;">
         <div class="card-body">

@@ -16,9 +16,60 @@
 </IfModule>
 
 # --- Never serve secrets or internal files ----------------------------
-<FilesMatch "(^\.env|\.env\.|~$|\.(sql|md|lock|json|xml|ini|sh|bak|log)$)">
+# <FilesMatch> only ever sees the LAST path segment, so it covers root
+# dot-files (.env, .gitignore) but can never cover .git/config or .git/HEAD —
+# those are handled by the directory rule below.
+<FilesMatch "(^\.env|^\.git|\.env\.|~$|\.(sql|sqlite|db|dump|md|lock|json|xml|ini|sh|bak|orig|swp|log|tar|gz|tgz|zip|7z|dist|example|yml|yaml)$)">
     Require all denied
 </FilesMatch>
+
+# --- Never expose the internal tree -----------------------------------
+# The project root IS the web root on cPanel-style hosting, so everything that
+# is not a public page has to be denied explicitly. These directories are all
+# reachable otherwise:
+#   scripts/     CLI tools — GET /scripts/rsvp_reminders.php ran the cron job
+#                (sent SMS, pruned rows, backed up) as an anonymous visitor
+#   tests/       the PHPUnit suite
+#   deploy/      the deploy kit — .env.production and a full-site tarball
+#   migrations/  raw schema SQL
+#   docs/  include/  the shared partials
+#   vendor/      composer dependencies
+#   .git/        the ENTIRE repository — /.git/config, /.git/HEAD and the
+#                33 KB /.git/index all served 200, and every object in
+#                .git/objects is fetchable, so a visitor could clone the
+#                source (and any secret ever committed) straight off the site.
+# admin/include/ holds config.php and every model — never a public asset.
+# The scripts/ tools ALSO refuse to run outside the CLI (scripts/cli_guard.php),
+# so this rule is the first of two independent layers.
+<IfModule mod_rewrite.c>
+    # NOTE: "DATABASE FILE" is matched as DATABASE[[:space:]]FILE on purpose —
+    # a literal space inside a bracket expression splits the directive into
+    # extra whitespace-separated fields and Apache then fails every request in
+    # this directory with "RewriteRule: bad flag delimiters" (HTTP 500).
+    RewriteRule ^(scripts|tests|deploy|migrations|docs|include|vendor|admin/include|\.git|DATABASE[[:space:]]FILE)(/|$) - [F,NC]
+</IfModule>
+
+# --- Never serve dot-files or dot-directories --------------------------
+# A generic net under the named rules above: any path with a dot-prefixed
+# segment is internal tooling, not a public asset — .git, .env, .freebuff
+# (agent logs / project-id), .phpunit.result.cache, .gitignore, …
+# /.well-known/ is exempt because ACME/Let's Encrypt must reach it to issue a
+# certificate for the domain.
+<IfModule mod_rewrite.c>
+    RewriteCond %{REQUEST_URI} !/\.well-known/
+    RewriteRule (^|/)\. - [F,NC,L]
+</IfModule>
+
+# --- No directory listings ---------------------------------------------
+# Without this, mod_autoindex answers any folder that has no index file with a
+# browsable "Index of …" page: /DESIGN/ enumerated every homepage artwork SVG
+# and /.freebuff/ listed the local tooling logs. Files are still served by
+# direct URL — only the listing is removed. Guarded by <IfModule> so a host
+# without mod_autoindex (or with Options override disabled) still serves pages;
+# if a host rejects `Options`, swap this for `IndexIgnore *`.
+<IfModule mod_autoindex.c>
+    Options -Indexes
+</IfModule>
 
 # --- Security headers ---------------------------------------------------
 <IfModule mod_headers.c>
@@ -30,6 +81,15 @@
     # Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
 </IfModule>
 
+# --- Webfont MIME types -------------------------------------------------
+# Apache 2.4.28+ maps these in mime.types, but a stripped-down shared-host
+# config can fall back to application/octet-stream. Declare them explicitly so
+# admin/fonts/ and admin/webfonts/ always serve real font types.
+<IfModule mod_mime.c>
+    AddType font/woff2 .woff2
+    AddType font/woff  .woff
+</IfModule>
+
 # --- Sensible caching for static assets --------------------------------
 <IfModule mod_expires.c>
     ExpiresActive On
@@ -37,10 +97,42 @@
     ExpiresByType image/png "access plus 30 days"
     ExpiresByType image/svg+xml "access plus 30 days"
     ExpiresByType image/webp "access plus 30 days"
+    ExpiresByType font/woff2 "access plus 30 days"
+    ExpiresByType font/woff "access plus 30 days"
     ExpiresByType text/css "access plus 7 days"
     ExpiresByType application/javascript "access plus 7 days"
 </IfModule>
 
-# --- Custom error pages (optional: create these two files) -------------
-# ErrorDocument 404 /404.php
-# ErrorDocument 500 /500.php
+# --- Style and script edits must actually reach people ------------------
+# A 7-day max-age on CSS/JS means a deployed restyle stays invisible for up
+# to a week: the browser never asks the server, so it keeps painting the old
+# sheet from disk. Stylesheets and scripts are therefore revalidated on every
+# load. Apache answers with 304 Not Modified from the ETag, so the cost is one
+# small conditional request per file, not a re-download.
+<IfModule mod_headers.c>
+    <FilesMatch "\.(css|js)$">
+        Header set Cache-Control "public, max-age=0, must-revalidate"
+    </FilesMatch>
+</IfModule>
+
+# --- Custom 404 ---------------------------------------------------------
+# Handled as a rewrite rather than ErrorDocument so it works in BOTH layouts:
+# at the domain root (the documented cPanel deployment) and in a subfolder like
+# /Wedding. ErrorDocument takes a URL path relative to the DocumentRoot, so
+# "/404.php" quietly mis-resolves in a subfolder and a bare "404.php" is taken
+# as the literal error text (Apache then serves the string "404.php").
+# Placed AFTER the deny rule above, so a denied internal path still returns a
+# plain 403 and never gets rewritten. 404.php sends its own 404 status and
+# touches no database, so it renders even when the DB is down.
+<IfModule mod_rewrite.c>
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ 404.php [L]
+</IfModule>
+
+# --- Custom 500 ---------------------------------------------------------
+# Deliberately still an ErrorDocument: an Apache-level failure cannot be caught
+# by a rewrite, and a PHP fatal never reaches this either (display_errors is off
+# and admin/include/init.php logs the error instead). The leading slash assumes
+# the app is at the DocumentRoot — the layout DEPLOY_CPANEL.md prescribes.
+ErrorDocument 500 /500.php

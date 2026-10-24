@@ -102,8 +102,10 @@ CREATE TABLE IF NOT EXISTS `tblvendor_bookings` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `vendor_id` INT NOT NULL,
   `booking_id` INT NOT NULL,
-  `package_id` INT NOT NULL,
-  `event_date` DATE NOT NULL,
+  -- NULLABLE for the same reason as the KENYA_ONLY seed: a general enquiry
+  -- carries no package and no date.
+  `package_id` INT DEFAULT NULL,
+  `event_date` DATE DEFAULT NULL,
   `amount` DECIMAL(10,2) NOT NULL COMMENT 'KSh',
   `commission` DECIMAL(10,2) NOT NULL COMMENT 'KSh',
   `status` ENUM('pending','confirmed','completed','cancelled') NOT NULL DEFAULT 'pending',

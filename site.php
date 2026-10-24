@@ -5,7 +5,7 @@
  */
 include_once __DIR__ . '/admin/include/init.php';
 
-$slug = isset($_GET['slug']) ? clean($_GET['slug']) : '';
+$slug = isset($_GET['slug']) ? clean($_GET['slug'] ?? '') : '';
 
 if (empty($slug)) {
     header("Location: ../");
@@ -19,8 +19,16 @@ if (!$website) {
     exit;
 }
 
-// Track view
-WeddingWebsite::increment_views($website->id);
+/*
+ * Track the view — through the shared abuse guard (PublicGuard, v2.14). A
+ * refresh loop, or a flood over many slugs, must not turn into one UPDATE per
+ * request; over the ceiling the view is simply not counted. Only the COUNT is
+ * guarded: the page still renders for every guest, because refusing a wedding
+ * guest their own invitation page would be the worse bug.
+ */
+if (PublicGuard::attempt(PublicGuard::SITE, $slug) === 0) {
+    WeddingWebsite::increment_views($website->id);
+}
 
 // Get booking details for RSVP
 $booking = Booking::find_by_booking_id($website->booking_id);
@@ -33,7 +41,7 @@ $gallery = Gallery::find_by_event_all($website->booking_id);
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title><?= htmlspecialchars($website->title ?: 'Our Wedding'); ?></title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/bootstrap.min.css">
+    <link rel="stylesheet" href="css/bootstrap.min.css?v=4.6.2">
     <link rel="stylesheet" href="css/modern.css">
     <style>
         :root{ --kenya-green:#065F46; --kenya-gold:#D97706; --radius:16px; --shadow:0 8px 24px rgba(0,0,0,.07); }

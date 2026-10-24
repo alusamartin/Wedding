@@ -2,7 +2,7 @@
     include 'include/init.php'; 
     $count = 0;
     $error = '';
-    if (!is_staff()) { redirect_to("../"); }
+    require_staff_subscribed();
     $event_wedding =   EventWedding::find_by_id((int) ($_GET['id'] ?? 0));
     if ($event_wedding === false) {
         $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> That article no longer exists.</div>');
@@ -19,12 +19,12 @@ $category = Category::find_all();
                 die();
             }
 
-            $title        = clean($_POST['title']);
-            $description  = clean($_POST['description']);
-            $wedding_date = clean($_POST['wedding_date']);
-            $location     = clean($_POST['location']);
-            $status       = clean($_POST['status']);
-            $wedding_type       = clean($_POST['wedding_type']);
+            $title        = clean($_POST['title'] ?? '');
+            $description  = clean($_POST['description'] ?? '');
+            $wedding_date = clean($_POST['wedding_date'] ?? '');
+            $location     = clean($_POST['location'] ?? '');
+            $status       = clean($_POST['status'] ?? '');
+            $wedding_type       = clean($_POST['wedding_type'] ?? '');
             
             if (empty($title) || empty($description) || empty($wedding_date) || empty($location)) {
                 $session->message("
@@ -34,7 +34,7 @@ $category = Category::find_all();
                     <span aria-hidden=\"true\">&times;</span>
                   </button>
                 </div>");
-                redirect_to("blog_events_edit.php?id=".$_GET['id']);
+                redirect_to("blog_events_edit.php?id=" . (int) ($_GET['id'] ?? 0));
                 die();
             }
 
@@ -95,11 +95,11 @@ $category = Category::find_all();
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
         <title>Edit Article - Administrator</title>
-        <link href="css/bootstrap.min.css" rel="stylesheet">        <link href="css/dashboard.css" rel="stylesheet">
+        <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">        <link href="css/dashboard.css" rel="stylesheet">
         <link href="css/modern-admin.css" rel="stylesheet">
         <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
         <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet">
-        <link rel="stylesheet" href="../css/bootstrap-datepicker.css">
+        <link rel="stylesheet" href="../css/bootstrap-datepicker.css?v=1.10.1">
         <style>
             body {
                 margin-bottom: 2%;
@@ -229,12 +229,12 @@ $category = Category::find_all();
 <!-- Bootstrap core JavaScript
 ================================================== -->
 <!-- Placed at the end of the document so the pages load faster -->
-<script src="js/jquery-3.2.1.slim.min.js"></script>
+<script src="js/jquery-3.7.1.slim.min.js"></script>
 <script>window.jQuery || document.write('<script src="../../../../assets/js/vendor/jquery-slim.min.js"><\/script>')</script>
 <script src="js/popper.min.js"></script>
-<script src="../js/jquery.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
-<script src="../js/bootstrap-datepicker.min.js"></script>
+<script src="../js/jquery-3.7.1.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
+<script src="../js/bootstrap-datepicker.min.js?v=1.10.1"></script>
 <script>
   
     $(document).ready(function() {

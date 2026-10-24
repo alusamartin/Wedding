@@ -2,7 +2,15 @@
 declare(strict_types=1);
 
 /**
- * Client password-reset tokens (tbl_password_resets).
+ * Password-reset tokens (tbl_password_resets) for BOTH audiences.
+ *
+ * login.php is one sign-in for everyone — it tries tblaccounts (couples)
+ * first, then tblusers (planners / admins / vendors) — so the reset flow has
+ * to cover both, or a planner who forgets their password is locked out of
+ * their own back office for good. Every row records which table it belongs to
+ * (user_table, migration v2.6): the two tables have independent id sequences,
+ * so that column is what stops a couple's token from ever resolving to a
+ * planner who happens to share the same number.
  *
  * Flow: forgot_password.php issues a 64-hex token (stored hashed — a DB leak
  * must not leak usable reset links), emails the link, reset_password.php
@@ -35,43 +43,114 @@ class PasswordReset
         global $db;
         $email = strtolower(trim($email));
 
-        $stmt = $db->prepare('SELECT user_id FROM tblaccounts WHERE LOWER(user_email) = :e LIMIT 1');
-        $stmt->execute([':e' => $email]);
-        $userId = $stmt->fetchColumn();
-        if ($userId === false || $userId === null) {
+        $owner = self::resolve_owner($email);
+        if ($owner === null) {
             return null; // unknown address — caller stays vague
         }
-        $userId = (int) $userId;
+        [$table, $userId] = $owner;
 
         // Rate limit: 5 REQUESTS per rolling hour per address — counted on ALL
         // rows in the window, not just live ones. (Counting only unused rows
         // never trips: issue() burns older live tokens right before inserting
         // the new one, so the counter would be reset to 1 on every call.)
+        // Scoped by (user_table, user_id): user_id alone would conflate a
+        // couple and a planner whose ids merely share a number.
         $recent = $db->prepare(
             'SELECT COUNT(*) FROM ' . self::$db_table
-            . " WHERE user_id = :uid AND created_at > (NOW() - INTERVAL 1 HOUR)"
+            . ' WHERE user_table = :tbl AND user_id = :uid AND created_at > (NOW() - INTERVAL 1 HOUR)'
         );
-        $recent->execute([':uid' => $userId]);
+        $recent->execute([':tbl' => $table, ':uid' => $userId]);
         if ((int) $recent->fetchColumn() >= self::MAX_PER_HOUR) {
             return null;
         }
 
         // Burn any older live tokens for this account — only the newest link works.
-        $db->prepare('UPDATE ' . self::$db_table . ' SET used_at = NOW() WHERE user_id = :uid AND used_at IS NULL')
-           ->execute([':uid' => $userId]);
+        $db->prepare(
+            'UPDATE ' . self::$db_table
+            . ' SET used_at = NOW() WHERE user_table = :tbl AND user_id = :uid AND used_at IS NULL'
+        )->execute([':tbl' => $table, ':uid' => $userId]);
 
         $plain = bin2hex(random_bytes(32));
-        $ins = $db->prepare(
-            'INSERT INTO ' . self::$db_table . ' (user_id, token_hash, expires_at) VALUES (:uid, :tok, (NOW() + INTERVAL ' . self::TOKEN_TTL_MIN . ' MINUTE))'
-        );
-        $ins->execute([':uid' => $userId, ':tok' => hash('sha256', $plain)]);
+        try {
+            $ins = $db->prepare(
+                'INSERT INTO ' . self::$db_table . ' (user_table, user_id, token_hash, expires_at)'
+                . ' VALUES (:tbl, :uid, :tok, (NOW() + INTERVAL ' . self::TOKEN_TTL_MIN . ' MINUTE))'
+            );
+            $ins->execute([':tbl' => $table, ':uid' => $userId, ':tok' => hash('sha256', $plain)]);
+        } catch (Throwable $e) {
+            /*
+             * A deployment that has not run migration v2.6 has no user_table
+             * column. Failing here would 500 the public forgot-password page;
+             * instead stay neutral (the caller always answers "check your
+             * inbox") and leave the real reason in the log.
+             */
+            error_log('[WPMS][PasswordReset] could not issue token (is migration v2.6 applied?): ' . $e->getMessage());
+            return null;
+        }
         return $plain;
+    }
+
+    /**
+     * Find the account login.php would sign in for this address.
+     *
+     * Order matters and mirrors login.php exactly: tblaccounts (couples)
+     * first, then tblusers (staff). If the same address exists in both, login
+     * picks the couple — so the reset must pick the couple too, otherwise one
+     * could reset the other's password.
+     *
+     * @return array{0: string, 1: int}|null [table, id]
+     */
+    private static function resolve_owner(string $email): ?array
+    {
+        global $db;
+
+        $stmt = $db->prepare('SELECT user_id FROM tblaccounts WHERE LOWER(user_email) = :e LIMIT 1');
+        $stmt->execute([':e' => $email]);
+        $id = $stmt->fetchColumn();
+        if ($id !== false && $id !== null) {
+            return ['tblaccounts', (int) $id];
+        }
+
+        $stmt = $db->prepare('SELECT id FROM tblusers WHERE LOWER(email) = :e LIMIT 1');
+        $stmt->execute([':e' => $email]);
+        $id = $stmt->fetchColumn();
+        if ($id !== false && $id !== null) {
+            return ['tblusers', (int) $id];
+        }
+
+        return null;
+    }
+
+    /**
+     * Whitelist the owner table before it is ever used in SQL. The value comes
+     * back out of the database, so treating it as trusted would be a real
+     * injection path — anything unrecognised falls back to the couple table.
+     */
+    private static function normalise_table(string $table): string
+    {
+        return $table === 'tblusers' ? 'tblusers' : 'tblaccounts';
+    }
+
+    /** Current email for an account, or null when the row no longer exists. */
+    private static function owner_email(string $table, int $id): ?string
+    {
+        global $db;
+        [$idCol, $emailCol] = self::normalise_table($table) === 'tblusers'
+            ? ['id', 'email']
+            : ['user_id', 'user_email'];
+
+        $stmt = $db->prepare(
+            'SELECT `' . $emailCol . '` FROM `' . self::normalise_table($table) . "` WHERE `" . $idCol . '` = :id LIMIT 1'
+        );
+        $stmt->execute([':id' => $id]);
+        $email = $stmt->fetchColumn();
+        return ($email === false || $email === null || $email === '') ? null : (string) $email;
     }
 
     /**
      * Validate a plain token: must exist, be unused, unexpired.
      *
-     * @return object|false row {id, user_id, user_email} or false
+     * @return object|false row {id, user_id, user_table, user_email} or false
      */
     public static function select_valid(string $plain): object|false
     {
@@ -80,13 +159,21 @@ class PasswordReset
             return false;
         }
         $stmt = $db->prepare(
-            'SELECT r.id, r.user_id, a.user_email FROM ' . self::$db_table . ' r '
-            . 'JOIN tblaccounts a ON a.user_id = r.user_id '
+            'SELECT r.id, r.user_id, r.user_table FROM ' . self::$db_table . ' r '
             . 'WHERE r.token_hash = :tok AND r.used_at IS NULL AND r.expires_at > NOW() LIMIT 1'
         );
         $stmt->execute([':tok' => hash('sha256', $plain)]);
         $row = $stmt->fetch(PDO::FETCH_OBJ);
-        return $row === false ? false : $row;
+        if ($row === false) {
+            return false;
+        }
+
+        $row->user_table = self::normalise_table((string) ($row->user_table ?? ''));
+        $row->user_email = self::owner_email($row->user_table, (int) $row->user_id);
+        if ($row->user_email === null) {
+            return false; // the account was deleted — treat the token as dead
+        }
+        return $row;
     }
 
     /** Exchange a valid token for a password change. Returns true on success. */
@@ -97,17 +184,25 @@ class PasswordReset
         if ($row === false) {
             return false;
         }
+        $table = self::normalise_table((string) $row->user_table);
+        // Column names come off the whitelist above, never from the row itself.
+        $idCol = $table === 'tblusers' ? 'id' : 'user_id';
+        $pwCol = $table === 'tblusers' ? 'password' : 'user_password';
+
         $hash = password_hash($newPassword, PASSWORD_DEFAULT);
-        $upd  = $db->prepare('UPDATE tblaccounts SET user_password = :p WHERE user_id = :uid');
+        $upd  = $db->prepare("UPDATE `{$table}` SET `{$pwCol}` = :p WHERE `{$idCol}` = :uid");
         $ok   = $upd->execute([':p' => $hash, ':uid' => (int) $row->user_id]);
         if (!$ok) {
             return false;
         }
         // Burn the token (single-use) and any other live tokens for safety.
-        $db->prepare('UPDATE ' . self::$db_table . ' SET used_at = NOW() WHERE user_id = :uid AND used_at IS NULL')
-           ->execute([':uid' => (int) $row->user_id]);
+        $db->prepare(
+            'UPDATE ' . self::$db_table
+            . ' SET used_at = NOW() WHERE user_table = :tbl AND user_id = :uid AND used_at IS NULL'
+        )->execute([':tbl' => $table, ':uid' => (int) $row->user_id]);
         error_log(sprintf(
-            '[WPMS][PasswordReset] password changed via reset token for user_id=%d',
+            '[WPMS][PasswordReset] password changed via reset token for %s id=%d',
+            $table,
             (int) $row->user_id
         ));
         return true;
@@ -139,19 +234,14 @@ class PasswordReset
         // Shared transport: 'pending' when WPMS_MAIL_ENABLED is off.
         $send = self::attempt_send($toEmail, $subject, $body);
 
-        $ins = $db->prepare(
-            'INSERT INTO tbl_mail_logs (notification_id, user_id, booking_id, to_email, subject, body, status, note, attempts, last_attempt_at) '
-            . "VALUES (NULL, 0, 0, :to, :subj, :body, :status, :note, :attempts, :last)"
-        );
-        $ins->execute([
-            ':to'       => $toEmail,
-            ':subj'     => $subject,
-            ':body'     => $body,
-            ':status'   => $send[0],
-            ':note'     => $send[1],
-            ':attempts' => $send[0] === 'pending' ? 0 : 1,
-            ':last'     => $send[0] === 'pending' ? null : date('Y-m-d H:i:s'),
-        ]);
+        /*
+         * The outbox row goes through Notification (v2.13) with
+         * recipient_type = 'none': a reset mail is addressed to a bare address
+         * before anyone is signed in, so there is no account behind the row and
+         * no feed can match it. Writing it through the one door keeps the table
+         * with a single writer, and keeps that fact reviewable in one place.
+         */
+        Notification::log_address_mail($toEmail, $subject, $body, $send[0], $send[1]);
     }
 
     /**

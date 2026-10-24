@@ -20,10 +20,7 @@
  *                 that tripped the per-IP cap legitimately),
  *   prune_now   — delete rows idle beyond the 7-day horizon early.
  */
-    if (!is_staff()) {
-        redirect_to("../");
-        die();
-    }
+    require_staff_subscribed();
 
     $throttle_on = LoginThrottle::enabled();
 
@@ -168,7 +165,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Login Security - Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/7.4.47/css/materialdesignicons.min.css">
@@ -222,10 +219,10 @@
     <?php else: ?>
 
     <div class="row">
-        <div class="col-md-3"><div class="stat-card" style="border-left-color:#DC2626"><h6>Locked pairs now</h6><div class="value"><?= (int) ($stats->locked_pairs ?? 0); ?></div></div></div>
-        <div class="col-md-3"><div class="stat-card" style="border-left-color:#D97706"><h6>IPs at the cap</h6><div class="value"><?= (int) ($stats->hot_ips ?? 0); ?></div></div></div>
+        <div class="col-md-3"><div class="stat-card" style="border-left-color:var(--danger)"><h6>Locked pairs now</h6><div class="value"><?= (int) ($stats->locked_pairs ?? 0); ?></div></div></div>
+        <div class="col-md-3"><div class="stat-card" style="border-left-color:var(--warning)"><h6>IPs at the cap</h6><div class="value"><?= (int) ($stats->hot_ips ?? 0); ?></div></div></div>
         <div class="col-md-3"><div class="stat-card"><h6>Active pairs (window)</h6><div class="value"><?= (int) ($stats->active_pairs ?? 0); ?></div></div></div>
-        <div class="col-md-3"><div class="stat-card" style="border-left-color:#0F172A"><h6>Failures (24h)</h6><div class="value mono"><?= (int) ($stats->fails_24h ?? 0); ?></div></div></div>
+        <div class="col-md-3"><div class="stat-card" style="border-left-color:var(--stone-700)"><h6>Failures (24h)</h6><div class="value mono"><?= (int) ($stats->fails_24h ?? 0); ?></div></div></div>
     </div>
 
     <?php if (!empty($lockedPairs)): ?>

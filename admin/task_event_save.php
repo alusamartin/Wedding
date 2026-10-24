@@ -1,23 +1,39 @@
 <?php
 include 'include/init.php';
 
-if (!is_staff()) { redirect_to("../"); }
+require_staff_subscribed();
+
+/*
+ * Which wedding does the new event belong to? It arrives two different ways:
+ *   - task_calendar.php      form action="task_event_save.php?booking_id=N&user_id=N"
+ *   - task_all_calendar.php  a <select name="booking_id"> couple picker (no query string)
+ * Reading only $_GET silently discarded the couple chosen on the all-calendars
+ * page and stored the event with booking_id = 0 — an orphan no calendar shows.
+ */
+$booking_id = (int) ($_POST['booking_id'] ?? $_GET['booking_id'] ?? 0);
+$user_id    = (int) ($_GET['user_id'] ?? 0);
+$links      = 'booking_id=' . $booking_id . '&user_id=' . $user_id;
+
+if ($booking_id <= 0 || Booking::find_by_booking_id($booking_id) === false) {
+    $session->message('<div class="alert alert-warning"><strong><i class="mdi mdi-alert"></i></strong> Pick a wedding before adding an event.</div>');
+    redirect_to("task_calendar.php");
+    die();
+}
 
 // CSRF validation
 if (!$session->verify_csrf()) {
     $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> Invalid security token.</div>');
-    redirect_to("task_calendar.php?booking_id=" . (int)$_GET['booking_id'] . "&user_id=" . (int)$_GET['user_id']);
+    redirect_to("task_calendar.php?" . $links);
     die();
 }
 
 if (isset($_POST['title']) && isset($_POST['start']) && isset($_POST['end'])) {
 
-    $title = clean($_POST['title']);
+    $title = clean($_POST['title'] ?? '');
     $location = clean($_POST['location'] ?? '');
-    $start = clean($_POST['start']);
-    $end = clean($_POST['end']);
+    $start = clean($_POST['start'] ?? '');
+    $end = clean($_POST['end'] ?? '');
     $color = clean($_POST['color'] ?? '#607d8b');
-    $booking_id = (int)$_GET['booking_id'];
 
     // Auto-assign color based on event type
     $color_map = [
@@ -53,6 +69,6 @@ if (isset($_POST['title']) && isset($_POST['start']) && isset($_POST['end'])) {
     }
 }
 
-redirect_to("task_calendar.php?booking_id=" . (int)$_GET['booking_id'] . "&user_id=" . (int)$_GET['user_id']);
+redirect_to("task_calendar.php?" . $links);
 exit;
 ?>

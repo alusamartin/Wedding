@@ -107,9 +107,13 @@ class DB_Object
     }
 
     /**
-     * Core query runner — always via PDO.
-     * If $params empty and $sql has no placeholders, direct query (read-only internal calls).
-     * New callers should always pass $params.
+     * Core query runner — always a prepared statement.
+     *
+     * The `$params === [] ? $db->query($sql) : ...` branch that used to be here
+     * sent every parameterless finder down the shim's raw path. A finder whose
+     * SQL is constant today is not promised to stay constant, and nothing in the
+     * statement itself said which one it was — so the branch is gone: execute()
+     * prepares the statement whether or not there is anything to bind.
      *
      * @param string $sql
      * @param array  $params Named or positional bound values
@@ -120,7 +124,7 @@ class DB_Object
         global $db;
 
         try {
-            $stmt = $params === [] ? $db->query($sql) : $db->execute($sql, $params);
+            $stmt = $db->execute($sql, $params);
         } catch (PDOException $e) {
             error_log('[WPMS][DB_Object::find_by_query] ' . $e->getMessage() . ' | SQL: ' . $sql);
             throw $e;

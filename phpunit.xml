@@ -1,17 +1,40 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
-         bootstrap="vendor/autoload.php"
+         bootstrap="tests/bootstrap.php"
          colors="true"
          failOnWarning="true"
+         failOnNotice="true"
+         failOnDeprecation="true"
          displayDetailsOnTestsThatTriggerWarnings="true"
-         displayDetailsOnTestsThatTriggerNotices="true">
+         displayDetailsOnTestsThatTriggerNotices="true"
+         displayDetailsOnTestsThatTriggerDeprecations="true">
     <testsuites>
         <testsuite name="WPMS Kenya">
             <directory>tests</directory>
+            <!--
+              tests/fixtures holds deliberately broken mini-suites that audits
+              (sweep E's enum trees, sweep F's fixture trees, sweep G's unbound
+              pages) point their checks
+              at and assert the findings on. They are data, not tests: PHPUnit
+              must never execute them.
+            -->
+            <exclude>tests/fixtures</exclude>
         </testsuite>
     </testsuites>
     <php>
+        <!--
+          ISOLATED TEST DATABASE. The suite mutates data (deposits, RSVPs,
+          swaps a booking's date), so it must never run against the demo
+          database a developer keeps open in a browser. Default the suite to a
+          scratch `wpms_test`; tests/bootstrap.php builds it from the seed files
+          on first use, and `composer test:db` resets it for a clean run.
+
+          force="false": a real WPMS_DB_NAME in the environment still wins, so
+          CI (or a developer on a second schema) can point the suite elsewhere
+          without touching this file.
+        -->
+        <env name="WPMS_DB_NAME" value="wpms_test" force="false"/>
         <!--
           The suite deliberately posts bad passwords (guard tests, wrong-CSRF
           tests, vendor logins...). With throttling live, those attempts would
@@ -22,8 +45,23 @@
         <env name="WPMS_LOGIN_THROTTLE_OFF" value="1"/>
     </php>
     <source>
+        <!--
+          Coverage scope: the application itself. The vendor tree, the test
+          suite, the CLI tools under scripts/, the shipped SQL dumps and docs
+          are not the product and would only dilute the number. Only consulted
+          when a coverage driver is present (see scripts/coverage.php).
+        -->
         <include>
-            <directory>admin/include</directory>
+            <directory>.</directory>
         </include>
+        <exclude>
+            <directory>vendor</directory>
+            <directory>tests</directory>
+            <directory>scripts</directory>
+            <directory>docs</directory>
+            <directory>node_modules</directory>
+            <directory>migrations</directory>
+            <directory>DATABASE FILE</directory>
+        </exclude>
     </source>
 </phpunit>

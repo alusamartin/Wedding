@@ -26,6 +26,8 @@ final class CoupleVendorMarketplaceTest extends TestCase
     private const COUPLE_PASS  = 'Test@1234';
     private const BOOKING_ID   = 200;
     private const PLANNER_ID   = 7; // organizer of booking 200 (seed)
+    private const PLANNER_EMAIL = 'amina@wpms.co.ke';
+    private const PLANNER_PASS  = 'Test@1234';
 
     private static ?Database $db = null;
     private static ?string $base = null;
@@ -36,6 +38,10 @@ final class CoupleVendorMarketplaceTest extends TestCase
     private static array $probeEnquiryIds = [];
     /** @var int[] notification ids created by this run */
     private static array $probeNotificationIds = [];
+    /** @var int[] tblvendor_services rows this run created for matching */
+    private static array $probeServiceIds = [];
+    /** The seeded catering vendor the fit tests sell a service for. */
+    private static int $fitVendorId = 0;
 
     public static function setUpBeforeClass(): void
     {
@@ -55,6 +61,9 @@ final class CoupleVendorMarketplaceTest extends TestCase
             }
             global $db;
             $db = self::$db = new Database();
+            self::$fitVendorId = (int) $db->fetchValue(
+                "SELECT id FROM tblvendors WHERE business_name LIKE 'Nyama Choma Masters%' LIMIT 1"
+            );
         } catch (Throwable $e) {
             self::$db = null;
         }
@@ -76,12 +85,24 @@ final class CoupleVendorMarketplaceTest extends TestCase
                         'DELETE FROM tblnotifications WHERE id IN (' . implode(',', self::$probeNotificationIds) . ')'
                     );
                 }
+                if (self::$probeServiceIds !== []) {
+                    self::$db->execute(
+                        'DELETE FROM tblvendor_services WHERE id IN (' . implode(',', self::$probeServiceIds) . ')'
+                    );
+                }
+                // The brief is the one thing this class writes on the seeded
+                // wedding; it starts empty and must end empty.
+                self::$db->execute(
+                    'DELETE FROM tblvendor_preferences WHERE booking_id = :b',
+                    [':b' => self::BOOKING_ID]
+                );
             } catch (Throwable $e) {
                 // leave state untouched on failure
             }
         }
         self::$probeEnquiryIds = [];
         self::$probeNotificationIds = [];
+        self::$probeServiceIds = [];
 
         if (is_resource(self::$serverProc)) {
             proc_terminate(self::$serverProc);
@@ -140,17 +161,24 @@ final class CoupleVendorMarketplaceTest extends TestCase
         $this->requireDb();
         self::loginCouple();
 
+        // "Nothing was recorded" is a claim about the DELTA, not about the
+        // table: tblvendor_bookings is where an enquiry lands AND where every
+        // other suite's deals live, so a fixed number here only held while this
+        // class happened to run against an untouched seed. The baseline is read
+        // once and every rejected request must leave it alone.
+        $before = self::enquiryCount();
+
         // GET is rejected (redirect back, nothing recorded).
         $get = self::http('GET', '/admin/client_vendor_enquiry.php?booking_id=' . self::BOOKING_ID . '&user_id=200');
         self::assertSame(302, $get['status'], 'enquiry must reject GET requests');
-        self::assertSame(2, self::enquiryCount(), 'GET must not record anything');
+        self::assertSame($before, self::enquiryCount(), 'GET must not record anything');
 
         // Tokenless POST is rejected.
         $tokenless = self::http('POST', '/admin/client_vendor_enquiry.php?booking_id=' . self::BOOKING_ID . '&user_id=200', [
             'vendor_id' => 200, 'message' => 'tokenless attempt',
         ]);
         self::assertSame(302, $tokenless['status']);
-        self::assertSame(2, self::enquiryCount(), 'tokenless POST must not record anything');
+        self::assertSame($before, self::enquiryCount(), 'tokenless POST must not record anything');
 
         // Unknown/unapproved vendor is refused even with a valid token.
         $token = self::fetchCsrfToken();
@@ -158,14 +186,14 @@ final class CoupleVendorMarketplaceTest extends TestCase
             'vendor_id' => 999, 'message' => 'should not land', '_token' => $token,
         ]);
         self::assertSame(302, $unknown['status']);
-        self::assertSame(2, self::enquiryCount(), 'unknown vendor must not record anything');
+        self::assertSame($before, self::enquiryCount(), 'unknown vendor must not record anything');
 
         // Foreign booking is bounced.
         $foreign = self::http('POST', '/admin/client_vendor_enquiry.php?booking_id=201&user_id=201', [
             'vendor_id' => 200, 'message' => 'foreign attempt', '_token' => $token,
         ]);
         self::assertSame(302, $foreign['status']);
-        self::assertSame(2, self::enquiryCount(), 'foreign booking must not record anything');
+        self::assertSame($before, self::enquiryCount(), 'foreign booking must not record anything');
     }
 
     #[Group('integration')]
@@ -223,8 +251,219 @@ final class CoupleVendorMarketplaceTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // Taste & budget (v2.28)
+    // ------------------------------------------------------------------
+
+    /**
+     * The couple's half of the comparison, end to end: the editor is scoped to
+     * their wedding, what they save is what is read, and the marketplace turns
+     * it into an honest mark that flips when the budget changes.
+     */
+    #[Group('integration')]
+    public function testCoupleSetsTasteAndBudgetAndTheMarketplaceMarksWhatFits(): void
+    {
+        $this->requireDb();
+        self::loginCouple();
+
+        // Another wedding's brief is refused before a single field is shown.
+        $foreign = self::http('GET', '/admin/client_vendor_preferences.php?booking_id=201&user_id=201');
+        self::assertSame(302, $foreign['status'], 'a couple must bounce off another wedding\'s brief');
+
+        $editorPath = '/admin/client_vendor_preferences.php?booking_id=' . self::BOOKING_ID . '&user_id=200';
+        $editor = self::http('GET', $editorPath);
+        self::assertSame(200, $editor['status']);
+        self::assertStringContainsString('Taste &amp; Budget', $editor['body']);
+        self::assertStringContainsString('Catering', $editor['body'], 'every vendor category is offered');
+
+        $token = self::csrfFrom($editorPath);
+        $saved = self::http('POST', $editorPath, [
+            '_token'      => $token,
+            'action'      => 'save',
+            'category'    => 'catering',
+            'taste_tags'  => 'rustic, halal',
+            'budget_min'  => '',
+            'budget_max'  => '287654',
+            'notes'       => 'no pork',
+        ]);
+        self::assertSame(302, $saved['status']);
+
+        $pref = VendorFit::preference(self::BOOKING_ID, 'catering');
+        self::assertNotNull($pref, 'saving the form must store the brief');
+        self::assertEqualsWithDelta(287654.0, (float) $pref->budget_max, 0.01);
+        self::assertSame('rustic,halal', (string) $pref->taste_tags);
+
+        $this->seedFitService();
+
+        $page = self::http('GET', '/admin/client_vendors.php?booking_id=' . self::BOOKING_ID . '&user_id=200');
+        self::assertStringContainsString('KSh 287,654', $page['body'], 'their own brief is shown on the marketplace');
+        self::assertStringContainsString('Fits your brief', $page['body'],
+            'a service inside the cap with their taste tags must be marked as fitting');
+
+        $filtered = self::http('GET', '/admin/client_vendors.php?booking_id=' . self::BOOKING_ID . '&user_id=200&fit=1');
+        self::assertStringNotContainsString('Nothing fits that brief yet', $filtered['body'],
+            'the fitting vendor must survive the filter');
+
+        // A cap below every service price: the mark flips to over budget, and
+        // the filter says so instead of pretending something is close.
+        $tightened = self::http('POST', $editorPath, [
+            '_token'     => $token,
+            'action'     => 'save',
+            'category'   => 'catering',
+            'taste_tags' => '',
+            'budget_max' => '1000',
+        ]);
+        self::assertSame(302, $tightened['status']);
+
+        $over = self::http('GET', '/admin/client_vendors.php?booking_id=' . self::BOOKING_ID . '&user_id=200');
+        self::assertStringContainsString('Over budget', $over['body'], 'a cap below the price must read as over budget');
+
+        $empty = self::http('GET', '/admin/client_vendors.php?booking_id=' . self::BOOKING_ID . '&user_id=200&fit=1');
+        self::assertStringContainsString('Nothing fits that brief yet', $empty['body']);
+        self::assertStringContainsString('Widen the brief', $empty['body'], 'the empty state must say how to move forward');
+    }
+
+    /**
+     * One total in, ten caps out — the helper that turns the package price into
+     * a starting brief.
+     *
+     * What must hold: previewing writes nothing; applying writes caps that add
+     * up to the total; the caps come from the total and the shares the page
+     * posts (never from posted amounts); and a category left out keeps whatever
+     * cap it already had.
+     */
+    #[Group('integration')]
+    public function testCoupleSplitsOneTotalAcrossTheCategories(): void
+    {
+        $this->requireDb();
+        self::loginCouple();
+
+        self::$db->execute('DELETE FROM tblvendor_preferences WHERE booking_id = :b', [':b' => self::BOOKING_ID]);
+        // A category the couple is not splitting keeps its cap.
+        $kept = VendorFit::save(self::BOOKING_ID, 'mc', ['budget_max' => '25000', 'taste_tags' => 'bilingual'], 200);
+        self::assertTrue($kept['ok'], $kept['error']);
+
+        $path  = '/admin/client_vendor_preferences.php?booking_id=' . self::BOOKING_ID . '&user_id=200';
+        $token = self::csrfFrom($path);
+
+        $shares = VendorFit::shares();
+        unset($shares['mc']);
+        $form = ['_token' => $token, 'total' => '300000'];
+        foreach ($shares as $slug => $value) {
+            $form['shares[' . $slug . ']'] = (string) $value;
+        }
+
+        $editor = self::http('GET', $path);
+        self::assertStringContainsString('Split one total across the categories', $editor['body']);
+
+        // The same arithmetic the model promises, asked for here so the test
+        // does not hard-code a number that belongs to the shares table.
+        $plan = VendorFit::plan_split(300000, $shares);
+        self::assertSame('', $plan['error']);
+        $catering = 0.0;
+        foreach ($plan['rows'] as $row) {
+            if ($row['category'] === 'catering') {
+                $catering = (float) $row['amount'];
+            }
+        }
+        self::assertGreaterThan(0.0, $catering);
+
+        $preview = self::http('POST', $path, ['action' => 'split_plan'] + $form);
+        self::assertSame(200, $preview['status']);
+        self::assertStringContainsString('This split places', $preview['body']);
+        self::assertStringContainsString('KSh 300,000', $preview['body']);
+        self::assertStringContainsString(VendorFit::money_text($catering), $preview['body'],
+            'the preview must show the cap the arithmetic produces for catering');
+        self::assertStringContainsString('kept — left out', $preview['body'], 'a zero share must be shown as left out, not cleared');
+        self::assertCount(1, VendorFit::preferences(self::BOOKING_ID), 'previewing must not write a single cap');
+
+        $applied = self::http('POST', $path, ['action' => 'split_apply'] + $form);
+        self::assertSame(302, $applied['status']);
+
+        $prefs = VendorFit::preferences(self::BOOKING_ID);
+        self::assertCount(10, $prefs, 'nine split categories plus the one left out');
+        self::assertEqualsWithDelta($catering, (float) $prefs['catering']->budget_max, 0.01,
+            'the cap written is the cap previewed');
+        self::assertEqualsWithDelta(25000.0, (float) $prefs['mc']->budget_max, 0.01, 'the left-out cap is untouched');
+        self::assertSame('bilingual', (string) $prefs['mc']->taste_tags);
+        self::assertSame('', (string) $prefs['catering']->taste_tags, 'a new cap carries no invented taste');
+
+        $allocation = VendorFit::allocation(self::BOOKING_ID);
+        self::assertEqualsWithDelta(325000.0, $allocation['allocated'], 0.01, '300,000 split + the 25,000 kept');
+
+        // And the marketplace now measures against those caps.
+        $this->seedFitService();
+        $market = self::http('GET', '/admin/client_vendors.php?booking_id=' . self::BOOKING_ID . '&user_id=200');
+        self::assertStringContainsString(VendorFit::money_text($catering), $market['body'], 'the split cap is what the card compares with');
+        self::assertStringContainsString('Fits your brief', $market['body']);
+    }
+
+    /**
+     * The planner's side: the same brief and the same marks, but only for a
+     * wedding they may open, and the editor reachable to update it with the
+     * couple rather than for them.
+     */
+    #[Group('integration')]
+    public function testPlannerSeesTheBriefOnlyForTheWeddingTheyAreShoppingFor(): void
+    {
+        $this->requireDb();
+        self::loginAs(self::PLANNER_EMAIL, self::PLANNER_PASS);
+
+        $saved = VendorFit::save(self::BOOKING_ID, 'catering', [
+            'taste_tags' => 'rustic',
+            'budget_max' => '287654',
+            'notes'      => 'must be halal',
+        ], self::PLANNER_ID);
+        self::assertTrue($saved['ok'], $saved['error']);
+        $this->seedFitService();
+
+        $page = self::http('GET', '/admin/vendors.php?booking_id=' . self::BOOKING_ID);
+        self::assertSame(200, $page['status']);
+        self::assertStringContainsString('Shopping for', $page['body'], 'the planner must see whose brief they are shopping against');
+        self::assertStringContainsString('KSh 287,654', $page['body']);
+        self::assertStringContainsString('Fits your brief', $page['body'], 'the same mark the couple sees');
+
+        $editor = self::http('GET', '/admin/client_vendor_preferences.php?booking_id=' . self::BOOKING_ID . '&user_id=200');
+        self::assertSame(200, $editor['status'], 'the planner may open the couple-scoped editor for their wedding (redirect: ' . ($editor['location'] ?? '') . ')');
+
+        // A booking id that resolves to nothing is not a brief. init.php's
+        // planner-scope guard refuses the whole request first (that is the one
+        // place every `?booking_id=` page inherits the rule), so the honest
+        // expectation is the house refusal, not a page with the banner missing.
+        $ghost = self::http('GET', '/admin/vendors.php?booking_id=999999');
+        self::assertSame(302, $ghost['status']);
+        self::assertStringContainsString('client.php', $ghost['location'] ?? '');
+        self::assertSame('', trim($ghost['body']), 'a refused wedding must not leak a brief in the redirect body');
+    }
+
+    // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
+
+    /** One active service for the seeded caterer, tagged to match the brief. */
+    private function seedFitService(): void
+    {
+        if (self::$fitVendorId <= 0) {
+            return;
+        }
+        self::$db->execute(
+            "INSERT INTO tblvendor_services
+                (vendor_id, title, pricing_unit, price, includes, tags, is_active)
+             VALUES (:v, :t, 'flat', 45000.00, 'staff, crockery', 'rustic,halal', 1)",
+            [':v' => self::$fitVendorId, ':t' => '[fit probe] Classic buffet']
+        );
+        self::$probeServiceIds[] = (int) self::$db->lastInsertId();
+    }
+
+    /** CSRF token from any signed-in page. */
+    private static function csrfFrom(string $path): string
+    {
+        $res = self::http('GET', $path);
+        if (preg_match('/name="_token" value="([^"]+)"/', $res['body'], $m)) {
+            return html_entity_decode($m[1], ENT_QUOTES);
+        }
+        self::fail('could not extract CSRF token from ' . $path);
+    }
+
 
     private function requireDb(): void
     {
@@ -295,6 +534,11 @@ final class CoupleVendorMarketplaceTest extends TestCase
 
     private static function loginCouple(): void
     {
+        self::loginAs(self::COUPLE_EMAIL, self::COUPLE_PASS);
+    }
+
+    private static function loginAs(string $email, string $password): void
+    {
         self::$jar = [];
         $res = self::http('GET', '/login.php');
         if ($res['status'] !== 200 || !preg_match('/name="_token" value="([^"]+)"/', $res['body'], $m)) {
@@ -302,8 +546,8 @@ final class CoupleVendorMarketplaceTest extends TestCase
             return;
         }
         self::http('POST', '/login.php', [
-            'input_email'    => self::COUPLE_EMAIL,
-            'input_password' => self::COUPLE_PASS,
+            'input_email'    => $email,
+            'input_password' => $password,
             '_token'         => html_entity_decode($m[1], ENT_QUOTES),
             'login'          => '1',
         ]);
@@ -340,10 +584,8 @@ final class CoupleVendorMarketplaceTest extends TestCase
         $response = curl_exec($ch);
         if ($response === false) {
             $err = curl_error($ch);
-            curl_close($ch);
             throw new RuntimeException('HTTP request failed: ' . $err);
         }
-        curl_close($ch);
 
         $status = 0;
         $location = '';

@@ -120,6 +120,14 @@ final class SubscriptionRenewalFlowTest extends TestCase
     private static function seedStaff(?string $phone = '0721999077'): int
     {
         if (self::$staffId > 0) {
+            // The probe is shared by every method in this class, and one of them
+            // proves set_staff_phone() by storing a different number. Leaving
+            // that in place would make the cron text the wrong owner — and the
+            // phone-keyed assertions below answer about a number this probe no
+            // longer has. The caller's number wins.
+            if ($phone !== null && Subscription::staff_phone(self::$staffId) !== $phone) {
+                Subscription::set_staff_phone(self::$staffId, $phone);
+            }
             return self::$staffId;
         }
         $p = self::$pdo;
@@ -157,6 +165,26 @@ final class SubscriptionRenewalFlowTest extends TestCase
         if (self::$pdo === null) {
             self::markTestSkipped('live DB unavailable — subscription renewal tests skipped');
         }
+    }
+
+    /**
+     * The dunning list narrowed to one account.
+     *
+     * Subscription::dunning_targets() answers for the whole installation: the
+     * demo seed carries other planners, and a row left behind by an earlier
+     * run falls into a band too. A whole-list count therefore measured the
+     * database's contents rather than this probe's state, and the number
+     * changed between two identical runs.
+     *
+     * @param  array<int, array{sub:object, state:string, days_left:int, grace_days_left:int}> $targets
+     * @return array<int, array{sub:object, state:string, days_left:int, grace_days_left:int}>
+     */
+    private static function targetsFor(array $targets, int $uid): array
+    {
+        return array_values(array_filter(
+            $targets,
+            static fn (array $t): bool => (int) $t['sub']->user_id === $uid
+        ));
     }
 
     // ------------------------------------------------------------------
@@ -369,33 +397,47 @@ final class SubscriptionRenewalFlowTest extends TestCase
 
         // Band 3: expiry in 3 days → text; second run silent.
         self::seedSub('active', date('Y-m-d', strtotime('+3 days')));
-        $targets = Subscription::dunning_targets([7, 3, 0]);
-        self::assertCount(1, $targets, 'the probe staff member must be a band-3 target');
-        self::assertSame('active', $targets[0]['state']);
+        $mine = self::targetsFor(Subscription::dunning_targets([7, 3, 0]), $uid);
+        self::assertCount(1, $mine, 'the probe staff member must be a band-3 target');
+        self::assertSame('active', $mine[0]['state']);
+        self::assertSame(3, $mine[0]['days_left']);
 
         $out = self::runScript('--limit=20');
+        $probeRows = self::$pdo->query('SELECT id, phone, status FROM tblsms_logs WHERE user_id = ' . $uid)
+            ->fetchAll(PDO::FETCH_ASSOC);
         self::assertStringContainsString('texted user ' . $uid, $out);
         self::assertSame(
             1,
             (int) self::$pdo->query("SELECT COUNT(*) FROM tblsms_logs WHERE phone = '254721999077'")->fetchColumn(),
             'exactly one text on disk (the outbox stores the E.164 form)'
+            . ' — probe rows: ' . json_encode($probeRows)
+            . ' staff phone: ' . Subscription::staff_phone($uid)
         );
         // Marker stamped with the smallest band (native int under PHP 8 mysqlnd).
         $rows = array_map('intval', self::$pdo->query('SELECT renewal_sms_band FROM tblsubscriptions WHERE user_id = ' . $uid)->fetchAll(PDO::FETCH_COLUMN));
         self::assertContains(3, $rows, 'the band marker must be stamped');
 
+        // Second run on the same band: this user is never texted again, and
+        // the on-disk count stays at one. The whole-run summary used to carry
+        // this claim, which made it a statement about every other planner in
+        // the database instead.
         $out = self::runScript('--limit=20');
-        self::assertStringContainsString('texted: 0', $out, 'the same band must never text twice');
+        self::assertStringNotContainsString('texted user ' . $uid, $out, 'the same band must never text this user twice');
+        self::assertSame(
+            1,
+            (int) self::$pdo->query("SELECT COUNT(*) FROM tblsms_logs WHERE phone = '254721999077'")->fetchColumn(),
+            'the probe phone still holds exactly one text'
+        );
 
         // Grace: the row lapses into day 3 of the 7-day grace (band 0 marker
         // is smaller than 3, so the grace text fires on the next run).
         self::clearSubs();
         self::$pdo->exec("DELETE FROM tblsms_logs WHERE phone IN ('0721999077', '254721999077', '+254721999077')");
         self::seedSub('active', date('Y-m-d', strtotime('-4 days'))); // 7 - 4 = 3 grace days left
-        $targets = Subscription::dunning_targets([7, 3, 0]);
-        self::assertCount(1, $targets);
-        self::assertSame('grace', $targets[0]['state']);
-        self::assertSame(3, $targets[0]['grace_days_left']);
+        $mine = self::targetsFor(Subscription::dunning_targets([7, 3, 0]), $uid);
+        self::assertCount(1, $mine);
+        self::assertSame('grace', $mine[0]['state']);
+        self::assertSame(3, $mine[0]['grace_days_left']);
 
         $out = self::runScript('--limit=20');
         self::assertStringContainsString('texted user ' . $uid, $out);
@@ -415,8 +457,9 @@ final class SubscriptionRenewalFlowTest extends TestCase
         self::clearSubs();
         self::seedSub('active', date('Y-m-d', strtotime('+7 days')), 0);
 
-        $targets = Subscription::dunning_targets([7, 3, 0]);
-        self::assertCount(1, $targets, 'manual-renew planners must be reminded too');
+        $mine = self::targetsFor(Subscription::dunning_targets([7, 3, 0]), $uid);
+        self::assertCount(1, $mine, 'manual-renew planners must be reminded too');
+        self::assertSame('active', $mine[0]['state']);
 
         $out = self::runScript('--limit=20');
         self::assertStringContainsString('texted user ' . $uid, $out);

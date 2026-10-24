@@ -1,8 +1,6 @@
 <?php include 'include/init.php'; ?>
 <?php
-     if (!is_staff()) {
-         redirect_to("../");
-     }
+     require_staff_subscribed();
     $event_wedding =   EventWedding::find_all();
 ?>
 <?php $users_profile = Users::find_by_id($_SESSION['id']); ?>
@@ -14,12 +12,12 @@
     <title>Articles - Administrator</title>
 
     <!-- Bootstrap core CSS -->
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
 
     <!-- Custom styles for this template -->
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
-    <link href="css/dataTables.bootstrap4.min.css" rel="stylesheet">
+    <link href="css/dataTables.bootstrap4.min.css?v=1.13.11" rel="stylesheet">
     <!--  <link href="css/bootstrap.css" rel="stylesheet">-->
     <link rel="stylesheet" type="text/css"
           href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
@@ -126,13 +124,13 @@
 <!-- Bootstrap core JavaScript
 ================================================== -->
 <!-- Placed at the end of the document so the pages load faster -->
-<script src="js/jquery-3.2.1.slim.min.js"></script>
+<script src="js/jquery-3.7.1.slim.min.js"></script>
 <script>window.jQuery || document.write('<script src="../../../../assets/js/vendor/jquery-slim.min.js"><\/script>')</script>
 <script src="js/popper.min.js"></script>
-<script src="../js/jquery.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
-<script src="js/jquery.dataTables.min.js"></script>
-<script src="js/dataTables.bootstrap4.min.js"></script>
+<script src="../js/jquery-3.7.1.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
+<script src="js/jquery.dataTables.min.js?v=1.13.11"></script>
+<script src="js/dataTables.bootstrap4.min.js?v=1.13.11"></script>
 <script>
   
     $(document).ready(function() {

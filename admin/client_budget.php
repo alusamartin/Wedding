@@ -1,4 +1,4 @@
-<?php include 'include/init.php'; ?>
+<?php include 'include/init.php'; if (staff_paywall_locked()) { redirect_to('subscription.php'); exit; } ?>
 <?php
     $booking_id = (int) ($_GET['booking_id'] ?? 0);
     $user_id = (int) ($_GET['user_id'] ?? 0);
@@ -7,11 +7,9 @@
         redirect_to("../");
     }
     $booking = Booking::find_by_booking_id($booking_id);
-    if (!is_staff()) {
-        // Clients see only their own wedding's payments (staff may preview any).
-        if (!$booking || (int) $booking->user_id !== (int) $_SESSION['id'] || $user_id !== (int) $_SESSION['id']) {
-            redirect_to("client.php");
-        }
+    // Couples see only their own wedding's payments; staff may preview any.
+    if (!may_open_couple_page($booking, $user_id)) {
+        redirect_to("client.php");
     }
     $links = 'booking_id=' . $booking_id . '&user_id=' . $user_id;
 
@@ -42,7 +40,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title><?= is_staff() ? 'Budget & Payments - Everafter Planner' : 'My Payments - Everafter Planner'; ?></title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
@@ -94,9 +92,9 @@
 
     <div class="row">
         <div class="col-md-3"><div class="stat-card"><h6>Package Price</h6><div class="value"><?= format_ksh($package_price); ?></div></div></div>
-        <div class="col-md-3"><div class="stat-card" style="border-left-color:#059669"><h6>Paid To Date</h6><div class="value"><?= format_ksh($amount_paid, 2); ?></div></div></div>
-        <div class="col-md-3"><div class="stat-card" style="border-left-color:#0EA5A0"><h6>Via M-Pesa</h6><div class="value"><?= format_ksh($mpesa_total, 2); ?></div></div></div>
-        <div class="col-md-3"><div class="stat-card" style="border-left-color:#D97706"><h6>Balance Due</h6><div class="value due"><?= format_ksh($balance_due, 2); ?></div></div></div>
+        <div class="col-md-3"><div class="stat-card" style="border-left-color:var(--success)"><h6>Paid To Date</h6><div class="value"><?= format_ksh($amount_paid, 2); ?></div></div></div>
+        <div class="col-md-3"><div class="stat-card" style="border-left-color:var(--info)"><h6>Via M-Pesa</h6><div class="value"><?= format_ksh($mpesa_total, 2); ?></div></div></div>
+        <div class="col-md-3"><div class="stat-card" style="border-left-color:var(--warning)"><h6>Balance Due</h6><div class="value due"><?= format_ksh($balance_due, 2); ?></div></div></div>
     </div>
 
     <?php if ($package_price > 0): ?>
@@ -203,8 +201,8 @@
     </div>
 </div>
 
-<script src="js/jquery-3.2.1.slim.min.js"></script>
+<script src="js/jquery-3.7.1.slim.min.js"></script>
 <script src="js/popper.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
 </body>
 </html>

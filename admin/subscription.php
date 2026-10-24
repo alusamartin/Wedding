@@ -1,6 +1,6 @@
 <?php include 'include/init.php'; ?>
 <?php
-    if (!is_staff()) { redirect_to("../"); }
+    require_staff_subscribed();
 
     $user_id = $_SESSION['id'];
     $current_sub = Subscription::get_active($user_id);
@@ -46,12 +46,14 @@
             die();
         }
 
-        $plan = clean($_POST['plan']);
-        $mpesa_code = clean($_POST['mpesa_code']);
+        $plan = clean($_POST['plan'] ?? '');
+        $mpesa_code = clean($_POST['mpesa_code'] ?? '');
 
-        $plan_details = Subscription::get_plan($plan);
+        // FOR SALE only: a retired plan keeps resolving for renewals and
+        // callbacks (Subscription::get_plan), but must not be purchasable here.
+        $plan_details = Subscription::get_purchasable_plan($plan);
         if (!$plan_details) {
-            $session->message('<div class="alert alert-danger">Invalid plan selected.</div>');
+            $session->message('<div class="alert alert-danger">That plan is not available for purchase.</div>');
             redirect_to("subscription.php");
             die();
         }
@@ -110,9 +112,10 @@
         }
         $plan   = clean($_POST['plan'] ?? '');
         $phone  = clean($_POST['phone'] ?? '');
-        $plan_details = Subscription::get_plan($plan);
+        // Same rule as the code-based purchase: retired plans are not for sale.
+        $plan_details = Subscription::get_purchasable_plan($plan);
         if (!$plan_details) {
-            $session->message('<div class="alert alert-danger">Invalid plan selected.</div>');
+            $session->message('<div class="alert alert-danger">That plan is not available for purchase.</div>');
             redirect_to("subscription.php");
             die();
         }
@@ -134,7 +137,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Subscription - Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
@@ -224,7 +227,24 @@
     <div class="row mb-5">
         <?php if (empty($plans)) : ?>
             <div class="col-12">
-                <?php empty_state('No subscription plans yet', 'Plans will appear here once the team defines them.', 'mdi-crown-outline'); ?>
+                <?php
+                /*
+                 * This line used to point at an action nobody could perform. It
+                 * still states the truth for a planner — defining plans is not
+                 * their job — but the operator (who CAN define them, on
+                 * subscription_plans.php) now gets the button that proves it.
+                 */
+                empty_state(
+                    'No subscription plans yet',
+                    is_super_admin()
+                        ? 'Define the first plan in Plan Definitions — it appears here the moment it is saved.'
+                        : 'Plans will appear here once the team defines them.',
+                    'mdi-crown-outline',
+                    is_super_admin() ? 'subscription_plans.php' : '',
+                    is_super_admin() ? 'Define a plan' : '',
+                    'mdi-plus'
+                );
+                ?>
             </div>
         <?php else : ?>
         <?php foreach ($plans as $plan): ?>

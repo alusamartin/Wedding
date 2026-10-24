@@ -11,10 +11,7 @@
  * All KSh, month by month, with lifetime totals and per-stream drill-downs.
  * Staff-only (planners see the platform's money too; the roster is small).
  */
-    if (!is_staff()) {
-        redirect_to("../");
-        die();
-    }
+    require_staff_subscribed();
 
     global $db;
 
@@ -23,6 +20,15 @@
     $thisM    = Revenue::month_summary(0);            // this month
     $lastM    = Revenue::month_summary(1);            // last month
     $rows     = array_reverse($months, true);         // newest last for display
+    $byPlan   = Revenue::plan_breakdown();            // subscribers + money per plan
+    $plans    = $byPlan['plans'];
+    $planRev  = $byPlan['revenue'];
+
+    // The plan table's total and the Subscriptions lifetime card are computed by
+    // two different queries. If they ever disagree, say so on the page instead of
+    // quietly printing two different "totals" — a dashboard that contradicts
+    // itself is worse than one that admits the gap.
+    $planGap = abs($planRev - (float) $lifetime['subscriptions']) >= 0.01;
 
     $drill  = clean($_GET['stream'] ?? '');
     $streams = ['subscriptions' => 'Subscription payments', 'commissions' => 'Vendor commissions', 'sms' => 'SMS spend'];
@@ -31,8 +37,8 @@
     // ?stream=<x>&export=1 streams a spreadsheet-friendly file instead of
     // HTML. Cells are CSV-injection-sanitized and output is UTF-8 BOM'd so
     // Excel opens Kenyan names / KSh symbols without mojibake.
-    if (isset($_GET['export'], $_GET['stream']) && isset($streams[clean($_GET['stream'])])) {
-        $export_stream = clean($_GET['stream']);
+    if (isset($_GET['export'], $_GET['stream']) && isset($streams[clean($_GET['stream'] ?? '')])) {
+        $export_stream = clean($_GET['stream'] ?? '');
         $export_rows = Revenue::stream_rows($export_stream, 500); // full cap for exports
         // Discard anything init.php buffered (its ob_start catches the stray
         // newline after the first PHP close tag) so the file starts with the
@@ -78,7 +84,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Revenue - Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" href="css/font-awesome.min.css">
@@ -121,7 +127,7 @@
     <!-- ===== Lifetime totals ===== -->
     <div class="row">
         <div class="col-md-3">
-            <div class="stat-card" style="border-left-color:#0F172A">
+            <div class="stat-card" style="border-left-color:var(--stone-700)">
                 <h6>Lifetime revenue</h6>
                 <div class="value mono"><?= format_ksh($lifetime['total']); ?></div>
                 <div class="sub">all streams, all time</div>
@@ -135,14 +141,14 @@
             </div>
         </div>
         <div class="col-md-3">
-            <div class="stat-card" style="border-left-color:#059669">
+            <div class="stat-card" style="border-left-color:var(--success)">
                 <h6>Vendor commissions</h6>
                 <div class="value mono"><?= format_ksh($lifetime['commissions']); ?></div>
                 <div class="sub"><a href="revenue.php?stream=commissions" style="font-size:11.5px;">view deals →</a></div>
             </div>
         </div>
         <div class="col-md-3">
-            <div class="stat-card" style="border-left-color:#D97706">
+            <div class="stat-card" style="border-left-color:var(--warning)">
                 <h6>SMS spend</h6>
                 <div class="value mono"><?= format_ksh($lifetime['sms']); ?></div>
                 <div class="sub"><a href="revenue.php?stream=sms" style="font-size:11.5px;">view sends →</a></div>
@@ -153,7 +159,7 @@
     <!-- ===== This month vs last month + sparkline ===== -->
     <div class="row">
         <div class="col-lg-4 col-md-6">
-            <div class="stat-card" style="border-left-color:#0F172A">
+            <div class="stat-card" style="border-left-color:var(--stone-700)">
                 <h6>This month · <?= htmlspecialchars($thisM['label']); ?></h6>
                 <div class="value mono"><?= format_ksh($thisM['total']); ?></div>
                 <div class="sub">
@@ -169,7 +175,7 @@
             </div>
         </div>
         <div class="col-lg-8 col-md-6">
-            <div class="stat-card" style="border-left-color:#4C6EF5">
+            <div class="stat-card" style="border-left-color:var(--info)">
                 <h6>Last <?= count($months); ?> months · total revenue</h6>
                 <?php
                     $peak = 0.0;
@@ -234,6 +240,110 @@
                 </tbody>
             </table>
             </div>
+        </div>
+    </div>
+
+    <!-- ===== Revenue by plan ===== -->
+    <div class="card shadow-sm mt-3" style="border:none; border-radius:14px;">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+                <h6 class="mb-0" style="font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:#64748B;">
+                    Revenue by plan
+                </h6>
+                <div>
+                    <?php if ($byPlan['trials'] > 0): ?>
+                        <span class="text-muted mr-2" style="font-size:11.5px;"
+                              title="Trials are free for six months, so they are people waiting to become revenue — not revenue">
+                            <i class="mdi mdi-account-clock"></i> <?= (int) $byPlan['trials']; ?> planner<?= $byPlan['trials'] === 1 ? '' : 's'; ?> on a free trial
+                        </span>
+                    <?php endif; ?>
+                    <a href="subscription_plans.php" class="btn btn-sm btn-outline-secondary"
+                       title="Define plans, change prices and see who last moved them"><i class="mdi mdi-tune-variant"></i> Edit plans &amp; prices</a>
+                </div>
+            </div>
+
+            <?php if ($plans === []): ?>
+                <?php empty_state_row(7, 'No plans defined yet', 'Define a plan and it appears here with the money it earns.', 'mdi-crown-outline'); ?>
+            <?php else: ?>
+            <div class="table-responsive">
+            <table class="table table-hover month-table" style="margin-bottom:0;">
+                <thead>
+                    <tr>
+                        <th>Plan</th>
+                        <th class="text-right">Price / month</th>
+                        <th class="text-right">Subscribers</th>
+                        <th class="text-right">Live now</th>
+                        <th class="text-right">Revenue</th>
+                        <th style="width:150px;">Share</th>
+                        <th>Last paid</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($plans as $p): ?>
+                    <tr class="<?= $p['plan_slug'] === '' ? 'table-warning' : ''; ?>">
+                        <td style="font-size:12.5px;">
+                            <strong><?= htmlspecialchars($p['name'] ?? '(no plan recorded)'); ?></strong>
+                            <?php if ($p['plan_slug'] !== ''): ?>
+                                <span class="plan-key" style="font-family:ui-monospace,Menlo,Consolas,monospace; font-size:10.5px; background:#EEF2F7; color:#334155; padding:1px 6px; border-radius:20px;"><?= htmlspecialchars($p['plan_slug']); ?></span>
+                            <?php endif; ?>
+                            <?php if ($p['is_active'] === false): ?>
+                                <span class="badge badge-secondary" style="font-size:9.5px;" title="Off the planner purchase list; existing subscribers keep it">retired</span>
+                            <?php endif; ?>
+                        </td>
+                        <td class="text-right mono" style="font-size:12.5px;">
+                            <?= $p['price'] === null ? '—' : format_ksh($p['price']); ?>
+                        </td>
+                        <td class="text-right mono" style="font-size:12.5px;"
+                            title="Distinct planners who have ever paid on this plan (<?= (int) $p['payments']; ?> payment<?= $p['payments'] === 1 ? '' : 's'; ?>, renewals included)">
+                            <?= (int) $p['subscribers']; ?>
+                        </td>
+                        <td class="text-right mono" style="font-size:12.5px;">
+                            <?= (int) $p['live_now'] > 0
+                                ? '<span class="badge badge-success" style="font-size:10px;">' . (int) $p['live_now'] . '</span>'
+                                : '<span class="text-muted">0</span>'; ?>
+                        </td>
+                        <td class="text-right mono" style="font-size:12.5px;"><strong><?= format_ksh($p['revenue'], 2); ?></strong></td>
+                        <td style="font-size:11.5px; color:#64748B;">
+                            <?php $w = min(100, max(0, (float) $p['share'])); ?>
+                            <div class="d-flex align-items-center">
+                                <div style="flex:1 1 auto; height:6px; background:#E2E8F0; border-radius:3px; overflow:hidden; margin-right:6px;">
+                                    <div style="height:6px; width:<?= number_format($w, 1, '.', ''); ?>%; background:#4C6EF5;"></div>
+                                </div>
+                                <span class="mono"><?= number_format((float) $p['share'], 1); ?>%</span>
+                            </div>
+                        </td>
+                        <td style="font-size:12px;">
+                            <?= !empty($p['last_paid_at']) ? htmlspecialchars(format_date_kd((string) $p['last_paid_at'])) : '—'; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                    <tr style="border-top:2px solid #0F172A;">
+                        <td><strong>All plans</strong></td>
+                        <td></td>
+                        <td class="text-right mono"><strong><?= array_sum(array_column($plans, 'subscribers')); ?></strong></td>
+                        <td class="text-right mono"><strong><?= array_sum(array_column($plans, 'live_now')); ?></strong></td>
+                        <td class="text-right mono"><strong><?= format_ksh($planRev, 2); ?></strong></td>
+                        <td style="font-size:11.5px; color:#64748B;">100% of subscription revenue</td>
+                        <td></td>
+                    </tr>
+                </tbody>
+            </table>
+            </div>
+            <p class="text-muted mb-0 mt-2" style="font-size:11.5px;">
+                Subscribers counts people, not payments — a renewal is the same planner paying again.
+                Revenue is recognized when the planner pays, exactly like the Subscriptions card above,
+                so this table adds up to that figure. A <strong>retired</strong> plan keeps its revenue,
+                because retiring takes a plan off sale without cancelling anyone.
+            </p>
+            <?php if ($planGap): ?>
+                <div class="alert alert-warning mt-2 mb-0" role="alert" style="font-size:12px;">
+                    <strong><i class="mdi mdi-alert"></i> The plan table and the Subscriptions card disagree:</strong>
+                    <?= format_ksh($planRev, 2); ?> per plan vs <?= format_ksh($lifetime['subscriptions'], 2); ?> lifetime.
+                    Every paid subscription must belong to exactly one row above, so this means a plan key is being
+                    counted twice or a row is filtered out — report it rather than trusting either figure.
+                </div>
+            <?php endif; ?>
+            <?php endif; ?>
         </div>
     </div>
 

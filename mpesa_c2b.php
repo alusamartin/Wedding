@@ -47,6 +47,7 @@ require_once __DIR__ . '/admin/include/Database.php';
 require_once __DIR__ . '/admin/include/db_object.php';
 require_once __DIR__ . '/admin/include/Helper.php';
 require_once __DIR__ . '/admin/include/Monetization.php';
+require_once __DIR__ . '/admin/include/PublicGuard.php';
 
 /** Reply to Daraja and stop. */
 function mpesa_reply(int $code, string $desc): never
@@ -88,6 +89,25 @@ $expectedSC = trim((string) getenv('WPMS_MPESA_SHORTCODE'));
 if ($expectedSC !== '' && trim((string) ($data['BusinessShortCode'] ?? '')) !== $expectedSC) {
     error_log('[WPMS][mpesa_c2b] unexpected short code: ' . ($data['BusinessShortCode'] ?? '?'));
     mpesa_reply(1, 'Rejected: unknown business short code');
+}
+
+/*
+ * Shared abuse guard (PublicGuard, v2.14). Everything below this line WRITES:
+ * a forensic row now, and — when a payload matches a real booking reference —
+ * a receipt bell and email. Over the ceiling this caller writes nothing at all,
+ * and the answer stays 200 because Safaricom treats anything else as a reason
+ * to retry-storm us. The identifiers are logged first, so a genuine notification
+ * refused under a flood can still be reconciled by hand.
+ */
+$guardWait = PublicGuard::attempt(PublicGuard::CALLBACK, 'c2b');
+if ($guardWait > 0) {
+    error_log(sprintf(
+        '[WPMS][mpesa_c2b] flood guard: caller paused for %ds — payload NOT logged or ingested (TransID %s, amount %s)',
+        $guardWait,
+        (string) ($data['TransID'] ?? '?'),
+        (string) ($data['TransAmount'] ?? '?')
+    ));
+    mpesa_reply(0, 'Accepted');
 }
 
 // Keep the raw payload for forensics before any validation decision.

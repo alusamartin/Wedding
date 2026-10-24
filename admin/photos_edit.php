@@ -2,7 +2,7 @@
 <?php
 
 
-    if (!is_staff()) { redirect_to("../"); }
+    require_staff_subscribed();
     $gallery = Gallery::find_by_id((int) ($_GET['id'] ?? 0));
     if ($gallery === false) {
         $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-alert"></i></strong> That photo no longer exists.</div>');
@@ -20,10 +20,10 @@
             die();
         }
 
-        $gallery->title = clean($_POST['title']);
-        $gallery->description = clean($_POST['description']);
-        $gallery->alternate_text = clean($_POST['alternate_text']);
-        $gallery->caption = clean($_POST['caption']);
+        $gallery->title = clean($_POST['title'] ?? '');
+        $gallery->description = clean($_POST['description'] ?? '');
+        $gallery->alternate_text = clean($_POST['alternate_text'] ?? '');
+        $gallery->caption = clean($_POST['caption'] ?? '');
         $gallery->booking_id = (int)($_POST['booking_id'] ?? 0);
 
         if (empty($_FILES['file']['name'])) {
@@ -60,7 +60,7 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
         <title>Upload Photos - Administrator</title>
-        <link href="css/bootstrap.min.css" rel="stylesheet">        <link href="css/dashboard.css" rel="stylesheet">
+        <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">        <link href="css/dashboard.css" rel="stylesheet">
         <link href="css/modern-admin.css" rel="stylesheet">
         <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
         <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet">

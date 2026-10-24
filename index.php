@@ -9,6 +9,11 @@
     $booking = new Booking();
     $category = Category::find_all();
     $blogEvent = EventWedding::getEventBlogs();
+    // The planner a couple may ask for, and whether their registration becomes
+    // a proposal at all (v2.30). Both are empty/false without the migration, so
+    // the form degrades to exactly what it was before.
+    $proposal_flow = Proposal::enabled() && Proposal::installed();
+    $planners = $proposal_flow ? Proposal::planners() : [];
 
         if (isset($_POST['register'])) {
         if (!$session->verify_csrf()) {
@@ -33,6 +38,25 @@
         $result = register_client($user_firstname, $user_lastname, $user_email, $user_phone, $user_password, $wedding_date);
 
         if ($result['ok']) {
+            /*
+             * The registration IS the proposal (v2.30). The brief the couple
+             * typed on this form is kept with it so their planner prices the
+             * wedding they described, not a generic one — and if the proposal
+             * tables are not installed the couple is still registered: a missing
+             * migration must never lose a sign-up.
+             */
+            if ($proposal_flow && !empty($result['booking_id'])) {
+                $posted_guests = $_POST['guests'] ?? null;
+                $posted_budget = $_POST['budget'] ?? null;
+                Proposal::create_for_booking((int) $result['booking_id'], [
+                    'guests'              => is_numeric($posted_guests) ? (int) $posted_guests : null,
+                    'budget'              => is_numeric($posted_budget) ? (float) $posted_budget : null,
+                    'venue'               => (string) ($_POST['venue'] ?? ''),
+                    'taste_tags'          => (string) ($_POST['style'] ?? ''),
+                    'couple_note'         => (string) ($_POST['couple_note'] ?? ''),
+                    'preferred_planner_id' => (int) ($_POST['planner_id'] ?? 0),
+                ]);
+            }
             redirect_to("thank_you.php");
             die();
         }
@@ -49,8 +73,8 @@
     <title>Wedding Planner</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/7.4.47/css/materialdesignicons.min.css">
-    <link rel="stylesheet" href="css/bootstrap.min.css">
-    <link rel="stylesheet" href="css/bootstrap-datepicker.css">
+    <link rel="stylesheet" href="css/bootstrap.min.css?v=4.6.2">
+    <link rel="stylesheet" href="css/bootstrap-datepicker.css?v=1.10.1">
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/modern.css">
     <style>
@@ -124,6 +148,44 @@
                                 </div>
                             </div>
                         </div>
+                        <?php if ($proposal_flow): ?>
+                        <div style="background:rgba(255,255,255,.10); border:1px solid rgba(255,255,255,.22); border-radius:8px; padding:10px 12px 2px; text-align:left;">
+                            <p style="font-size:11px; font-weight:600; color:#FDE68A; margin:0 0 8px;">
+                                <i class="mdi mdi-clipboard-text-outline"></i> Tell us about the day (optional) — it goes straight to your planner
+                            </p>
+                            <div class="form-row">
+                                <div class="form-group col-md-6">
+                                    <input type="number" class="form-control form-control-sm" name="guests" min="1" max="5000" placeholder="Guests, e.g. 120">
+                                </div>
+                                <div class="form-group col-md-6">
+                                    <input type="number" class="form-control form-control-sm" name="budget" min="0" step="1000" placeholder="Budget in KSh">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group col-md-6">
+                                    <input type="text" class="form-control form-control-sm" name="venue" maxlength="160" placeholder="Venue or town">
+                                </div>
+                                <div class="form-group col-md-6">
+                                    <input type="text" class="form-control form-control-sm" name="style" maxlength="255" placeholder="Style you love (garden, rustic…)">
+                                </div>
+                            </div>
+                            <?php if ($planners !== []): ?>
+                                <div class="form-group">
+                                    <select class="form-control form-control-sm" name="planner_id">
+                                        <option value="0">No preference — any planner</option>
+                                        <?php foreach ($planners as $planner): ?>
+                                            <option value="<?= (int) $planner->id; ?>">
+                                                <?= htmlspecialchars(trim($planner->firstname . ' ' . $planner->lastname) . ($planner->designation !== '' ? ' — ' . $planner->designation : '')); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                            <?php endif; ?>
+                            <div class="form-group">
+                                <input type="text" class="form-control form-control-sm" name="couple_note" maxlength="500" placeholder="Anything else? (one line)">
+                            </div>
+                        </div>
+                        <?php endif; ?>
                         <div class="text-center mt-3">
                             <p style="font-size: 11px;color:white;">By clicking "Sign Up" you agree to Everafter Planner's <a
                                         href="" title="" style="color: #b81717;font-weight: bold;">Terms of Use</a></p>
@@ -131,7 +193,7 @@
                                     style="margin-top: -5px;">Sign Up
                             </button>
                             <p style="font-size: 12px;color:white; margin-top:10px;">Are you a <strong>wedding planner</strong>?
-                                <a href="planner_register.php" style="color:#FDE68A; font-weight:600;">Start your 14-day free trial &rarr;</a></p>
+                                <a href="planner_register.php" style="color:#FDE68A; font-weight:600;">Start your 6-month free trial &rarr;</a></p>
                         </div>
                     </form>
                 </div>
@@ -291,11 +353,11 @@
 
 <!-- Optional JavaScript -->
 <!-- jQuery first, then Popper.js, then Bootstrap JS -->
-<script src="js/jquery-3.2.1.slim.min.js"></script>
-<script src="js/jquery.min.js"></script>
+<script src="js/jquery-3.7.1.slim.min.js"></script>
+<script src="js/jquery-3.7.1.min.js"></script>
 <script src="js/popper.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
-<script src="js/bootstrap-datepicker.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
+<script src="js/bootstrap-datepicker.min.js?v=1.10.1"></script>
 <script src="js/savy.js"></script>
 <script>
 

@@ -76,3 +76,26 @@ define('DB_HOST', wpms_db_env('WPMS_DB_HOST', 'localhost'));
 define('DB_USER', wpms_db_env('WPMS_DB_USER', 'root'));
 define('DB_PASS', wpms_db_env('WPMS_DB_PASS', ''));
 define('DB_NAME', wpms_db_env('WPMS_DB_NAME', 'dbwedding'));
+
+/*
+ * Optional READ REPLICA (v2.19) — where an AI client's READ traffic can go so an
+ * assistant asking a hundred questions is not competing with the couple signing
+ * in. Set WPMS_DB_REPLICA_HOST and the MCP layer's own reads use it
+ * (Database::reader(), docs/MCP_PLAN.md §4); user, password and database name
+ * default to the primary's, which is what a same-server second schema or a
+ * read-only MySQL grant looks like.
+ *
+ * EMPTY HOST = NO REPLICA, and that is the normal state: XAMPP and most cPanel
+ * plans have one database, every read stays on the primary, and nothing about
+ * the behaviour changes. A configured replica that then fails to connect also
+ * falls back to the primary rather than taking reads down with it (see
+ * Database::open_connection()).
+ *
+ * The credentials here are an ASSISTANT's, not the application's: pair them with
+ * migrations/v2.18_mcp_grants.sql's read user so a compromised endpoint cannot
+ * write anything, whatever the code asks for.
+ */
+define('DB_REPLICA_HOST', wpms_db_env('WPMS_DB_REPLICA_HOST', ''));
+define('DB_REPLICA_USER', wpms_db_env('WPMS_DB_REPLICA_USER', DB_USER));
+define('DB_REPLICA_PASS', wpms_db_env('WPMS_DB_REPLICA_PASS', DB_PASS));
+define('DB_REPLICA_NAME', wpms_db_env('WPMS_DB_REPLICA_NAME', DB_NAME));

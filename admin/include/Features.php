@@ -19,7 +19,7 @@ class Features extends DB_Object
     public static function getAllfeatures() {
     	global $db;
     	$sql = "SELECT * FROM tbl_features INNER JOIN tblweddingcategories ON tbl_features.category_id = tblweddingcategories.id";
-    	$result_set = $db->query($sql);
+    	$result_set = $db->execute($sql);
 
         $the_object_array = array();
 
@@ -44,7 +44,3 @@ class Features extends DB_Object
     
 
 }
-
-?>
-
-

@@ -362,7 +362,7 @@ class Session
     public function verify_csrf(?string $token = null): bool
     {
         if ($token === null && isset($_POST['_token'])) {
-            $token = (string) $_POST['_token'];
+            $token = (string)($_POST['_token'] ?? '');
         }
         if (empty($token) || empty($_SESSION['_token'])) {
             return false;
@@ -407,9 +407,23 @@ class Session
     }
 }
 
-// Global singleton — same as v2.0
-$session = new Session(
-    // Set false if you operate behind rotating mobile IPs (Safaricom CGNAT) and users complain
-    enforceFingerprint: true
-);
-$message = $session->message();
+/*
+ * Global singleton — same as v2.0, but NOT for a headless entry point.
+ *
+ * `new Session()` calls session_start(), which sends a PHPSESSID cookie and
+ * writes a server-side session file. That is right for a page and wrong for
+ * mcp.php: the endpoint is documented as stateless (a machine has no cookies),
+ * and because this file is loaded by models.php the constructor ran there too —
+ * so every MCP call minted a session file it would never read again and set a
+ * cookie the client ignores. A headless entry point defines WPMS_NO_SESSION
+ * before requiring the model set; nothing in the MCP layer uses $session
+ * (ApiToken::bind_principal() fills $_SESSION as a plain array), so leaving the
+ * classes loaded and the singleton unbuilt is all that is needed.
+ */
+if (!defined('WPMS_NO_SESSION')) {
+    $session = new Session(
+        // Set false if you operate behind rotating mobile IPs (Safaricom CGNAT) and users complain
+        enforceFingerprint: true
+    );
+    $message = $session->message();
+}

@@ -21,7 +21,7 @@ declare(strict_types=1);
  *    a trial. The registration page issues a 24h single-use token (stored
  *    hashed — a DB leak must not leak usable links) and emails the verify
  *    link through the shared tbl_mail_logs outbox. verify_planner.php
- *    exchanges the token: stamps email_verified = 1, opens the 14-day trial,
+ *    exchanges the token: stamps email_verified = 1, opens the six-month trial,
  *    auto-signs-in and routes to subscription.php. Unverified staff cannot
  *    sign in — login.php sends them to the verification page, which carries
  *    a rate-limited resend form.
@@ -242,7 +242,7 @@ class SignupGuard
         $subject = 'Verify your email — start your Everafter Planner free trial';
         $body    = "Habari {$name},\n\n"
             . "Your Everafter Planner account is one click away. Open this link within "
-            . round(self::TOKEN_TTL_MIN / 60) . " hours to verify your email and start your 14-day free trial:\n\n"
+            . round(self::TOKEN_TTL_MIN / 60) . " hours to verify your email and start your 6-month free trial:\n\n"
             . $absolute . "\n\n"
             . "If you didn't sign up, ignore this email — no account will be activated.\n\n"
             . "— Everafter Planner";
@@ -343,27 +343,16 @@ class SignupGuard
             : ['failed', 'mail() returned false — is an MTA configured on the host?'];
     }
 
-    /** Record one outbox row (tbl_mail_logs). Never throws. */
+    /**
+     * Record one outbox row (tbl_mail_logs). Never throws.
+     *
+     * Through Notification (v2.13) with recipient_type = 'none': a verification
+     * or welcome mail goes to a bare address before the account exists in the
+     * sign-in sense, so there is no account behind the row to reach.
+     */
     private static function log_mail(string $toEmail, string $subject, string $body, array $send): void
     {
-        global $db;
-        try {
-            $ins = $db->prepare(
-                'INSERT INTO tbl_mail_logs (notification_id, user_id, booking_id, to_email, subject, body, status, note, attempts, last_attempt_at)
-                 VALUES (NULL, 0, 0, :to, :subj, :body, :status, :note, :attempts, :last_attempt)'
-            );
-            $ins->execute([
-                ':to'           => $toEmail,
-                ':subj'         => $subject,
-                ':body'         => $body,
-                ':status'       => $send[0],
-                ':note'         => $send[1],
-                ':attempts'     => $send[0] === 'pending' ? 0 : 1,
-                ':last_attempt' => $send[0] === 'pending' ? null : date('Y-m-d H:i:s'),
-            ]);
-        } catch (Throwable $e) {
-            error_log('[WPMS][SignupGuard] mail log write failed: ' . $e->getMessage());
-        }
+        Notification::log_address_mail($toEmail, $subject, $body, $send[0], $send[1]);
     }
 
     /** Prune spent rows: throttle noise + dead tokens. Cheap, index-backed. */

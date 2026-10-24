@@ -50,8 +50,15 @@ a{ text-underline-offset:3px; }
   font-weight:500 !important;
   z-index:1030;
 }
-/* Prevent content from hiding behind the fixed navbar */
+/* Prevent content from hiding behind the fixed navbar.
+   72px is the height of the COLLAPSED band (the 57px hamburger nav plus air);
+   from the xl breakpoint up the nav expands to 83px (80px in the compact
+   1200-1279 band), so the offset has to follow it. With a flat 72px every
+   page whose first element starts at the top of the body was drawn 11px
+   underneath the nav — pricing.php's "Wedding / Select Package" heading was
+   the visible one, sliced across its top half. */
 body{ padding-top:72px; }
+@media (min-width:1200px){ body{ padding-top:84px; } }
 /* Toggler: visible branded hamburger on tablet/mobile (was invisible white-on-white
    before navbar-light was added to the nav markup) */
 .navbar.wpms-nav .navbar-toggler-icon{
@@ -297,6 +304,7 @@ footer.pt-3{
   border-top:none !important;
   padding:28px 0 !important;
   margin-top:24px;
+  color:#F5F5F4;
 }
 footer .text-muted{ color:#A8A29E !important; }
 

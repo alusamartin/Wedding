@@ -60,6 +60,31 @@ final class MailRetryTest extends TestCase
             self::$db->fetchValue('SELECT attempts FROM tbl_mail_logs LIMIT 1');
         } catch (Throwable $e) {
             self::$db = null; // migration not applied — skip cleanly
+            return;
+        }
+
+        /*
+         * PARK THE MAIL EARLIER CLASSES LEFT QUEUED.
+         *
+         * The sweep is installation-wide and takes the OLDEST pending rows
+         * (`ORDER BY id ASC LIMIT :lim`), so the probes seeded below are only
+         * reached while fewer than a batchful of older pending rows exist. Every
+         * suite that rings a bell queues an email here and not all of them delete
+         * their outbox, so on a database that has run the suite a few times the
+         * batch is filled before it gets to this class and the assertions fail on
+         * the FIXTURE rather than on the behaviour — which is exactly what
+         * happened. Rows already at the cap are the one kind a sweep never
+         * selects, so stamping stale pending rows to the cap parks them out of
+         * the way without deleting anybody's record. This class's own probes are
+         * still swept normally, and it deletes them afterwards.
+         */
+        try {
+            self::$db->execute(
+                "UPDATE tbl_mail_logs SET attempts = 5 WHERE status = 'pending' AND attempts < 5"
+            );
+        } catch (Throwable $e) {
+            // read-only or partially migrated database: the assertions below will
+            // report it rather than this setup swallowing it
         }
     }
 
@@ -67,7 +92,7 @@ final class MailRetryTest extends TestCase
     {
         if (self::$db !== null && self::$probeIds !== []) {
             try {
-                self::$db->query(
+                self::$db->execute(
                     'DELETE FROM tbl_mail_logs WHERE id IN (' . implode(',', self::$probeIds) . ')'
                 );
             } catch (Throwable $e) {
@@ -95,8 +120,8 @@ final class MailRetryTest extends TestCase
     {
         global $db;
         $stmt = $db->prepare(
-            "INSERT INTO tbl_mail_logs (notification_id, user_id, booking_id, to_email, subject, body, status, note, attempts) "
-            . "VALUES (NULL, :uid, 0, 'amina@wpms.co.ke', '[mail-retry-test] subject', '[mail-retry-test] body', 'pending', 'test seed', :attempts)"
+            "INSERT INTO tbl_mail_logs (notification_id, user_id, booking_id, recipient_type, to_email, subject, body, status, note, attempts) "
+            . "VALUES (NULL, :uid, 0, 'user', 'amina@wpms.co.ke', '[mail-retry-test] subject', '[mail-retry-test] body', 'pending', 'test seed', :attempts)"
         );
         $stmt->execute([':uid' => self::STAFF_ID, ':attempts' => $attempts]);
         $id = (int) $db->the_insert_id();
@@ -112,6 +137,17 @@ final class MailRetryTest extends TestCase
     private function rowAttempts(int $id): int
     {
         return (int) self::$db->fetchValue('SELECT attempts FROM tbl_mail_logs WHERE id = :i', [':i' => $id]);
+    }
+
+    private function rowNote(int $id): string
+    {
+        return (string) self::$db->fetchValue('SELECT note FROM tbl_mail_logs WHERE id = :i', [':i' => $id]);
+    }
+
+    private function rowLastAttempt(int $id): ?string
+    {
+        $v = self::$db->fetchValue('SELECT last_attempt_at FROM tbl_mail_logs WHERE id = :i', [':i' => $id]);
+        return $v === null ? null : (string) $v;
     }
 
     #[Group('integration')]
@@ -162,10 +198,16 @@ final class MailRetryTest extends TestCase
         putenv('WPMS_MAIL_ENABLED=1');
         $id = $this->seedPending(5); // already at the cap of 5
 
-        $r = Notification::retry_pending(50, 5);
-        self::assertSame(0, $r['attempted'], 'rows at the cap must not be attempted');
+        Notification::retry_pending(50, 5);
+        // The sweep is installation-wide, so sibling probes (and rows another
+        // class left pending) can be picked up in the same call and the run
+        // totals say nothing about this row. The guarantee — a row at the cap
+        // is never selected — is asserted on the row itself, where it is
+        // falsifiable.
         self::assertSame('pending', $this->rowStatus($id));
         self::assertSame(5, $this->rowAttempts($id));
+        self::assertNull($this->rowLastAttempt($id), 'an over-cap row must not be stamped as attempted');
+        self::assertSame('test seed', $this->rowNote($id), 'an over-cap row must keep its note');
     }
 
     #[Group('integration')]
@@ -177,8 +219,8 @@ final class MailRetryTest extends TestCase
 
         // A sent row and a failed (below-cap) row must both be ignored.
         $stmt = $db->prepare(
-            "INSERT INTO tbl_mail_logs (notification_id, user_id, booking_id, to_email, subject, body, status, note, attempts) "
-            . "VALUES (NULL, :uid, 0, 'amina@wpms.co.ke', '[mail-retry-test] s', 'b', :status, NULL, 1)"
+            "INSERT INTO tbl_mail_logs (notification_id, user_id, booking_id, recipient_type, to_email, subject, body, status, note, attempts) "
+            . "VALUES (NULL, :uid, 0, 'user', 'amina@wpms.co.ke', '[mail-retry-test] s', 'b', :status, NULL, 1)"
         );
         $stmt->execute([':uid' => self::STAFF_ID, ':status' => 'sent']);
         $sentId = (int) $db->the_insert_id();

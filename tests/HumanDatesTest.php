@@ -192,9 +192,11 @@ final class HumanDatesTest extends TestCase
         self::assertNotEmpty($wd, 'booking 200 must have a wedding date');
         self::loginCouple();
         $body = self::http('GET', '/admin/client_manage_account_details.php?booking_id=' . self::BOOKING_ID . '&user_id=200')['body'];
-        self::assertStringContainsString('countdown-banner', $body, 'overview must render the countdown banner');
+        self::assertStringContainsString('class="countdown-banner', $body, 'overview must render the countdown banner');
         self::assertStringContainsString(date('l, j F Y', strtotime($wd)), $body, 'wedding date must be human-formatted in the banner');
-        self::assertStringContainsString('cd-status-confirmed', $body, 'confirmed account must show the Confirmed pill');
+        // The pill's markup, not its class in the stylesheet — the stylesheet
+        // carries both class names on every render.
+        self::assertStringContainsString('cd-status mt-2 cd-status-confirmed', $body, 'confirmed account must show the Confirmed pill');
         self::assertStringContainsString('Your date is locked in', $body);
         $weddingIsFuture = strtotime($wd) > time();
         if ($weddingIsFuture) {
@@ -206,11 +208,27 @@ final class HumanDatesTest extends TestCase
         self::assertStringContainsString('Your date is locked in', $body);
 
         // A pending future booking must show the countdown + pending messaging.
+        // Driven by a transient status swap on this fixture's own couple row:
+        // booking 200 / user 200 is the pair this class seeds, dates and
+        // restores, and it is the pair both databases carry. Any other booking
+        // would make the assertion a claim about which seed was imported, and
+        // its countdown a claim about another couple's calendar date.
         self::loginStaff();
-        $future = self::http('GET', '/admin/client_manage_account_details.php?booking_id=215&user_id=215')['body'];
-        self::assertMatchesRegularExpression('/\d+ days? to go/', $future, 'future weddings show a live days-to-go countdown');
-        self::assertStringContainsString('Pending Confirmation', $future, 'booking without a confirmed account row shows pending');
-        self::assertStringContainsString('Awaiting confirmation', $future);
+        self::swapAccountStatus('pending');
+        try {
+            $pending = self::http('GET', '/admin/client_manage_account_details.php?booking_id=' . self::BOOKING_ID . '&user_id=200')['body'];
+            self::assertStringContainsString('class="countdown-banner', $pending, 'a pending booking still renders the banner');
+            if ($weddingIsFuture) {
+                self::assertMatchesRegularExpression('/\d+ days? to go/', $pending, 'a pending future booking still shows its countdown');
+            }
+            self::assertStringContainsString('Pending Confirmation', $pending, 'booking without a confirmed account row shows pending');
+            self::assertStringContainsString('Awaiting confirmation', $pending);
+            self::assertStringContainsString('cd-status mt-2 cd-status-pending', $pending, 'a pending booking must carry the pending pill');
+            self::assertStringNotContainsString('cd-status mt-2 cd-status-confirmed', $pending, 'a pending booking must not carry the Confirmed pill');
+            self::assertStringNotContainsString('Your date is locked in', $pending, 'a pending booking must not promise a locked-in date');
+        } finally {
+            self::swapAccountStatus('confirm');
+        }
 
         // Opposite banner branch via a transient past/future date, restored after.
         $swapTo = $weddingIsFuture ? '2010-01-02' : date('Y-m-d', strtotime('+90 days'));
@@ -393,32 +411,26 @@ final class HumanDatesTest extends TestCase
 
         // Deadline note on 200's row: pace line far out, urgency only near the
         // date — asserted on 200's OWN row fragment (other bookings, like
-        // 203's ten-day-out wedding, may legitimately be red). The row's <tr>
-        // is the last one before the booking's first link marker; a lazy
-        // regex from the first <tr> would swallow other rows instead.
-        $marker = strpos($body, 'booking_id=200');
-        if ($marker !== false) {
-            $rowStart = strrpos(substr($body, 0, $marker), '<tr>');
-            $rowEnd   = strpos($body, '</tr>', $marker);
-            $rowHtml  = ($rowStart !== false && $rowEnd !== false)
-                ? substr($body, $rowStart, $rowEnd - $rowStart + 5)
-                : '';
-            self::assertStringContainsString('KSh ' . number_format($price), $rowHtml, 'the extracted fragment must be 200\'s row');
-            $days = (int) round((strtotime(self::$weddingDate) - strtotime(date('Y-m-d'))) / 86400);
-            if ($days > 60) {
-                self::assertStringContainsString('/mo', $rowHtml, 'far-out bookings show a monthly pace');
-                self::assertStringNotContainsString('pay-meta--urgent', $rowHtml, 'no red far out');
-            } elseif ($days <= 30 && $days >= 0) {
-                self::assertStringContainsString('pay-meta--urgent', $rowHtml, 'inside 30 days the row shows the urgent accent');
-            }
-        } else {
+        // 203's ten-day-out wedding, may legitimately be red).
+        $rowHtml = self::rowFragment($body, self::BOOKING_ID);
+        if ($rowHtml === '') {
             self::fail('booking 200 row not found in the staff client table');
         }
+        self::assertStringContainsString('KSh ' . number_format($price), $rowHtml, 'the extracted fragment must be 200\'s row');
+        $days = (int) round((strtotime(self::$weddingDate) - strtotime(date('Y-m-d'))) / 86400);
+        if ($days > 60) {
+            self::assertStringContainsString('/mo', $rowHtml, 'far-out bookings show a monthly pace');
+            self::assertStringNotContainsString('pay-meta--urgent', $rowHtml, 'no red far out');
+        } elseif ($days <= 30 && $days >= 0) {
+            self::assertStringContainsString('pay-meta--urgent', $rowHtml, 'inside 30 days the row shows the urgent accent');
+        }
 
-        // A fully paid booking must show the calm Fully-paid label; the raw
-        // percent form must never render for it. Proven with a transient probe
-        // row on booking 215 (unpriced package → no progress cell at all), so
-        // instead flip booking 200 to fully paid briefly.
+        // A fully paid booking must show the calm Fully-paid label AND drop the
+        // raw percent form — a closed balance has no "N% · KSh 0 left" to
+        // render. Booking 200 is flipped to a closed balance for the length of
+        // one page load (probe payment in, deleted after), so the branch is
+        // exercised on the fixture this class owns rather than through a second
+        // booking whose price and payment state the seed decides.
         global $db;
         $db->prepare(
             'INSERT INTO tbl_liquidation (booking_id, user_id, event_id, payment, cash, credit, mpesa_code, date_issue, date_modified) '
@@ -428,6 +440,10 @@ final class HumanDatesTest extends TestCase
         try {
             $full = self::http('GET', '/admin/client.php')['body'];
             self::assertStringContainsString('Fully paid', $full, 'a closed balance must show the Fully-paid label');
+            $paidRow = self::rowFragment($full, self::BOOKING_ID);
+            self::assertNotSame('', $paidRow, '200\'s row must still be rendered once its balance is closed');
+            self::assertStringContainsString('pay-full">Fully paid', $paidRow, '200\'s own row must carry the Fully-paid label');
+            self::assertStringNotContainsString('% · KSh', $paidRow, 'a closed balance must not render the raw percent form');
         } finally {
             self::$db->execute(
                 'DELETE FROM tbl_liquidation WHERE mpesa_code = :c AND booking_id = 200',
@@ -455,12 +471,48 @@ final class HumanDatesTest extends TestCase
         self::$probeLedgerIds[] = (int) $db->the_insert_id();
     }
 
+    /**
+     * The <tr>…</tr> fragment one booking occupies in a staff table.
+     *
+     * The row runs from the last <tr> before the booking's first link marker to
+     * the next </tr>: a lazy regex from the first <tr> would swallow the rows
+     * above it, and the table lists other weddings whose pace and payment state
+     * are their own business. Empty string when the booking has no row here.
+     */
+    private static function rowFragment(string $body, int $bookingId): string
+    {
+        $marker = strpos($body, 'booking_id=' . $bookingId);
+        if ($marker === false) {
+            return '';
+        }
+        $rowStart = strrpos(substr($body, 0, $marker), '<tr>');
+        $rowEnd   = strpos($body, '</tr>', $marker);
+        return ($rowStart !== false && $rowEnd !== false)
+            ? substr($body, $rowStart, $rowEnd - $rowStart + 5)
+            : '';
+    }
+
     /** Temporarily move booking 200's wedding date (banner past/future branches). */
     private static function swapWeddingDate(string $date): void
     {
         global $db;
         $db->prepare('UPDATE tblweddingbook SET wedding_date = :d WHERE booking_id = :b')
            ->execute([':d' => $date, ':b' => self::BOOKING_ID]);
+    }
+
+    /**
+     * Temporarily move booking 200's couple row to another status.
+     *
+     * The banner's Confirmed/Pending pill reads tblaccounts_detail.status for
+     * the user_id in the URL (the couple view is always booking 200 / user
+     * 200 here), so this is the branch the test can flip without leaning on a
+     * second seed booking.
+     */
+    private static function swapAccountStatus(string $status): void
+    {
+        global $db;
+        $db->prepare('UPDATE tblaccounts_detail SET status = :s WHERE user_id = :u')
+           ->execute([':s' => $status, ':u' => 200]);
     }
 
     private static function firstCeremony(): ?object

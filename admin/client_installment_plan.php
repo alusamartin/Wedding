@@ -6,7 +6,9 @@
  *   months=N  -> create/replace the active plan (2-12 months)
  *   cancel=1  -> remove the plan (nudge falls back to deadline bands)
  */
-include 'include/init.php';
+include 'include/init.php'; // paywall: staff need an active plan to preview any booking
+    if (staff_paywall_locked()) { redirect_to('subscription.php'); exit; }
+
 
 $booking_id = (int) ($_GET['booking_id'] ?? 0);
 $user_id    = (int) ($_GET['user_id'] ?? 0);
@@ -21,12 +23,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     die();
 }
 $booking = Booking::find_by_booking_id($booking_id);
-if (!is_staff()) {
-    if (!$booking || (int) $booking->user_id !== (int) $_SESSION['id'] || $user_id !== (int) $_SESSION['id']) {
-        redirect_to("client.php");
-        die();
-    }
-} elseif (!$booking) {
+// A couple may set a plan only on their own booking; staff may assist any
+// (a missing booking is refused for both — see may_open_couple_page()).
+if (!may_open_couple_page($booking, $user_id)) {
     redirect_to("client.php");
     die();
 }

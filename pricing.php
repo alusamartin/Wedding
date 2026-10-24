@@ -12,11 +12,18 @@ $category = Category::find_all();
     <link href="https://fonts.googleapis.com/css?family=Open+Sans|Roboto" rel="stylesheet">
     <link rel="stylesheet" type="text/css"
           href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
-    <link rel="stylesheet" href="css/bootstrap.min.css">
+    <link rel="stylesheet" href="css/bootstrap.min.css?v=4.6.2">
     <link rel="stylesheet" href="css/style.css"></link><link rel="stylesheet" href="css/modern.css">
     <style>
-        body {
-            margin-top: 6%;
+        /*
+         * No body margin here. The nav is fixed and css/modern.css already
+         * owns the offset above it (a `margin-top` on body is reset there with
+         * !important, so the 6% this page used to carry was dead — and small
+         * enough to leave the heading under the nav). The first block below
+         * gets its own top padding instead.
+         */
+        .pricing-shell {
+            padding-top: 1.5rem;
         }
 
         .navbar-light .navbar-brand {
@@ -82,7 +89,7 @@ $category = Category::find_all();
 <body>
 <?php include 'include/nav.php'; ?>
 
-<div class="container" style="width: 70%;">
+<div class="container pricing-shell" style="width: 70%;">
 
     <div class="row mb-3">
         <div class="col-lg-12">
@@ -131,9 +138,9 @@ $category = Category::find_all();
 
 <!-- Optional JavaScript -->
 <!-- jQuery first, then Popper.js, then Bootstrap JS -->
-<script src="js/jquery-3.2.1.slim.min.js"></script>
-<script src="js/jquery.min.js"></script>
+<script src="js/jquery-3.7.1.slim.min.js"></script>
+<script src="js/jquery-3.7.1.min.js"></script>
 <script src="js/popper.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-<?php include 'include/init.php'; ?>
+<?php include 'include/init.php'; if (staff_paywall_locked()) { redirect_to('subscription.php'); exit; } ?>
 <?php
     $booking_id = (int) ($_GET['booking_id'] ?? 0);
     $user_id = (int) ($_GET['user_id'] ?? 0);
@@ -8,12 +8,11 @@
         die(); // redirect_to only sends the header — stop rendering!
     }
     $booking = Booking::find_by_booking_id($booking_id);
-    if (!is_staff()) {
-        // Clients see only their own wedding's guest list (staff may preview any).
-        if (!$booking || (int) $booking->user_id !== (int) $_SESSION['id'] || $user_id !== (int) $_SESSION['id']) {
-            redirect_to("client.php");
-            die();
-        }
+    // Couples see only their own wedding's guest list; staff may preview any
+    // (may_open_couple_page also refuses a vendor session whose id collides).
+    if (!may_open_couple_page($booking, $user_id)) {
+        redirect_to("client.php");
+        die();
     }
     $links = 'booking_id=' . $booking_id . '&user_id=' . $user_id;
 
@@ -60,7 +59,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title><?= $is_client_view ? 'My Guests - Everafter Planner' : 'Guest List - Everafter Planner'; ?></title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
@@ -100,6 +99,9 @@
             <a class="btn btn-outline-success mr-2" href="sheet_guests.php?<?= $links; ?>" target="_blank" rel="noopener" title="Printable guest list for the wedding day">
                 <i class="mdi mdi-printer mr-1"></i> Print sheet
             </a>
+            <a class="btn btn-outline-success mr-2" href="sheet_venue.php?<?= $links; ?>" target="_blank" rel="noopener" title="Venue & day summary — the running order and the planned headcounts per function (set them there yourself)">
+                <i class="mdi mdi-file-document-outline mr-1"></i> Venue summary
+            </a>
             <?php if ($is_client_view): ?>
             <button type="button" class="btn btn-success" data-toggle="collapse" data-target="#addGuestForm">
                 <i class="mdi mdi-account-plus mr-1"></i> Add Guest
@@ -110,10 +112,10 @@
 
     <div class="row">
         <div class="col-md-3"><div class="stat-card"><h6>Total Guests</h6><div class="value"><?= count($guest_list); ?></div></div></div>
-        <div class="col-md-2"><div class="stat-card" style="border-left-color:#059669"><h6>Confirmed (RSVP)</h6><div class="value"><?= $rsvp['yes']; ?></div></div></div>
-        <div class="col-md-2"><div class="stat-card" style="border-left-color:#D97706"><h6>Harambee Pledged</h6><div class="value"><?= format_ksh($total_harambee); ?></div></div></div>
-        <div class="col-md-2"><div class="stat-card" style="border-left-color:#0EA5A0"><h6>Upcountry</h6><div class="value"><?= count($upcountry_guests); ?></div></div></div>
-        <div class="col-md-3"><div class="stat-card" style="border-left-color:#64748B"><h6>Transport Needed</h6><div class="value"><?= $transport_needed; ?></div></div></div>
+        <div class="col-md-2"><div class="stat-card" style="border-left-color:var(--success)"><h6>Confirmed (RSVP)</h6><div class="value"><?= $rsvp['yes']; ?></div></div></div>
+        <div class="col-md-2"><div class="stat-card" style="border-left-color:var(--warning)"><h6>Harambee Pledged</h6><div class="value"><?= format_ksh($total_harambee); ?></div></div></div>
+        <div class="col-md-2"><div class="stat-card" style="border-left-color:var(--info)"><h6>Upcountry</h6><div class="value"><?= count($upcountry_guests); ?></div></div></div>
+        <div class="col-md-3"><div class="stat-card" style="border-left-color:var(--stone-500)"><h6>Transport Needed</h6><div class="value"><?= $transport_needed; ?></div></div></div>
     </div>
 
     <?php if ($is_client_view): ?>
@@ -316,8 +318,8 @@
     <?php endif; ?>
 </div>
 
-<script src="js/jquery-3.2.1.slim.min.js"></script>
+<script src="js/jquery-3.7.1.slim.min.js"></script>
 <script src="js/popper.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
 </body>
 </html>

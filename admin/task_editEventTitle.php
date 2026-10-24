@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/include/init.php';
-require_staff();
+require_staff_subscribed();
 
 // POST-only + CSRF — previously raw POST values were interpolated into SQL.
 if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !$session->verify_csrf()) {

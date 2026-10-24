@@ -1,6 +1,6 @@
 <?php include 'include/init.php'; ?>
 <?php
-    if (!is_staff()) { redirect_to("../"); }
+    require_staff_subscribed();
 
     $booking_id = (int)($_GET['booking_id'] ?? 0);
     $user_id = (int)($_GET['user_id'] ?? 0);
@@ -21,16 +21,16 @@
             die();
         }
 
-        $fullname = clean($_POST['fullname']);
-        $guestname = clean($_POST['guestname']);
-        $address = clean($_POST['address']);
-        $city = clean($_POST['city']);
-        $state = clean($_POST['state']);
-        $zipcode = clean($_POST['zipcode']);
-        $priority = clean($_POST['priority']);
-        $out_of_town = clean($_POST['out_of_town']);
-        $relationship = clean($_POST['relationship']);
-        $gifts = clean($_POST['gifts']);
+        $fullname = clean($_POST['fullname'] ?? '');
+        $guestname = clean($_POST['guestname'] ?? '');
+        $address = clean($_POST['address'] ?? '');
+        $city = clean($_POST['city'] ?? '');
+        $state = clean($_POST['state'] ?? '');
+        $zipcode = clean($_POST['zipcode'] ?? '');
+        $priority = clean($_POST['priority'] ?? '');
+        $out_of_town = clean($_POST['out_of_town'] ?? '');
+        $relationship = clean($_POST['relationship'] ?? '');
+        $gifts = clean($_POST['gifts'] ?? '');
         $upcountry_accommodation = isset($_POST['upcountry_accommodation']) ? 1 : 0;
         $harambee_contribution = floatval($_POST['harambee_contribution'] ?? 0);
         $dietary_requirements = clean($_POST['dietary_requirements'] ?? '');
@@ -69,7 +69,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Edit Guest - Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">

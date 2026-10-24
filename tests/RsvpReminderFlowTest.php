@@ -130,18 +130,21 @@ final class RsvpReminderFlowTest extends TestCase
         // Freshly invited guests never qualify on day zero.
         self::seedFixture(null);
         $fresh = Guest::find_reminder_due(7, 7, 3);
-        $this->assertSame([], $fresh, 'guests invited moments ago must not be due');
+        $this->assertSame([], self::dueInFixture($fresh), 'guests invited moments ago must not be due');
     }
 
     #[Group('integration')]
     public function testUninvitedGuestsNeverQualify(): void
     {
         // Rows WITHOUT rsvp_invited_at (imported before invite tracking):
-        // no invite, no nag — regardless of threshold.
+        // no invite, no nag — regardless of threshold. The threshold is 0
+        // days, the widest window the query has, so every guest in the seed
+        // that IS properly invited comes back too; only this fixture's rows
+        // are the subject, hence the booking-scoped assertion.
         self::seedFixture('8 days ago');
         self::$pdo->exec('UPDATE tblguest SET rsvp_invited_at = NULL WHERE booking_id = ' . self::FIX_BOOK);
         $due = Guest::find_reminder_due(0, 7, 3);
-        $this->assertSame([], $due, 'guests with no invite timestamp must never be due');
+        $this->assertSame([], self::dueInFixture($due), 'guests with no invite timestamp must never be due');
     }
 
     #[Group('integration')]
@@ -198,5 +201,24 @@ final class RsvpReminderFlowTest extends TestCase
             'SELECT id FROM tblguest WHERE fullname = ' . self::$pdo->quote($fullname)
             . ' AND booking_id = ' . self::FIX_BOOK
         )->fetchColumn();
+    }
+
+    /**
+     * The due list narrowed to this fixture's own booking.
+     *
+     * find_reminder_due() scans every wedding, so a whole-list assertion
+     * silently became a claim about the seed's other guests — that is what
+     * made this class fail on one database and pass on another. The row set
+     * under test is the fixture's, and that is what the caller asserts on.
+     *
+     * @param  array<int, object> $due
+     * @return array<int, int> guest ids belonging to the fixture booking
+     */
+    private static function dueInFixture(array $due): array
+    {
+        return array_values(array_map(
+            static fn ($r): int => (int) $r->id,
+            array_filter($due, static fn ($r): bool => (int) $r->booking_id === self::FIX_BOOK)
+        ));
     }
 }

@@ -108,29 +108,34 @@ class LoginThrottle
         }
 
         // Per-pair lock: enough recent failures and the clock hasn't run out.
-        $row = $db->fetchOne(
-            'SELECT fail_count, lock_count, TIMESTAMPDIFF(SECOND, updated_at, NOW()) AS age_seconds
-             FROM tbllogin_throttle
-             WHERE throttle_email = :e AND throttle_ip = :i',
-            [':e' => $email, ':i' => $ip]
-        );
-        if ($row !== null) {
-            $window = self::lockoutForCount((int) ($row->lock_count ?? 0));
-            if ((int) $row->fail_count >= self::MAX_FAILURES
-                && (int) $row->age_seconds < $window
-            ) {
-                return $window - (int) $row->age_seconds;
-            }
+        // The rule itself lives in ONE place — pairSecondsRemaining() — because
+        // the MCP path reads it without the per-IP cap below.
+        $pair = self::pairSecondsRemaining($email, $ip);
+        if ($pair > 0) {
+            return $pair;
         }
 
-        // Per-IP cap: any account hammered from this IP recently blocks
-        // further attempts from it, even for untouched accounts.
+        /*
+         * Per-IP cap: any account hammered from this IP recently blocks
+         * further attempts from it, even for untouched accounts.
+         *
+         * MCP rows (`mcp:<token id>`, written by ApiToken::authenticate()) are
+         * excluded on purpose. This cap is a SIGN-IN control — it protects
+         * accounts from password guessing — and a script presenting a bad API
+         * token is not a sign-in attempt. Counting those rows would let a bad
+         * token lock a human out of their own login from the same address (and,
+         * in reverse, a run of failed logins would refuse a valid token). Both
+         * directions are wrong at once, so the two identities have their own
+         * counters: MCP failures are judged by the pair rule above, plus the
+         * endpoint's own per-token guard (PublicGuard, door 'mcp').
+         */
         $recent = (int) $db->fetchValue(
-            'SELECT COALESCE(SUM(fail_count), 0)
+            "SELECT COALESCE(SUM(fail_count), 0)
              FROM tbllogin_throttle
              WHERE throttle_ip = :i
                AND fail_count > 0
-               AND updated_at >= NOW() - INTERVAL :win SECOND',
+               AND throttle_email NOT LIKE 'mcp:%'
+               AND updated_at >= NOW() - INTERVAL :win SECOND",
             [':i' => $ip, ':win' => self::LOCKOUT_SECONDS]
         );
         if ($recent >= self::MAX_FAILURES_PER_IP) {
@@ -144,6 +149,49 @@ class LoginThrottle
     public static function isBlocked(string $email, ?string $ip = null): bool
     {
         return self::secondsRemaining($email, $ip) > 0;
+    }
+
+    /**
+     * Is THIS PAIR locked, ignoring the per-IP cap?
+     *
+     * For callers that are not sign-ins and must not inherit a sign-in's IP-wide
+     * verdict — today ApiToken::authenticate(), which counts an MCP key under
+     * `mcp:<token id>`. The pair rule (5 failures → 15 min → 1 h → 6 h) is the
+     * whole answer there: a leaked or revoked key ground from one address stops
+     * after five tries, and a burst of failed password attempts somewhere else
+     * on the same IP cannot refuse a valid key.
+     */
+    public static function pairBlocked(string $email, ?string $ip = null): bool
+    {
+        return self::pairSecondsRemaining($email, $ip) > 0;
+    }
+
+    /** Seconds left on the PAIR rule only (0 = not blocked). */
+    public static function pairSecondsRemaining(string $email, ?string $ip = null): int
+    {
+        if (!self::enabled()) {
+            return 0;
+        }
+        global $db;
+        $email = mb_strtolower(trim($email));
+        $ip = $ip ?? self::clientIp();
+        if ($email === '') {
+            return 0;
+        }
+        $row = $db->fetchOne(
+            'SELECT fail_count, lock_count, TIMESTAMPDIFF(SECOND, updated_at, NOW()) AS age_seconds
+             FROM tbllogin_throttle
+             WHERE throttle_email = :e AND throttle_ip = :i',
+            [':e' => $email, ':i' => $ip]
+        );
+        if ($row === null) {
+            return 0;
+        }
+        $window = self::lockoutForCount((int) ($row->lock_count ?? 0));
+        if ((int) $row->fail_count >= self::MAX_FAILURES && (int) $row->age_seconds < $window) {
+            return $window - (int) $row->age_seconds;
+        }
+        return 0;
     }
 
     /**
@@ -292,8 +340,18 @@ class LoginThrottle
             }
             $ownerUserId = (int) ($owner->owner_user_id ?? 0);
             if ($ownerUserId <= 0) {
+                /*
+                 * '2' as a STRING, deliberately — the same rule
+                 * JobWatch::operator_ids() documents. tblusers.access_level is
+                 * enum('0','1','2'), and MySQL compares an enum against an
+                 * INTEGER by ordinal position: `access_level = 2` matches the
+                 * row whose value is '1' (its index is 2), i.e. a PLANNER. Left
+                 * unquoted, this fallback billed the operator's security SMS to
+                 * whichever planner had the lowest id instead of to the
+                 * operator it was addressed to.
+                 */
                 $ownerUserId = (int) $db->fetchValue(
-                    'SELECT id FROM tblusers WHERE access_level = 2 ORDER BY id LIMIT 1'
+                    "SELECT id FROM tblusers WHERE access_level = '2' ORDER BY id LIMIT 1"
                 );
             }
             $mins = (int) round(self::lockoutForCount($lockNumber) / 60);

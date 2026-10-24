@@ -1,4 +1,4 @@
-<?php include 'include/init.php'; ?>
+<?php include 'include/init.php'; if (staff_paywall_locked()) { redirect_to('subscription.php'); exit; } ?>
 <?php
 /**
  * Couple's Kenyan planning checklist — the "come back daily" page.
@@ -17,12 +17,10 @@
         die(); // redirect_to only sends the header — stop rendering!
     }
     $booking = Booking::find_by_booking_id($booking_id);
-    if (!is_staff()) {
-        // Clients see only their own wedding's checklist (staff may preview any).
-        if (!$booking || (int) $booking->user_id !== (int) $_SESSION['id'] || $user_id !== (int) $_SESSION['id']) {
-            redirect_to("client.php");
-            die();
-        }
+    // Couples see only their own wedding's checklist; staff may preview any.
+    if (!may_open_couple_page($booking, $user_id)) {
+        redirect_to("client.php");
+        die();
     }
     $links = 'booking_id=' . $booking_id . '&user_id=' . $user_id;
 
@@ -35,30 +33,25 @@
     Checklist::ensure_seeded($booking_id);
     $items = Checklist::find_for_booking($booking_id);
 
+    /*
+     * ONE calculation, shared with the couple's dashboard: an item is overdue
+     * when its target date (wedding_date - due_offset_days) has passed and it
+     * is still open, nothing is overdue without a wedding date to be late for,
+     * and once the wedding has happened the nagging stops — the checklist
+     * becomes a keepsake, not a guilt trip. Checklist::progress() owns that
+     * rule; this page renders it.
+     */
+    $progress     = Checklist::progress($booking_id, (string) ($booking->wedding_date ?? ''));
+    $total        = (int) $progress['total'];
+    $done         = (int) $progress['done'];
+    $overdue      = (int) $progress['overdue'];
+    $pct          = (int) $progress['pct'];
+    $next         = $progress['next'];
+    $wedding_past = (bool) $progress['wedding_past'];
+
+    // The per-item target dates below still need the wedding's own timestamp.
     $today_start = strtotime('today');
-    // Progress + on-track math. An item is "overdue" when its target date
-    // (wedding_date - due_offset_days) has passed and it is still open.
-    // Once the wedding has happened the nagging stops — the checklist
-    // becomes a keepsake, not a guilt trip.
     $wedding_ts = !empty($booking->wedding_date) ? strtotime((string) $booking->wedding_date) : false;
-    $wedding_past = $wedding_ts !== false && $today_start > $wedding_ts;
-    $total = count($items);
-    $done = 0;
-    $overdue = 0;
-    foreach ($items as $it) {
-        if ((int) $it->is_done === 1) {
-            $done++;
-            continue;
-        }
-        if (!$wedding_past && $today_start > $wedding_ts - ((int) $it->due_offset_days * 86400)) {
-            $overdue++;
-        }
-    }
-    $pct = $total > 0 ? (int) round($done / $total * 100) : 0;
-    $next = null;
-    foreach ($items as $it) {
-        if ((int) $it->is_done !== 1) { $next = $it; break; }
-    }
 
     $couple = trim(($booking->bride ?? '') . ' & ' . ($booking->groom ?? ''), ' &');
     $wedding_human = !empty($booking->wedding_date) ? format_date_kd($booking->wedding_date) : '';
@@ -71,7 +64,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title><?= $is_client_view ? 'Planning Checklist - Everafter Planner' : 'Wedding Checklist - Everafter Planner'; ?></title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
@@ -115,9 +108,9 @@
 
     <div class="row">
         <div class="col-md-3"><div class="stat-card"><h6>Progress</h6><div class="value"><?= $done; ?>/<?= $total; ?></div></div></div>
-        <div class="col-md-3"><div class="stat-card" style="border-left-color:#B91C1C"><h6>Overdue</h6><div class="value" <?= $overdue > 0 ? 'style="color:#B91C1C"' : ''; ?>><?= $overdue; ?></div></div></div>
-        <div class="col-md-3"><div class="stat-card" style="border-left-color:#D97706"><h6>Wedding Date</h6><div class="value" style="font-size:16px; line-height:2.1;"><?= $wedding_human !== '' ? htmlspecialchars($wedding_human) : 'To be set'; ?></div></div></div>
-        <div class="col-md-3"><div class="stat-card" style="border-left-color:#0EA5A0"><h6>Up Next</h6><div class="value" style="font-size:13px; line-height:1.9; padding-top:4px;"><?= $next ? htmlspecialchars(mb_substr($next->title, 0, 46)) . (mb_strlen($next->title) > 46 ? '…' : '') : 'All done 🎉'; ?></div></div></div>
+        <div class="col-md-3"><div class="stat-card" style="border-left-color:var(--danger)"><h6>Overdue</h6><div class="value" <?= $overdue > 0 ? 'style="color:#B91C1C"' : ''; ?>><?= $overdue; ?></div></div></div>
+        <div class="col-md-3"><div class="stat-card" style="border-left-color:var(--warning)"><h6>Wedding Date</h6><div class="value" style="font-size:16px; line-height:2.1;"><?= $wedding_human !== '' ? htmlspecialchars($wedding_human) : 'To be set'; ?></div></div></div>
+        <div class="col-md-3"><div class="stat-card" style="border-left-color:var(--info)"><h6>Up Next</h6><div class="value" style="font-size:13px; line-height:1.9; padding-top:4px;"><?= $next ? htmlspecialchars(mb_substr($next->title, 0, 46)) . (mb_strlen($next->title) > 46 ? '…' : '') : 'All done 🎉'; ?></div></div></div>
     </div>
 
     <div class="check-progress">

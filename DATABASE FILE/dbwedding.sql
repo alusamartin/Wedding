@@ -326,7 +326,10 @@ CREATE TABLE `tblusers` (
   `lastname` varchar(32) NOT NULL,
   `gender` enum('m','f') NOT NULL,
   `username` varchar(50) NOT NULL,
-  `password` varchar(50) NOT NULL,
+  -- varchar(255), not varchar(50): password_hash() bcrypt output is 60 chars and
+  -- MySQL silently truncates on import in non-strict mode, leaving every seeded
+  -- account unable to log in. Keep in step with deploy/schema.sql.
+  `password` varchar(255) NOT NULL,
   `email` varchar(100) NOT NULL,
   `designation` varchar(100) NOT NULL,
   `address` text NOT NULL,

@@ -129,6 +129,127 @@ class Guest extends DB_Object
         return $tally;
     }
 
+    /**
+     * A booking's guests, filtered — the read behind the MCP `list_guests` tool
+     * (see docs/MCP_PLAN.md): an AI assistant is asked "who still has not
+     * answered, and who needs a room?" and needs the same rows a planner would
+     * filter for by hand.
+     *
+     * The filters are the ones a planner actually uses, and each one is a column
+     * the guest list already shows:
+     *
+     *   rsvp_status    'pending' | 'yes' | 'no' | 'maybe'
+     *   priority       'A'..'E' (the family/close-friend band)
+     *   out_of_town    true = out-of-town guests ('y')
+     *   transport      true = needs transport (transport_needed = 1)
+     *   dietary        true = has something recorded to cater for
+     *   search         substring of name, guest name, phone or city
+     *
+     * Every column is a bound parameter (never interpolated), the booking is
+     * always part of the predicate, and paging is explicit — an assistant must be
+     * able to page a 600-guest list rather than pull it in one response. Like the
+     * rest of this class, nothing here decides WHO may ask: that is
+     * booking_visible_to_session() at the call site.
+     *
+     * @param array<string,mixed> $filters
+     * @return array<int, array<string,mixed>>
+     */
+    public static function find_filtered(int $booking_id, array $filters = [], int $limit = 50, int $offset = 0): array
+    {
+        global $db;
+        [$where, $params] = self::filter_where($booking_id, $filters);
+        $sql = 'SELECT id, booking_id, fullname, guestname, phone, city, relationship, priority,
+                       out_of_town, transport_needed, dietary_requirements, upcountry_accommodation,
+                       harambee_contribution, rsvp_status, rsvp_at, rsvp_note, rsvp_invited_at,
+                       rsvp_reminded_at, rsvp_reminders, (rsvp_token IS NOT NULL AND rsvp_token <> \'\') AS invited
+                  FROM ' . static::$db_table . '
+                 WHERE ' . $where . '
+              ORDER BY priority ASC, fullname ASC
+                 LIMIT ' . max(1, min(500, $limit)) . ' OFFSET ' . max(0, $offset);
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * How many guests match the same filters — so a paged read can say
+     * "showing 50 of 214" instead of leaving the assistant to guess whether it
+     * saw everything.
+     *
+     * @param array<string,mixed> $filters
+     */
+    public static function count_filtered(int $booking_id, array $filters = []): int
+    {
+        global $db;
+        [$where, $params] = self::filter_where($booking_id, $filters);
+        $stmt = $db->prepare('SELECT COUNT(*) FROM ' . static::$db_table . ' WHERE ' . $where);
+        $stmt->execute($params);
+        return (int) $stmt->fetchColumn();
+    }
+
+    /**
+     * The shared predicate for find_filtered()/count_filtered(), in one place so
+     * the rows and their count can never disagree about what was asked for.
+     *
+     * @param array<string,mixed> $filters
+     * @return array{0:string, 1:array<string,mixed>} [sql fragment, bound parameters]
+     * @throws InvalidArgumentException on a value the columns cannot hold
+     */
+    private static function filter_where(int $booking_id, array $filters): array
+    {
+        $where  = ['booking_id = :bid'];
+        $params = [':bid' => $booking_id];
+
+        $status = trim((string) ($filters['rsvp_status'] ?? ''));
+        if ($status !== '') {
+            if (!in_array($status, ['pending', 'yes', 'no', 'maybe'], true)) {
+                throw new InvalidArgumentException("Guest: '" . $status . "' is not an RSVP status");
+            }
+            $where[] = 'rsvp_status = :status';
+            $params[':status'] = $status;
+        }
+
+        $priority = strtoupper(trim((string) ($filters['priority'] ?? '')));
+        if ($priority !== '') {
+            if (!in_array($priority, ['A', 'B', 'C', 'D', 'E'], true)) {
+                throw new InvalidArgumentException("Guest: '" . $priority . "' is not a priority band");
+            }
+            $where[] = 'priority = :priority';
+            $params[':priority'] = $priority;
+        }
+
+        // The two y/n columns are compared to their stored values, never to a
+        // PHP boolean that would silently become 0/1 and match nothing.
+        if (!empty($filters['out_of_town'])) {
+            $where[] = "out_of_town = 'y'";
+        }
+        if (!empty($filters['transport'])) {
+            $where[] = 'transport_needed = 1';
+        }
+        if (!empty($filters['dietary'])) {
+            $where[] = "dietary_requirements IS NOT NULL AND dietary_requirements <> ''";
+        }
+
+        $search = trim((string) ($filters['search'] ?? ''));
+        if ($search !== '') {
+            /*
+             * FOUR placeholders, one value. This connection does not emulate
+             * prepares, so `:q` used four times with a single bound value fails at
+             * execute() with "Invalid parameter number" — which made every guest
+             * SEARCH fail while every plain list worked. (Found through the MCP
+             * guest tool, which passes the same filters.)
+             */
+            $where[]       = '(fullname LIKE :q1 OR guestname LIKE :q2 OR phone LIKE :q3 OR city LIKE :q4)';
+            $needle        = '%' . $search . '%';
+            $params[':q1'] = $needle;
+            $params[':q2'] = $needle;
+            $params[':q3'] = $needle;
+            $params[':q4'] = $needle;
+        }
+
+        return [implode(' AND ', $where), $params];
+    }
+
     /** The guest owning an RSVP token (public RSVP page lookup), or null. */
     public static function find_by_rsvp_token(string $token): ?Guest
     {
@@ -208,20 +329,17 @@ class Guest extends DB_Object
             return 0;
         }
         // NB: PDO forbids mixing named (:x) and positional (?) parameters in
-        // one statement (HY093) — build named placeholders for the id list.
-        $idMarks = [];
+        // one statement (HY093) — so the id list is bound through the shared
+        // builder, which emits named placeholders (bound_id_list(), Helper.php).
+        $idScope = bound_id_list($guest_ids);
         $params = [
             ':t'   => bin2hex(random_bytes(16)),
             ':now' => date('Y-m-d H:i:s'),
-        ];
-        foreach ($guest_ids as $i => $gid) {
-            $idMarks[]      = ':g' . $i;
-            $params[':g' . $i] = $gid;
-        }
+        ] + $idScope['params'];
         $sql = "UPDATE tblguest
                 SET rsvp_token = COALESCE(NULLIF(rsvp_token, ''), :t),
                     rsvp_invited_at = COALESCE(rsvp_invited_at, :now)
-                WHERE id IN (" . implode(',', $idMarks) . ')'
+                WHERE id IN (" . $idScope['sql'] . ')'
             . ($booking_id !== null ? ' AND booking_id = :bid' : '');
         if ($booking_id !== null) {
             $params[':bid'] = $booking_id;

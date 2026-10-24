@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require __DIR__ . '/cli_guard.php'; // CLI-only: refuse to run over HTTP
 
 /**
  * Cron-safe payment deadline-band texts to couples.
@@ -25,7 +26,7 @@ declare(strict_types=1);
  *
  * Delivery rides SMS::send() (outbox row, credits charged to the assigned
  * organizer, dev mode logs without sending) and every text also drops the
- * couple a bell notification + email copy via Notification::create(), so
+ * couple a bell notification + email copy via Notification::create_for_couple(), so
  * the SMS is never the only channel. The assigned planner gets one
  * notification per booking texted, closing the staff loop.
  *
@@ -63,6 +64,7 @@ require_once $root . '/admin/include/Monetization.php';
 if (!class_exists('Notification', false)) {
     require_once $root . '/admin/include/Notification.php';
 }
+require_once $root . '/admin/include/JobWatch.php'; // the heartbeat this job leaves (v2.15)
 global $db;
 $db = new Database();
 
@@ -100,6 +102,9 @@ $sent = 0;
 $failed = 0;
 $skippedNoPhone = 0;
 $skippedPaid = 0;
+// How many bookings this window held something to say to — counted at the point
+// the run commits to acting (every gate passed, before the --limit break).
+$due = 0;
 
 foreach ($rows as $b) {
     if ($sent >= $limit) {
@@ -149,6 +154,8 @@ foreach ($rows as $b) {
         $skippedPaid++;
         continue; // fully paid — no nudge, marker untouched
     }
+
+    $due++; // this booking is one the window held: reachable, unpaid, band open
 
     $coupleName = trim((string) $b->bride . ' & ' . (string) $b->groom, ' &');
     if ($coupleName === '' || $coupleName === '&') {
@@ -200,7 +207,7 @@ foreach ($rows as $b) {
         $sent++;
 
         // The couple's bell + email copy (same moment, second channel).
-        Notification::create(
+        Notification::create_for_couple(
             (int) $b->user_id,
             (int) $b->booking_id,
             $bell . ' Open My Payments to pay via M-Pesa.',
@@ -211,7 +218,7 @@ foreach ($rows as $b) {
         // One planner notification per booking texted — staff see the nudge
         // happened without running the script themselves.
         if (!empty($b->organizer_id)) {
-            Notification::create(
+            Notification::create_for_staff(
                 (int) $b->organizer_id,
                 (int) $b->booking_id,
                 'Deadline text sent to ' . $coupleName . ' (balance ' . $balanceHuman
@@ -232,13 +239,35 @@ foreach ($rows as $b) {
     }
 }
 
+$summary = 'bands: ' . implode('/', $bands)
+    . ', candidates: ' . count($rows)
+    . ", due: {$due}, sent: {$sent}, failed: {$failed}"
+    . ", skipped(no phone): {$skippedNoPhone}, paid-up: {$skippedPaid}";
 if (!$quiet) {
-    echo 'bands: ' . implode('/', $bands)
-        . ', candidates: ' . count($rows)
-        . ", sent: {$sent}, failed: {$failed}"
-        . ", skipped(no phone): {$skippedNoPhone}, paid-up: {$skippedPaid}"
-        . ($dryRun ? ' (DRY RUN — nothing written)' : '')
-        . "\n";
+    echo $summary . ($dryRun ? ' (DRY RUN — nothing written)' : '') . "\n";
+}
+
+/*
+ * The heartbeat the watchdog judges (v2.15). Only a REAL run leaves one (a dry
+ * run must not make a silent job look alive). Note what the queue is here: a
+ * booking counts once it has passed the band, the marker, the phone and the
+ * balance checks — so a paid-up booking, an already-texted band and an
+ * unreachable couple are all correctly NOT waiting (the unreachable ones count
+ * as acted on, because the run records the attempt). This leg has no standing
+ * backlog at all: its window is a date crossing, so a quiet day is a genuine
+ * zero and the watchdog will never call it idle. Every text failing while
+ * bookings were due is reported as a failure, not a clean run.
+ */
+if (!$dryRun) {
+    JobWatch::record(
+        JobWatch::DEADLINE_SMS,
+        ($failed > 0 && $sent === 0) ? JobWatch::FAILED : JobWatch::OK,
+        $sent + $failed + $skippedNoPhone,
+        $summary,
+        ($failed > 0 && $sent === 0) ? 1 : 0,
+        null,
+        $due
+    );
 }
 
 flock($lock, LOCK_UN);

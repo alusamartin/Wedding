@@ -234,6 +234,12 @@ final class LoginActivityTest extends TestCase
         global $db;
         self::seedPair('guarded.probe@example.test', '203.0.113.206', LoginThrottle::MAX_FAILURES);
 
+        // Be a signed-in staff member BEFORE the tokenless POST. Without this the
+        // jar may still be empty (the anonymous test clears it), the POST bounces
+        // at the subscription gate instead of the CSRF guard, and both assertions
+        // below pass for the wrong reason.
+        self::staffCsrfToken();
+
         $res = self::http('POST', '/admin/login_activity.php', [
             'action' => 'unlock',
             'email'  => 'guarded.probe@example.test',
@@ -245,7 +251,10 @@ final class LoginActivityTest extends TestCase
             $db->fetchOne('SELECT * FROM tbllogin_throttle WHERE throttle_email = :e', [':e' => 'guarded.probe@example.test']),
             'tokenless unlock must not delete the pair'
         );
-        self::assertStringContainsString('Invalid security token', self::staffPage()['body']);
+        // The rejection must reach the operator as a flash on the next page load.
+        $page = self::staffPage();
+        self::assertSame(200, $page['status'], 'a signed-in staff member must still reach the page');
+        self::assertStringContainsString('Invalid security token', $page['body']);
     }
 
     // ------------------------------------------------------------------
@@ -313,10 +322,8 @@ final class LoginActivityTest extends TestCase
         $response = curl_exec($ch);
         if ($response === false) {
             $err = curl_error($ch);
-            curl_close($ch);
             throw new RuntimeException('HTTP request failed: ' . $err);
         }
-        curl_close($ch);
 
         $status = 0;
         $location = '';

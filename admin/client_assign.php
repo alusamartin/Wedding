@@ -1,6 +1,6 @@
 <?php include 'include/init.php'; ?>
 <?php
-    if (!is_staff()) { redirect_to("../"); }
+    require_staff_subscribed();
 
     $booking_id = (int)($_GET['booking'] ?? 0);
     $user_id = (int)($_GET['user_id'] ?? 0);
@@ -8,6 +8,19 @@
     $accounts = Accounts::find_by_user_id($user_id);
     $account_detail = Account_Details::find_by_user_id($user_id);
     $booking_detail = Booking::find_by_booking_id($booking_id);
+
+    /*
+     * The assignment form is built from these two rows (and the POST handler
+     * below writes both back), so neither may be false: a stale
+     * client_assign.php link used to render the form against bool and warn on
+     * every property read. Only client.php links here, so return there.
+     */
+    if (!$account_detail || !$booking_detail) {
+        $session->message('<div class="alert alert-warning"><strong><i class="mdi mdi-alert"></i></strong> That client booking no longer exists.</div>');
+        redirect_to("client.php");
+        die();
+    }
+
     $categories = Category::find_all();
     
     if (isset($_POST['confirm'])) {
@@ -20,20 +33,20 @@
         }
 
         if ($booking_detail) {
-            $firstname = clean($_POST['firstname']);
-            $lastname = clean($_POST['lastname']);
-            $email = clean($_POST['email']);
-            $wedding_date = clean($_POST['wedding_date']);
-            $bride = clean($_POST['bride']);
-            $groom = clean($_POST['groom']);
-            $phone = clean($_POST['phone']);
-            $city = clean($_POST['city']);
-            $wedding_type = (int)$_POST['wedding_type'];
-            $organizer_id = (int)$_POST['organizer_id'];
-            $description = clean($_POST['description']);
-            $location = clean($_POST['location']);
-            $expectation_visitor = clean($_POST['expectation_visitor']);
-            $cash_advanced = floatval($_POST['cash_advanced']);
+            $firstname = clean($_POST['firstname'] ?? '');
+            $lastname = clean($_POST['lastname'] ?? '');
+            $email = clean($_POST['email'] ?? '');
+            $wedding_date = clean($_POST['wedding_date'] ?? '');
+            $bride = clean($_POST['bride'] ?? '');
+            $groom = clean($_POST['groom'] ?? '');
+            $phone = clean($_POST['phone'] ?? '');
+            $city = clean($_POST['city'] ?? '');
+            $wedding_type = (int)($_POST['wedding_type'] ?? 0);
+            $organizer_id = (int)($_POST['organizer_id'] ?? 0);
+            $description = clean($_POST['description'] ?? '');
+            $location = clean($_POST['location'] ?? '');
+            $expectation_visitor = clean($_POST['expectation_visitor'] ?? '');
+            $cash_advanced = floatval($_POST['cash_advanced'] ?? 0);
             $status = "confirm";
 
             $booking_detail->bride = $bride;
@@ -61,7 +74,7 @@
             }
 
             // Tell the couple their date is locked in (bell + best-effort email).
-            Notification::create(
+            Notification::create_for_couple(
                 $user_id,
                 $booking_id,
                 'Great news — your wedding date is confirmed! Your planner will be in touch to plan every detail.'
@@ -113,7 +126,7 @@
 
             // Tell the couple (bell + best-effort email) so the tab isn't the
             // only place they learn their booking was cancelled.
-            Notification::create(
+            Notification::create_for_couple(
                 $user_id,
                 $booking_id,
                 'Your wedding booking has been cancelled. Please contact your planner to discuss next steps or rebooking.',
@@ -148,7 +161,7 @@ if (isset($_POST['fraud'])) {
 
         // A fraud flag suspends the couple's access — notify them politely so
         // they know to contact the office (never accuse in writing).
-        Notification::create(
+        Notification::create_for_couple(
             $user_id,
             $booking_id,
             'There is an issue with your booking that needs attention. Please contact our office to verify your details and restore access.',
@@ -174,11 +187,11 @@ if (isset($_POST['fraud'])) {
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
         <title>Edit Client Information - Administrator</title>
-        <link href="css/bootstrap.min.css" rel="stylesheet">        <link href="css/dashboard.css" rel="stylesheet">
+        <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">        <link href="css/dashboard.css" rel="stylesheet">
         <link href="css/modern-admin.css" rel="stylesheet">
         <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
         <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet">
-        <link rel="stylesheet" href="../css/bootstrap-datepicker.css">
+        <link rel="stylesheet" href="../css/bootstrap-datepicker.css?v=1.10.1">
         <style>
             body {
                 margin-bottom: 2%;
@@ -386,12 +399,12 @@ if (isset($_POST['fraud'])) {
 <!-- Bootstrap core JavaScript
 ================================================== -->
 <!-- Placed at the end of the document so the pages load faster -->
-<script src="js/jquery-3.2.1.slim.min.js"></script>
+<script src="js/jquery-3.7.1.slim.min.js"></script>
 <script>window.jQuery || document.write('<script src="../../../../assets/js/vendor/jquery-slim.min.js"><\/script>')</script>
 <script src="js/popper.min.js"></script>
-<script src="../js/jquery.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
-<script src="../js/bootstrap-datepicker.min.js"></script>
+<script src="../js/jquery-3.7.1.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
+<script src="../js/bootstrap-datepicker.min.js?v=1.10.1"></script>
 <script>
     $(document).ready(function() {
         $('#wedding_date').datepicker();

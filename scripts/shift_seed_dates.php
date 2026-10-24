@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require __DIR__ . '/cli_guard.php'; // CLI-only: refuse to run over HTTP
 
 /**
  * Shift every seeded wedding forward by whole 52-week (364-day) multiples so
@@ -112,10 +113,13 @@ function shift_seed_dates(string $dbName, bool $echo = true): void
             $pdo->prepare("UPDATE tblweddingbook
                            SET wedding_date = DATE_FORMAT(DATE_ADD(wedding_date, INTERVAL :d DAY), '%Y-%m-%d')
                            WHERE booking_id = :id")->execute([':d' => $days, ':id' => $id]);
+            // Two placeholders for the same shift: PDO here does not emulate
+            // prepares, and one name used twice in a statement is "Invalid
+            // parameter number".
             $pdo->prepare("UPDATE events
-                           SET start = DATE_ADD(start, INTERVAL :d DAY),
-                               end   = DATE_ADD(end,   INTERVAL :d DAY)
-                           WHERE booking_id = :id")->execute([':d' => $days, ':id' => $id]);
+                           SET start = DATE_ADD(start, INTERVAL :d1 DAY),
+                               end   = DATE_ADD(end,   INTERVAL :d2 DAY)
+                           WHERE booking_id = :id")->execute([':d1' => $days, ':d2' => $days, ':id' => $id]);
             $pdo->prepare("UPDATE tblwedding_websites
                            SET wedding_date = DATE_FORMAT(DATE_ADD(wedding_date, INTERVAL :d DAY), '%Y-%m-%d')
                            WHERE booking_id = :id")->execute([':d' => $days, ':id' => $id]);

@@ -63,11 +63,17 @@ final class MpesaStkTest extends TestCase
         }
         putenv('WPMS_MPESA_STK=1'); // the transport itself stays simulated (no credentials)
         self::cleanupAll();
+        self::seedFixture();
+        self::seedStaff();
     }
 
     public static function tearDownAfterClass(): void
     {
         putenv('WPMS_MPESA_STK');
+        // Clean, and leave nothing behind: this used to re-seed the probe
+        // booking, couple and staff row at the end of the run, so every suite
+        // run handed the next one a stray user (and a stray booking) it had
+        // not asked for.
         self::cleanupAll();
         // The spawned php -S child must die with the suite (it inherits this
         // process's stdout; leaving it alive hangs composer test on EOF).
@@ -126,8 +132,6 @@ final class MpesaStkTest extends TestCase
         $p->exec('DELETE FROM tblaccounts WHERE user_id = ' . self::FIX_USER);
         $p->exec("DELETE FROM tblusers WHERE username = '" . self::STAFF_USER . "'");
         self::$staffId = 0;
-        self::seedFixture();
-        self::seedStaff();
     }
 
     /** A probe staff row — subscriptions key on tblusers, not couples. */
@@ -528,14 +532,20 @@ final class MpesaStkTest extends TestCase
     }
 
     /**
-     * The fixture already exists from cleanupAll; this just re-derives the
-     * event id without duplicating rows.
+     * The fixture booking (account, couple row, booking, one ceremony) plus the
+     * event id, re-derived without duplicating rows. Rebuilt when missing, so
+     * each test can stand on its own instead of on what a previous run left in
+     * the database.
      *
      * @return array{event_id:int, price:float}
      */
     private static function seedFixtureExtra(): array
     {
         global $db;
+        $booked = $db->fetchOne('SELECT booking_id FROM tblweddingbook WHERE booking_id = :b', [':b' => self::FIX_BOOK]);
+        if ($booked === null) {
+            return self::seedFixture();
+        }
         $ev = $db->fetchOne('SELECT id FROM events WHERE booking_id = :b ORDER BY id LIMIT 1', [':b' => self::FIX_BOOK]);
         if ($ev === null) {
             $p = self::$pdo;

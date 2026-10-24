@@ -1,6 +1,6 @@
 <?php include 'include/init.php'; ?>
 <?php
-    if (!is_staff()) { redirect_to("../"); die(); }
+    require_staff_subscribed();
 
     $booking_id = (int)($_GET['booking_id'] ?? 0);
     $user_id = (int)($_GET['user_id'] ?? 0);
@@ -67,7 +67,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>RSVP Dashboard - Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
@@ -122,9 +122,9 @@
     <!-- Headline stats -->
     <div class="row">
         <div class="col-md-3"><div class="stat-card"><h6>Invited</h6><div class="value"><?= $invited; ?></div></div></div>
-        <div class="col-md-3"><div class="stat-card" style="border-left-color:#059669"><h6>Attending (Yes)</h6><div class="value"><?= $attending; ?></div></div></div>
-        <div class="col-md-3"><div class="stat-card" style="border-left-color:#D97706"><h6>Maybe (Tentative)</h6><div class="value"><?= $tentative; ?></div></div></div>
-        <div class="col-md-3"><div class="stat-card" style="border-left-color:#64748B"><h6>Awaiting Reply</h6><div class="value"><?= $tally['pending']; ?></div></div></div>
+        <div class="col-md-3"><div class="stat-card" style="border-left-color:var(--success)"><h6>Attending (Yes)</h6><div class="value"><?= $attending; ?></div></div></div>
+        <div class="col-md-3"><div class="stat-card" style="border-left-color:var(--warning)"><h6>Maybe (Tentative)</h6><div class="value"><?= $tentative; ?></div></div></div>
+        <div class="col-md-3"><div class="stat-card" style="border-left-color:var(--stone-500)"><h6>Awaiting Reply</h6><div class="value"><?= $tally['pending']; ?></div></div></div>
     </div>
 
     <div class="row">
@@ -477,8 +477,8 @@
         }
     });
 </script>
-<script src="js/jquery-3.2.1.slim.min.js"></script>
+<script src="js/jquery-3.7.1.slim.min.js"></script>
 <script src="js/popper.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
 </body>
 </html>

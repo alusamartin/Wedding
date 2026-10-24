@@ -4,6 +4,14 @@
 # Secrets — never commit real credentials
 .env
 
+# Deploy kit — the whole directory holds live credentials and a build artifact:
+#   deploy/.env.production           real DB password, M-Pesa keys, cron key
+#   deploy/seed_admin.sql            a real super-admin bcrypt hash
+#   deploy/everafter-deploy.tar.gz   5.9 MB full-site tarball
+# Ignoring the directory (not just the files) means an accidental `git add -A`
+# cannot leak it. To track a sanitised copy later, force-add the specific file.
+deploy/
+
 # Dependencies
 /vendor/
 

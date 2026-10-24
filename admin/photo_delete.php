@@ -1,4 +1,4 @@
-<?php include("include/init.php"); require_staff(); ?>
+<?php include("include/init.php"); require_staff_subscribed(); ?>
 
 <?php 
 
@@ -12,7 +12,7 @@ if (empty($_GET['id'])) {
     redirect_to("photos_view.php");
 }
 
-$gallery = Gallery::find_by_id((int) $_GET['id']);
+$gallery = Gallery::find_by_id((int)($_GET['id'] ?? 0));
 
 if ($gallery) {
     if ($gallery->delete_photo()) {

@@ -8,7 +8,9 @@
  * ceremony, caterers and the elders' committee check on the morning of the
  * wedding. Access: staff any booking, couple their own (sheet_boot()).
  */
-include 'include/init.php';
+include 'include/init.php'; // paywall: staff need an active plan to preview any booking
+    if (staff_paywall_locked()) { redirect_to('subscription.php'); exit; }
+
 include 'include/sheet_boot.php';
 
 $booking = sheet_boot();

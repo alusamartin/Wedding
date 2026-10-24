@@ -210,6 +210,27 @@ final class CouplePagesAccessTest extends TestCase
         }
     }
 
+    /**
+     * Temporarily move a booking's package (0 = no package) and return the old
+     * value, so a caller can put the fixture back in a `finally`.
+     *
+     * The panel that reads it is a pricing branch, and the only fixture that
+     * exercises "no package" is one this class owns the state of: a packageless
+     * booking in the seed is a development database's accident, not a fixture.
+     */
+    private static function swapWeddingType(int $bookingId, int $type): int
+    {
+        $prev = (int) self::$db->fetchValue(
+            'SELECT wedding_type FROM tblweddingbook WHERE booking_id = :b',
+            [':b' => $bookingId]
+        );
+        self::$db->execute(
+            'UPDATE tblweddingbook SET wedding_type = :t WHERE booking_id = :b',
+            [':t' => $type, ':b' => $bookingId]
+        );
+        return $prev;
+    }
+
     /** Log a couple in on a FRESH session (login.php auto-redirects users
      *  who are already signed in, so the jar must start empty). */
     private static function loginCouple(string $email, string $pass): void
@@ -317,11 +338,46 @@ final class CouplePagesAccessTest extends TestCase
         self::assertStringContainsString('Great news', $seed['body']);
         self::assertStringNotContainsString('KSh -', $seed['body'], 'the panel must never render a negative amount');
 
-        // Booking 215 has no package (wedding_type 0) — the panel must be
-        // suppressed entirely rather than divide by zero.
-        $noPackage = self::http('GET', '/admin/client_budget.php?booking_id=215&user_id=215');
-        if ($noPackage['status'] === 200) {
+        // A booking with no package must suppress the panel entirely rather than
+        // divide by zero. Driven by a transient wedding_type swap on the couple's
+        // OWN booking: the previous version read booking 215, which the v2.1 seed
+        // does not build at all — so outside a development database that happened
+        // to carry that couple the guarded assertion simply never ran, and the
+        // branch it exists to protect was never exercised.
+        $type = self::swapWeddingType(self::OWN_BOOKING, 0);
+        try {
+            $noPackage = self::http('GET', '/admin/client_budget.php?booking_id=' . self::OWN_BOOKING . '&user_id=' . self::OWN_USER);
+            self::assertSame(200, $noPackage['status'], 'a packageless booking must still render the page');
             self::assertStringNotContainsString('Budget vs Actual', $noPackage['body'], 'no package = no funding panel');
+        } finally {
+            self::swapWeddingType(self::OWN_BOOKING, $type);
         }
+    }
+
+    /**
+     * The vendor-cost tile on the dashboard. It is the one number a couple opens
+     * the dashboard for, and it is computed by VendorPlan (v2.29) rather than by
+     * the page — so this test checks the two things the page owes: the figure is
+     * shown with what is left of the budget, and the tile is a READ-ONLY door to
+     * the plan (no form, no POST target).
+     *
+     * Booking 203 has no vendor deals and no category caps, so the package price
+     * is the yardstick the tile must use — the honest fallback, never "KSh 0".
+     */
+    #[Group('integration')]
+    public function testTheDashboardShowsTheVendorTotalAndWhatIsLeftOfTheBudget(): void
+    {
+        $this->requireHttp();
+
+        $dash = self::http('GET', '/admin/client.php');
+        self::assertSame(200, $dash['status']);
+        self::assertStringContainsString('Vendor Costs', $dash['body'], 'the couple must see their vendor total on the dashboard');
+        self::assertStringContainsString('No vendors planned yet', $dash['body'], 'an empty plan says so instead of showing a misleading zero balance');
+        self::assertStringContainsString('Plan your vendors', $dash['body'], 'and the tile offers the way to start planning');
+        self::assertStringContainsString(
+            'client_vendor_plan.php?booking_id=' . self::OWN_BOOKING . '&amp;user_id=' . self::OWN_USER,
+            $dash['body'],
+            'the tile opens the couple\'s own plan'
+        );
     }
 }

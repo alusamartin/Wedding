@@ -98,12 +98,16 @@ CREATE TABLE IF NOT EXISTS `tblvendor_packages` (
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- package_id / event_date must stay NULLABLE: Vendor::record_enquiry() records a
+-- couple's enquiry with no package picked and no date chosen as NULLs, so the
+-- strict NOT NULL here made every general enquiry die with "Column 'package_id'
+-- cannot be null" on a fresh install. Kept in step with deploy/schema.sql.
 CREATE TABLE IF NOT EXISTS `tblvendor_bookings` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `vendor_id` INT NOT NULL,
   `booking_id` INT NOT NULL,
-  `package_id` INT NOT NULL,
-  `event_date` DATE NOT NULL,
+  `package_id` INT DEFAULT NULL,
+  `event_date` DATE DEFAULT NULL,
   `amount` DECIMAL(10,2) NOT NULL COMMENT 'KSh',
   `commission` DECIMAL(10,2) NOT NULL COMMENT 'KSh',
   `status` ENUM('pending','confirmed','completed','cancelled') NOT NULL DEFAULT 'pending',
@@ -189,8 +193,16 @@ DELETE FROM `tbl_features` WHERE `feature_id` IN (2,3,4,7,8,9,10,11,12,13,15,16,
 -- --------------------------------------------------------------------------
 -- 1. tblusers — Kenyan Admin Users (KSh-irrelevant but 100% Kenyan identities)
 -- Tests Users::find_all(), find_by_id(), user_account_login(), email_exists(), save(): bool
--- Plaintext: Admin@2024! / Test@1234 / Vendor@2024 (bcrypt)
+-- Plaintexts (bcrypt) — one per role, note which account uses which:
+--   id 5,103  Super Admin      Admin@2024!
+--   id 7,100,101 Planner       Test@1234
+--   id 8,102  Vendor           Vendor@2024
 -- --------------------------------------------------------------------------
+-- Widen BEFORE inserting: an older DB can still size password at varchar(50)
+-- (legacy MD5 era). bcrypt output is 60 chars and MySQL truncates silently in
+-- non-strict mode, which would leave every account below unable to log in.
+ALTER TABLE `tblusers` MODIFY `password` VARCHAR(255) NOT NULL;
+
 DELETE FROM `tblusers` WHERE `id` IN (100,101,102,103,5,7,8);
 INSERT INTO `tblusers` (`id`,`firstname`,`lastname`,`gender`,`username`,`password`,`email`,`designation`,`address`,`access_level`,`profile_picture`,`date_created`) VALUES
 (5, 'Wafula', 'Barasa', 'm', 'wafula.admin', '$2y$10$fABYAzChYRGVfUPBA0RxXu85o9kxVD2ZKStKeMF9Dqu2ulHmCAOKS', 'wafula@wpms.co.ke', 'Super Admin', 'Westlands, Nairobi County', '2', 'wafula.jpg', '2024-01-15 09:00:00'),
@@ -200,7 +212,6 @@ INSERT INTO `tblusers` (`id`,`firstname`,`lastname`,`gender`,`username`,`passwor
 (101, 'Otieno', 'Onyango', 'm', 'otieno.planner', '$2y$10$j4xC3MrP1n5vJPS6eWilE.oil64ZYeEuX2uBB/RARe9OllUORq9cG', 'otieno@wpms.co.ke', 'Planner', 'Milimani, Kisumu County', '1', 'otieno.jpg', '2024-03-02 09:00:00'),
 (102, 'Chebet', 'Mutai', 'f', 'chebet.vendor', '$2y$10$X9SqG3aPwjfxEusVT86tAe.sCeYwvt4yzyiYlIUzY7Di9cdTTdxBm', 'chebet@floral.co.ke', 'Vendor', 'Eldoret, Uasin Gishu', '0', 'chebet.jpg', '2024-03-03 10:00:00'),
 (103, 'Abdi', 'Hassan', 'm', 'abdi.admin', '$2y$10$fABYAzChYRGVfUPBA0RxXu85o9kxVD2ZKStKeMF9Dqu2ulHmCAOKS', 'abdi@wpms.co.ke', 'Super Admin', 'Garissa Township, Garissa County', '2', 'abdi.jpg', '2024-03-04 11:00:00');
-ALTER TABLE `tblusers` MODIFY `password` VARCHAR(255) NOT NULL;
 
 -- --------------------------------------------------------------------------
 -- 2. tblaccounts + tblaccounts_detail — Kenyan Couples (all KSh)

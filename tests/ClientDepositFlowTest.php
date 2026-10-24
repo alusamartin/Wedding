@@ -362,7 +362,7 @@ final class ClientDepositFlowTest extends TestCase
         self::assertStringContainsString('budget.php?booking_id=200&user_id=200', (string) $notif->link, 'Notification must deep-link to the booking budget page');
 
         // Notification::mark_read must flip it (the staff bell path).
-        self::assertTrue(Notification::mark_read((int) $notif->id, self::PLANNER_USER), 'mark_read must succeed');
+        self::assertTrue(Notification::mark_read(Notification::FOR_USER, (int) $notif->id, self::PLANNER_USER), 'mark_read must succeed');
         $check = self::$db->fetchValue('SELECT is_read FROM tblnotifications WHERE id = :id', [':id' => (int) $notif->id]);
         self::assertSame('1', (string) $check, 'mark_read must persist is_read = 1');
 
@@ -423,7 +423,7 @@ final class ClientDepositFlowTest extends TestCase
             [':u' => 'probe_noemail']
         );
         try {
-            $id = Notification::create($probeId, self::OWN_BOOKING, 'Probe notification without email', '');
+            $id = Notification::create_for_staff($probeId, self::OWN_BOOKING, 'Probe notification without email', '');
             self::assertGreaterThan(0, $id, 'create() must still succeed for a planner without an email');
             self::assertSame(0, (int) self::$db->fetchValue(
                 'SELECT COUNT(*) FROM tbl_mail_logs WHERE user_id = :uid',

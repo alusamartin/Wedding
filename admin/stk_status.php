@@ -39,16 +39,16 @@ include 'include/init.php';
     <meta http-equiv="refresh" content="3">
     <?php endif; ?>
     <title>M-Pesa Payment Status - Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
     <style>
         .stk-card { background: #fff; border-radius: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
                     border-left: 4px solid #065F46; padding: 28px; max-width: 560px; margin: 24px auto; text-align: center; }
-        .stk-card.pending   { border-left-color: #D97706; }
-        .stk-card.success   { border-left-color: #059669; }
-        .stk-card.cancelled, .stk-card.failed, .stk-card.timeout { border-left-color: #B91C1C; }
+        .stk-card.pending   { border-left-color: var(--warning); }
+        .stk-card.success   { border-left-color: var(--success); }
+        .stk-card.cancelled, .stk-card.failed, .stk-card.timeout { border-left-color: var(--danger); }
         .stk-amount { font-size: 30px; font-weight: 700; color: #0F172A; }
         .stk-phone  { font-size: 14px; color: #64748B; }
         .stk-ref    { font-weight: 700; color: #065F46; }
@@ -132,8 +132,8 @@ include 'include/init.php';
 <?php endif; ?>
 </div>
 
-<script src="js/jquery-3.2.1.slim.min.js"></script>
+<script src="js/jquery-3.7.1.slim.min.js"></script>
 <script src="js/popper.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
 </body>
 </html>

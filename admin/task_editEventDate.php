@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/include/init.php';
-require_staff();
+require_staff_subscribed();
 
 // Drag-and-drop resize/date change from the calendar. POST-only, CSRF-checked.
 if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !$session->verify_csrf()) {
@@ -13,9 +13,9 @@ if (isset($_POST['Event'][0]) && isset($_POST['Event'][1]) && isset($_POST['Even
     global $db;
     $bdd = $db->pdo();
 
-    $id    = (int) $_POST['Event'][0];
-    $start = trim((string) $_POST['Event'][1]);
-    $end   = trim((string) $_POST['Event'][2]);
+    $id    = (int)($_POST['Event'] ?? 0)[0];
+    $start = trim((string)($_POST['Event'] ?? '')[1]);
+    $end   = trim((string)($_POST['Event'] ?? '')[2]);
 
     if ($id <= 0 || $start === '' || $end === '') {
         http_response_code(400);

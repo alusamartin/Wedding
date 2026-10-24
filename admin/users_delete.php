@@ -1,4 +1,4 @@
-<?php include("include/init.php"); require_staff(); ?>
+<?php include("include/init.php"); require_staff_subscribed(); ?>
 
 <?php 
 
@@ -13,7 +13,7 @@ if (empty($_GET['id'])) {
     die();
 }
 
-$user = Users::find_by_id((int) $_GET['id']);
+$user = Users::find_by_id((int)($_GET['id'] ?? 0));
 
 if ($user) {
     if ((int) $user->id === (int) ($_SESSION['id'] ?? 0)) {

@@ -7,7 +7,9 @@
  * using the session booking id. Staff preview via guest_list.php keeps its
  * own tooling; this endpoint serves the couple's My Guests page.
  */
-include 'include/init.php';
+include 'include/init.php'; // paywall: staff need an active plan to preview any booking
+    if (staff_paywall_locked()) { redirect_to('subscription.php'); exit; }
+
 
 $booking_id = (int) ($_GET['booking_id'] ?? 0);
 $user_id    = (int) ($_GET['user_id'] ?? 0);
@@ -18,13 +20,10 @@ if (!isset($_SESSION['id'])) {
     die();
 }
 $booking = Booking::find_by_booking_id($booking_id);
-if (!is_staff()) {
-    if (!$booking || (int) $booking->user_id !== (int) $_SESSION['id'] || $user_id !== (int) $_SESSION['id']) {
-        redirect_to("client.php");
-        die();
-    }
-} elseif (!$booking) {
-    // Staff may only act through the couple's link too — a valid booking is required.
+// A couple may only touch their own booking's guests; staff may assist any —
+// but everyone needs a real booking (may_open_couple_page refuses a missing
+// one), so the old staff-side `elseif (!$booking)` bail-out is gone.
+if (!may_open_couple_page($booking, $user_id)) {
     redirect_to("client.php");
     die();
 }

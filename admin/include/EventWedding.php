@@ -132,7 +132,7 @@ class EventWedding extends DB_Object
     public static function getEventBlogs() {
         global $db;
         $sql = "SELECT * FROM tblpostwedding WHERE status = '1' ORDER BY id DESC";
-        $result_set = $db->query($sql);
+        $result_set = $db->execute($sql);
 
         $the_object_array = array();
 

@@ -1,4 +1,4 @@
-<?php include("include/init.php"); require_staff(); ?>
+<?php include("include/init.php"); require_staff_subscribed(); ?>
 
 <?php 
 
@@ -12,7 +12,7 @@ if (empty($_GET['id'])) {
     redirect_to("blog_events.php");
 }
 
-$event_wedding = EventWedding::find_by_id((int) $_GET['id']);
+$event_wedding = EventWedding::find_by_id((int)($_GET['id'] ?? 0));
 
 if ($event_wedding) {
     if ($event_wedding->delete_photo()) {

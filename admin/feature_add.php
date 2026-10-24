@@ -2,7 +2,7 @@
 <?php
 
 
-    if (!is_staff()) { redirect_to("../"); }
+    require_staff_subscribed();
     $features = new Features();
     $category = category::find_all();
 
@@ -15,9 +15,9 @@
             die();
         }
 
-        $wedding_type = clean($_POST['wedding_type']);
-        $title = clean($_POST['title']);
-        $description = clean($_POST['description']);
+        $wedding_type = clean($_POST['wedding_type'] ?? '');
+        $title = clean($_POST['title'] ?? '');
+        $description = clean($_POST['description'] ?? '');
        
          if (empty($wedding_type) || empty($title) || empty($description)) {
             $session->message("
@@ -54,11 +54,11 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
         <title>Add New Package Information - Administrator</title>
-        <link href="css/bootstrap.min.css" rel="stylesheet">        <link href="css/dashboard.css" rel="stylesheet">
+        <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">        <link href="css/dashboard.css" rel="stylesheet">
         <link href="css/modern-admin.css" rel="stylesheet">
         <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
         <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet">
-        <link rel="stylesheet" href="../css/bootstrap-datepicker.css">
+        <link rel="stylesheet" href="../css/bootstrap-datepicker.css?v=1.10.1">
         <style>
             body {
                 margin-bottom: 2%;

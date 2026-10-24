@@ -1,4 +1,4 @@
-<?php include 'include/init.php'; ?>
+<?php include 'include/init.php'; if (staff_paywall_locked()) { redirect_to('subscription.php'); exit; } ?>
 <?php
 /**
  * Branded payment receipt — one row of the liquidation ledger.
@@ -23,12 +23,11 @@
         if (!$booking) {
             http_response_code(404);
             $not_found = true;
-        } elseif (!is_staff()) {
-            // Clients may only open receipts of their own wedding.
-            if ((int) $booking->user_id !== (int) $_SESSION['id']) {
-                redirect_to("client.php");
-                exit;
-            }
+        } elseif (!booking_visible_to_session($booking)) {
+            // Clients may only open receipts of their own wedding — and a vendor
+            // session is not that client, whatever number it holds in tblusers.
+            redirect_to("client.php");
+            exit;
         }
     }
 
@@ -39,7 +38,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Receipt Not Found - Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; background: #F6F3EC; min-height: 100vh;
@@ -102,7 +101,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Receipt <?= $receipt_no; ?> - Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@700&display=swap" rel="stylesheet">
     <style>

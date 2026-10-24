@@ -420,7 +420,9 @@ final class RevenueDashboardTest extends TestCase
         $firstLine = strtok(ltrim($body, "\xEF\xBB\xBF \t\r\n"), "\r\n");
         return $firstLine === false ? [] : array_map(
             static fn ($cell): string => (string) $cell,
-            str_getcsv($firstLine)
+            // Explicit delimiter/enclosure/escape: PHP 8.4 deprecates relying on
+            // the default $escape, and the suite treats deprecations as failures.
+            str_getcsv($firstLine, ',', '"', '\\')
         );
     }
 
@@ -444,10 +446,10 @@ final class RevenueDashboardTest extends TestCase
         // Parseable: header + at least one data row, same column count each.
         $lines = array_values(array_filter(explode("\n", trim($res['body']))));
         self::assertGreaterThanOrEqual(2, count($lines), 'export must contain data rows, not only a header');
-        $cols = count(str_getcsv($lines[0]));
+        $cols = count(str_getcsv($lines[0], ',', '"', '\\'));
         self::assertSame(8, $cols, 'subscriptions export must have 8 columns');
         foreach (array_slice($lines, 1) as $line) {
-            self::assertSame($cols, count(str_getcsv($line)), 'every row must match the header column count');
+            self::assertSame($cols, count(str_getcsv($line, ',', '"', '\\')), 'every row must match the header column count');
         }
 
         // ---- commissions + sms exports render with their own headers ------
@@ -499,5 +501,134 @@ final class RevenueDashboardTest extends TestCase
         self::assertSame("line1\nline2", csv_cell("line1\nline2"), 'internal newlines are quoted by fputcsv, not stripped');
         // Control characters are stripped; the remaining text survives.
         self::assertSame('bad', csv_cell("\0\u{0007}bad"), 'control characters must be stripped');
+    }
+
+    // ------------------------------------------------------------------
+    // Plan-level reporting (Revenue by plan)
+    // ------------------------------------------------------------------
+
+    /**
+     * The plan table and the Subscriptions lifetime card come from two different
+     * queries, and the page claims they agree — so this holds them to it, to the
+     * cent. It also keeps the two counting rules apart: subscribers counts PEOPLE
+     * (a renewal is the same planner paying again), payments counts rows.
+     *
+     * Plan-level numbers are what makes a plan's price answerable: a price the
+     * operator changed is only worth anything if the money afterwards is visible
+     * against the plan it was charged to.
+     */
+    #[Group('integration')]
+    public function testPlanBreakdownReconcilesWithSubscriptionLifetime(): void
+    {
+        if (self::$db === null) {
+            self::markTestSkipped('live DB unavailable — revenue aggregation tests skipped');
+        }
+        global $db;
+        self::seedProbes();
+
+        $breakdown = Revenue::plan_breakdown();
+        $rows      = $breakdown['plans'];
+        self::assertNotEmpty($rows, 'the seed ships plans, so the breakdown cannot be empty');
+        self::assertGreaterThan(0.0, $breakdown['revenue'], 'the seed carries subscription revenue');
+
+        // 1. Every paid subscription row belongs to exactly one row in the table.
+        self::assertEqualsWithDelta(
+            (float) $db->fetchValue("SELECT COALESCE(SUM(amount), 0) FROM tblsubscriptions WHERE status IN ('active','expired')"),
+            (float) $breakdown['revenue'],
+            0.01,
+            'the plan table must add up to the paid subscriptions it covers'
+        );
+        self::assertEqualsWithDelta(
+            (float) Revenue::lifetime_totals()['subscriptions'],
+            (float) $breakdown['revenue'],
+            0.01,
+            'the plan table must agree with the Subscriptions lifetime card'
+        );
+        self::assertEqualsWithDelta(100.0, array_sum(array_column($rows, 'share')), 0.01, 'shares must sum to 100%');
+
+        // 2. Each plan's numbers come from its own rows, by its own definition.
+        foreach ($rows as $row) {
+            if ($row['plan_slug'] === '') {
+                continue; // the "no plan recorded" bucket has no slug to check against
+            }
+            $slug = (string) $row['plan_slug'];
+            $params = [':p' => $slug];
+            self::assertEqualsWithDelta(
+                (float) $db->fetchValue("SELECT COALESCE(SUM(amount), 0) FROM tblsubscriptions WHERE plan = :p AND status IN ('active','expired')", $params),
+                (float) $row['revenue'],
+                0.01,
+                "revenue for {$slug}"
+            );
+            $paymentRows = (int) $db->fetchValue("SELECT COUNT(*) FROM tblsubscriptions WHERE plan = :p AND status IN ('active','expired')", $params);
+            self::assertSame($paymentRows, (int) $row['payments'], "payments for {$slug}");
+            $people = (int) $db->fetchValue("SELECT COUNT(DISTINCT user_id) FROM tblsubscriptions WHERE plan = :p AND status IN ('active','expired')", $params);
+            self::assertSame($people, (int) $row['subscribers'], "subscribers for {$slug}");
+            self::assertLessThanOrEqual($paymentRows, $people, 'renewals must not count as extra people');
+        }
+
+        // 3. The probe subscription (7777 on 'professional') is included here too.
+        $pro = null;
+        foreach ($rows as $row) {
+            if ($row['plan_slug'] === 'professional') {
+                $pro = $row;
+                break;
+            }
+        }
+        self::assertNotNull($pro, 'the seeded professional plan must have a row');
+        self::assertGreaterThanOrEqual(7777.0, (float) $pro['revenue'], 'the probe subscription must be counted on its plan');
+        self::assertGreaterThanOrEqual(1, (int) $pro['subscribers']);
+
+        // 4. Every DEFINED plan is listed — retired ones and ones nobody has
+        //    bought yet included (a plan created minutes ago must show as 0, not
+        //    vanish, or the operator cannot tell "no sales" from "no plan").
+        $listed = array_column($rows, 'plan_slug');
+        foreach ($db->fetchAll('SELECT plan_slug FROM tblsubscription_plans') as $d) {
+            self::assertContains((string) $d->plan_slug, $listed, 'every defined plan must be listed');
+        }
+
+        // 5. Trials are people, not money: reported separately, and excluding
+        //    them cannot change the total (they cost nothing by construction).
+        self::assertSame(
+            (int) $db->fetchValue("SELECT COUNT(*) FROM tblsubscriptions WHERE status = 'trial' AND expiry_date >= CURDATE()"),
+            (int) $breakdown['trials']
+        );
+        self::assertSame(
+            0.0,
+            (float) $db->fetchValue("SELECT COALESCE(SUM(amount), 0) FROM tblsubscriptions WHERE status = 'trial'"),
+            'a trial costs nothing, so leaving it out of the revenue cannot lose money'
+        );
+    }
+
+    #[Group('integration')]
+    public function testRevenuePageRendersThePlanBreakdown(): void
+    {
+        $this->requireHttp();
+        self::seedProbes();
+        self::login(self::STAFF_EMAIL, self::STAFF_PASS);
+        if (self::$jar === []) {
+            self::markTestSkipped('staff login unavailable — seeded credentials missing');
+        }
+
+        $body = self::http('GET', '/admin/revenue.php')['body'];
+        foreach (['Fatal error:', 'Parse error:', 'Warning:', 'Notice:', 'Deprecated:'] as $marker) {
+            self::assertStringNotContainsString($marker, $body, 'the revenue page must not leak PHP issues');
+        }
+
+        self::assertStringContainsString('Revenue by plan', $body, 'the plan breakdown must render');
+        self::assertStringContainsString('Edit plans &amp; prices', $body, 'the money must lead to the plan that earns it');
+        self::assertStringContainsString('All plans', $body, 'the table must be totalled');
+        self::assertStringContainsString('Subscribers', $body);
+
+        global $db;
+        foreach ($db->fetchAll('SELECT plan_slug, name FROM tblsubscription_plans ORDER BY id') as $p) {
+            self::assertStringContainsString(htmlspecialchars((string) $p->name), $body, "plan {$p->plan_slug} must be listed by name");
+            self::assertStringContainsString(htmlspecialchars((string) $p->plan_slug), $body, "plan {$p->plan_slug} must be listed by key");
+        }
+
+        // The two independently-computed totals are both on the page, and the
+        // reconciliation guard is NOT shown (it only renders when they disagree).
+        self::assertStringContainsString(format_ksh(Revenue::plan_breakdown()['revenue'], 2), $body);
+        self::assertStringContainsString(format_ksh(Revenue::lifetime_totals()['subscriptions']), $body);
+        self::assertStringNotContainsString('The plan table and the Subscriptions card disagree', $body);
     }
 }

@@ -8,7 +8,9 @@
  * planner always knows where they left off (state lives in the query string,
  * so refresh/back/forward all behave).
  */
-include 'include/init.php';
+include 'include/init.php'; // paywall: staff need an active plan to preview any booking
+    if (staff_paywall_locked()) { redirect_to('subscription.php'); exit; }
+
 
 if (!is_staff()) {
     redirect_to('../');
@@ -58,7 +60,7 @@ if ($pos < 0 || $pos >= count($queue)) {
     // Finished (or out of range): record the count and go home.
     if ($done > 0) {
         $coupleName = trim(($booking->bride ?? '') . ' & ' . ($booking->groom ?? ''));
-        Notification::create(
+        Notification::create_for_staff(
             (int) ($booking->organizer_id ?? 0),
             $booking_id,
             'Manual RSVP reminders queued on WhatsApp for ' . $done . ' guest' . ($done === 1 ? '' : 's')
@@ -90,7 +92,7 @@ $quitLink = 'rsvp_dashboard.php?booking_id=' . $booking_id . '&user_id=' . $user
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>WhatsApp Reminder Queue - Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">

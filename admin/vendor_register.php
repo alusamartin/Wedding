@@ -1,6 +1,15 @@
 <?php include 'include/init.php'; ?>
 <?php
-    if (!is_staff()) { redirect_to("../"); }
+    /*
+     * Two roles legitimately land here: a vendor with no business profile yet
+     * (vendor_home/vendor_profile/vendor_packages all redirect here, and
+     * login's vendor_redirect_target() sends an unregistered vendor straight
+     * here) and staff registering a vendor on someone's behalf. The guard used
+     * to test is_staff() alone — false for every vendor, since they are
+     * access_level 0 — which bounced the page's whole audience to the public
+     * homepage and made vendor self-registration impossible.
+     */
+    if (!is_staff() && !is_vendor()) { redirect_to("../"); }
 
     $user_id = $_SESSION['id'];
     $existing = Vendor::get_by_user($user_id);
@@ -13,13 +22,13 @@
             die();
         }
 
-        $business_name = clean($_POST['business_name']);
-        $category = clean($_POST['category']);
-        $description = clean($_POST['description']);
-        $phone = clean($_POST['phone']);
-        $email = clean($_POST['email']);
-        $location = clean($_POST['location']);
-        $county = clean($_POST['county']);
+        $business_name = clean($_POST['business_name'] ?? '');
+        $category = clean($_POST['category'] ?? '');
+        $description = clean($_POST['description'] ?? '');
+        $phone = clean($_POST['phone'] ?? '');
+        $email = clean($_POST['email'] ?? '');
+        $location = clean($_POST['location'] ?? '');
+        $county = clean($_POST['county'] ?? '');
 
         if (empty($business_name) || empty($category) || empty($phone)) {
             $session->message('<div class="alert alert-danger">Please fill in all required fields.</div>');
@@ -66,7 +75,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Register Vendor - Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">

@@ -1,4 +1,4 @@
-<?php include 'include/init.php'; ?>
+<?php include 'include/init.php'; if (staff_paywall_locked()) { redirect_to('subscription.php'); exit; } ?>
 
 <?php
     $booking_id = (int) ($_GET['booking_id'] ?? 0);
@@ -9,13 +9,13 @@
         redirect_to("../");
     }
     $booking = Booking::find_by_booking_id($booking_id);
-    if (!is_staff()) {
-        // Client sessions may only open their OWN booking. Checking the booking
-        // row itself (not just the user_id param) closes an IDOR where a client
-        // could pass their own user_id with someone else's booking_id.
-        if (!$booking || (int) $booking->user_id !== (int) $_SESSION['id'] || $user_id !== (int) $_SESSION['id']) {
-            redirect_to("client.php");
-        }
+    // Client sessions may only open their OWN booking. Checking the booking row
+    // itself (not just the user_id param) closes an IDOR where a client could
+    // pass their own user_id with someone else's booking_id; checking that the
+    // session IS a couple account closes the vendor case (a tblusers id can
+    // equal a tblaccounts id). Staff may preview any wedding.
+    if (!may_open_couple_page($booking, $user_id)) {
+        redirect_to("client.php");
     }
      $guest_count =  Guest::count_guest($booking_id);
      $account_details = Account_Details::find_by_user_id($user_id);
@@ -145,8 +145,8 @@
     <link href='calendar/fullcalendar.min.css' rel='stylesheet' />
     <link href='calendar/fullcalendar.print.min.css' rel='stylesheet' media='print' />
     <script src='calendar/moment.min.js'></script>
-    <script src='calendar/jquery.min.js'></script>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <script src='calendar/jquery-3.7.1.min.js'></script>
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/dashboard.css" rel="stylesheet">
     <link href="css/modern-admin.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css"
@@ -210,11 +210,11 @@
 
         .pay-nudge { background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px;
                      padding: 14px 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border-left: 4px solid #D97706; }
-        .pay-nudge--paid     { border-left-color: #059669; }
-        .pay-nudge--progress { border-left-color: #D97706; }
-        .pay-nudge--final    { border-left-color: #B45309; }
-        .pay-nudge--pending  { border-left-color: #9CA3AF; }
-        .pay-nudge--urgent   { border-left-color: #DC2626; }
+        .pay-nudge--paid     { border-left-color: var(--success); }
+        .pay-nudge--progress { border-left-color: var(--warning); }
+        .pay-nudge--final    { border-left-color: var(--warning); }
+        .pay-nudge--pending  { border-left-color: var(--stone-300); }
+        .pay-nudge--urgent   { border-left-color: var(--danger); }
         .pay-nudge--urgent .pn-fill { background: linear-gradient(90deg, #DC2626, #F97316); }
         .pay-nudge .pn-head { font-size: 13.5px; color: #334155; }
         .pay-nudge .pn-bar { height: 8px; background: #E2E8F0; border-radius: 999px; margin: 10px 0 8px; overflow: hidden; }
@@ -291,12 +291,15 @@
                 <a class="btn btn-sm btn-info mr-2 " style="font-size: 12px;" href="guest_list.php?<?= $links; ?>"><i class="mdi mdi-account-network mr-2"></i> Master List Guest</a>
                 <a class="btn btn-sm btn-success mr-2 " style="font-size: 12px;" href="budget.php?<?= $links; ?>"><i class="mdi mdi-cash-multiple mr-2"></i> Budget</a>
                 <a class="btn btn-sm btn-warning mr-2 " style="font-size: 12px;" href="task_calendar.php?<?= $links; ?>"><i class="mdi mdi-calendar-text mr-2"></i> Task Calendar</a>
+                <a class="btn btn-sm btn-outline-dark mr-2 " style="font-size: 12px;" href="vendor_coverage.php?<?= $links; ?>"><i class="mdi mdi-view-grid-plus mr-2"></i> Vendor Coverage</a>
+                <a class="btn btn-sm btn-outline-success mr-2 " style="font-size: 12px;" href="vendor_plan.php?<?= $links; ?>"><i class="mdi mdi-clipboard-text-outline mr-2"></i> Vendor Plan</a>
             <?php else: ?>
                 <a class="btn btn-sm btn-outline-info mr-2 " style="font-size: 12px;" href="client_guests.php?<?= $links; ?>"><i class="mdi mdi-account-network mr-2"></i> My Guests</a>
                 <a class="btn btn-sm btn-outline-primary mr-2 " style="font-size: 12px;" href="client_checklist.php?<?= $links; ?>"><i class="mdi mdi-checkbox-marked-outline mr-2"></i> Checklist</a>
                 <a class="btn btn-sm btn-outline-secondary mr-2 " style="font-size: 12px;" href="client_website.php?<?= $links; ?>"><i class="mdi mdi-web mr-2"></i> Wedding Page</a>
                 <a class="btn btn-sm btn-outline-success mr-2 " style="font-size: 12px;" href="client_budget.php?<?= $links; ?>"><i class="mdi mdi-cash-multiple mr-2"></i> My Payments</a>
                 <a class="btn btn-sm btn-outline-warning mr-2 " style="font-size: 12px;" href="client_vendors.php?<?= $links; ?>"><i class="mdi mdi-store mr-2"></i> Vendors</a>
+                <a class="btn btn-sm btn-outline-success mr-2 " style="font-size: 12px;" href="client_vendor_plan.php?<?= $links; ?>"><i class="mdi mdi-clipboard-text-outline mr-2"></i> Vendor Plan &amp; Total</a>
                 <a class="btn btn-sm btn-outline-secondary" style="font-size: 12px;" href="../contact.php"><i class="mdi mdi-email-outline mr-2"></i> Contact Planner</a>
             <?php endif; ?>
         </div>
@@ -449,10 +452,10 @@
 <!-- Bootstrap core JavaScript
 ================================================== -->
 <!-- Placed at the end of the document so the pages load faster -->
-<!-- <script src="js/jquery-3.2.1.slim.min.js"></script> -->
+<!-- <script src="js/jquery-3.7.1.slim.min.js"></script> -->
 <script src="js/popper.min.js"></script>
-<!-- <script src="../js/jquery.min.js"></script> -->
-<script src="js/bootstrap.min.js"></script>
+<!-- <script src="../js/jquery-3.7.1.min.js"></script> -->
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
 <script>
   
     $(document).ready(function() {

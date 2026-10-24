@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Everafter Planner — Couple · Planner · Vendor</title>
+<style>
+  :root{
+    --ink:#1C1917; --muted:#64748B; --line:#E2E8F0;
+    --green:#065F46; --green-soft:#ECFDF5; --green-line:#A7F3D0;
+    --amber:#B45309; --amber-soft:#FFFBEB; --amber-line:#FDE68A;
+    --blue:#1D4ED8;  --blue-soft:#EFF6FF;  --blue-line:#BFDBFE;
+    --rose:#9F1239;  --rose-soft:#FFF1F2;  --rose-line:#FECDD3;
+    --grey:#475569;  --grey-soft:#F8FAFC;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:32px 20px 56px;background:#F4F6F8;color:var(--ink);
+       font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.5}
+  .wrap{max-width:1080px;margin:0 auto}
+  h1{font-size:26px;margin:0 0 4px;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:13.5px;margin:0 0 28px}
+  h2{font-size:15px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
+     margin:38px 0 14px;font-weight:700}
+  .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px;
+        box-shadow:0 1px 3px rgba(15,23,42,.05)}
+
+  /* ---- part 1: role map ---- */
+  .roles{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .role{border-radius:14px;padding:16px 18px;border:1.5px solid}
+  .role h3{margin:0 0 2px;font-size:15.5px}
+  .role .who{font-size:12px;color:var(--muted);margin-bottom:8px}
+  .role ul{margin:0;padding-left:18px;font-size:13px}
+  .role li{margin:3px 0}
+  .couple{background:var(--green-soft);border-color:var(--green-line)}
+  .couple h3{color:var(--green)}
+  .planner{background:var(--blue-soft);border-color:var(--blue-line)}
+  .planner h3{color:var(--blue)}
+  .vendor{background:var(--amber-soft);border-color:var(--amber-line)}
+  .vendor h3{color:var(--amber)}
+  .system{background:var(--grey-soft);border-color:var(--line)}
+  .system h3{color:var(--grey)}
+
+  .arrows{margin:16px 0 0;font-family:Consolas,"Courier New",monospace;font-size:12.5px;
+          background:#fff;border:1px dashed var(--line);border-radius:14px;padding:16px 18px;
+          overflow-x:auto;white-space:pre;line-height:1.55;color:#334155}
+
+  /* ---- part 2: stage table ---- */
+  table{width:100%;border-collapse:separate;border-spacing:0;background:#fff;
+        border:1px solid var(--line);border-radius:16px;overflow:hidden;font-size:13px}
+  thead th{background:#F8FAFC;text-align:left;padding:11px 14px;font-size:11.5px;
+           text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
+           border-bottom:1px solid var(--line)}
+  tbody td{padding:13px 14px;vertical-align:top;border-bottom:1px solid var(--line)}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr:nth-child(even){background:#FCFDFE}
+  .stage{font-weight:700;font-size:13px;white-space:nowrap}
+  .num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;
+       border-radius:50%;background:var(--green);color:#fff;font-size:11.5px;font-weight:700;
+       margin-right:8px;vertical-align:middle}
+  .tag{display:inline-block;font-size:10.5px;padding:2px 7px;border-radius:999px;
+       border:1px solid;margin-left:6px;vertical-align:middle}
+  .tag.auto{color:var(--grey);border-color:var(--line);background:var(--grey-soft)}
+  .tag.money{color:var(--amber);border-color:var(--amber-line);background:var(--amber-soft)}
+
+  /* ---- part 3: money ---- */
+  .moneygrid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .moneygrid div{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+  .moneygrid h4{margin:0 0 4px;font-size:13px}
+  .moneygrid p{margin:0;font-size:12.5px;color:var(--muted)}
+  .moneygrid strong{color:var(--ink)}
+
+  .note{margin-top:26px;font-size:12.5px;color:var(--muted);text-align:center}
+  @media (max-width:760px){
+    .roles,.moneygrid{grid-template-columns:1fr}
+    table{font-size:12.5px}
+    thead{display:none}
+    tbody td{display:block;border-bottom:0;padding:6px 14px}
+    tbody tr{display:block;border-bottom:1px solid var(--line);padding:10px 0}
+    tbody td::before{content:attr(data-l);display:block;font-size:10.5px;text-transform:uppercase;
+                     letter-spacing:.07em;color:var(--muted);margin-bottom:2px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Your wedding on Everafter Planner</h1>
+  <p class="sub">Who does what — the couple, the planner, the vendors, and the parts the system handles on its own.</p>
+
+  <h2>1 · The four players</h2>
+  <div class="roles">
+    <div class="role couple">
+      <h3>👰‍♀️ Couple (you)</h3>
+      <div class="who">Owns the wedding · logs in to your own portal</div>
+      <ul>
+        <li>Registers the wedding (date, names, contact)</li>
+        <li>Sets the guest list, sees the budget, ticks the checklist</li>
+        <li>Browses the marketplace and sends enquiries to vendors</li>
+        <li>Shares the wedding website &amp; collects RSVPs</li>
+        <li>Sees every payment and receipt</li>
+      </ul>
+    </div>
+    <div class="role planner">
+      <h3>🧑‍💼 Wedding planner</h3>
+      <div class="who">Your account manager · assigned by the office per wedding</div>
+      <ul>
+        <li>Confirms your date, package and price band</li>
+        <li>Negotiates with vendors and <strong>confirms the deal</strong></li>
+        <li>Owns the calendar, budget, suppliers and reminders</li>
+        <li>Sends the SMS invitations and chases RSVPs</li>
+        <li>Is the only one who can sign off money out</li>
+      </ul>
+    </div>
+    <div class="role vendor">
+      <h3>🍽️ Vendor</h3>
+      <div class="who">Caterer, decor, photo, MC, cake, venue, transport…</div>
+      <ul>
+        <li>Lists a profile and priced packages (KSh)</li>
+        <li>Receives enquiries tied to your wedding</li>
+        <li>Accepts or declines, sees only its own deals</li>
+        <li>Delivers on the day, then is marked completed</li>
+        <li>Is rated by you afterwards</li>
+      </ul>
+    </div>
+    <div class="role system">
+      <h3>⚙️ The system (no human)</h3>
+      <div class="who">Does the chasing nobody wants to do</div>
+      <ul>
+        <li>Creates the booking, checklist and calendar on sign-up</li>
+        <li>Notifies the right person at every status change</li>
+        <li>Texts 60 / 30 / 7 days before the wedding about balances</li>
+        <li>Verifies M-Pesa payments automatically</li>
+        <li>Keeps every role's view scoped to their own wedding</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>2 · How they connect</h2>
+  <div class="arrows">      YOU (couple)                            PLANNER                        VENDOR
+   ┌──────────┐                        ┌──────────────┐                ┌────────────┐
+   │ booking  │──1 register ─────────▶ │ reviews the  │                │  profile + │
+   │ + portal │                        │ request      │                │  packages  │
+   └────┬─────┘                        └──────┬───────┘                └─────┬──────┘
+        │  2 date + package confirmed        │  3 assigns you to a planner  │
+        │ ◀──────────────────────────────────┘                             │
+        │                                                                  │
+        │  4 browse marketplace, send enquiry  ─────────────────────────▶  │
+        │                                                                  │
+        │                        5 enquiry lands on the planner's ledger ◀──┘
+        │                                                                  │
+        │  6 planner negotiates, sets amount, CONFIRMS the deal ──────────▶│
+        │ ◀──────────── 7 vendor accepts / declines ───────────────────────┘
+        │
+        │  8 payment recorded (cash / M-Pesa / bank) ─▶ budget & receipt
+        │  9 wedding day ─▶ 10 gallery + rating + real-wedding showcase
+
+   Every arrow's step is mirrored by a bell notification and, where money or
+   reminders are involved, an SMS — that is the only reason nothing gets lost.</div>
+
+  <h2>3 · The whole wedding, stage by stage</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:20%">Stage</th>
+        <th style="width:27%">You (couple)</th>
+        <th style="width:27%">Your planner</th>
+        <th style="width:26%">Vendor / system</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td data-l="Stage" class="stage"><span class="num">1</span>Register</td>
+        <td data-l="Couple">Fill the form on the home page: names, phone, email, password, preferred date.</td>
+        <td data-l="Planner">Nothing yet — the request sits in the office's <em>Pending</em> queue.</td>
+        <td data-l="Vendor / system">System checks the date is free, creates your account, your booking and a draft checklist.</td>
+      </tr>
+      <tr>
+        <td data-l="Stage" class="stage"><span class="num">2</span>Confirmed</td>
+        <td data-l="Couple">Get the "your date is confirmed" bell + SMS. Your portal tools unlock.</td>
+        <td data-l="Planner">Fills in bride/groom, package (KSh 50k–350k), venue, date, and assigns herself as your organizer.</td>
+        <td data-l="Vendor / system">System emails/SMSes you, seeds the Kenyan milestones (ruracio, banns, eCitizen, committee).</td>
+      </tr>
+      <tr>
+        <td data-l="Stage" class="stage"><span class="num">3</span>Plan</td>
+        <td data-l="Couple">Guest list, budget view, checklist ticks, installation plan, your wedding website.</td>
+        <td data-l="Planner">Owns the master calendar, budget, headcounts per function, venue sheet and supplier notes.</td>
+        <td data-l="Vendor / system">System sends RSVP nudges and deadline reminders; headcount checks flag a package too small.</td>
+      </tr>
+      <tr>
+        <td data-l="Stage" class="stage"><span class="num">4</span>Enquire</td>
+        <td data-l="Couple">Browse vendors by category + county, open a package, send a message.</td>
+        <td data-l="Planner">Gets a bell with your enquiry and the context — and starts negotiating.</td>
+        <td data-l="Vendor / system">Vendor gets an SMS heads-up + the enquiry in their ledger as <em>pending</em>.</td>
+      </tr>
+      <tr>
+        <td data-l="Stage" class="stage"><span class="num">5</span>Book <span class="tag money">money</span></td>
+        <td data-l="Couple">See the status live: pending → confirmed. No hidden side deals.</td>
+        <td data-l="Planner">Enters the agreed amount and <strong>confirms</strong> the deal; commission (10%, 15% premium) is recorded.</td>
+        <td data-l="Vendor / system">Vendor accepts or declines from its own dashboard; the couple and planner are notified either way.</td>
+      </tr>
+      <tr>
+        <td data-l="Stage" class="stage"><span class="num">6</span>Pay <span class="tag money">money</span></td>
+        <td data-l="Couple">Pay by cash, M-Pesa (code recorded) or bank; see budget vs actual and download receipts.</td>
+        <td data-l="Planner">Records/liquidates each payment, watches the balance and the deposit alerts.</td>
+        <td data-l="Vendor / system">System verifies the M-Pesa code against what Safaricom reported; texts reminders at 60/30/7 days.</td>
+      </tr>
+      <tr>
+        <td data-l="Stage" class="stage"><span class="num">7</span>The day</td>
+        <td data-l="Couple">Guests arrive via the website; RSVPs and the transport/accommodation list are already sorted.</td>
+        <td data-l="Planner">Runs the running order: ruracio, church, reception, send-off.</td>
+        <td data-l="Vendor / system">Vendors deliver the function their deal covers; deals move to <em>completed</em>.</td>
+      </tr>
+      <tr>
+        <td data-l="Stage" class="stage"><span class="num">8</span>After</td>
+        <td data-l="Couple">Rate each vendor, download the gallery, share your wedding page.</td>
+        <td data-l="Planner">Closes the budget, finalises photos, can publish the wedding as a showcase.</td>
+        <td data-l="Vendor / system">Ratings feed the marketplace; completed deals feed the public real-weddings blog.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>4 · Who pays whom</h2>
+  <div class="moneygrid">
+    <div>
+      <h4>You → planner</h4>
+      <p><strong>The package price</strong> (KSh 50k–350k) plus any add-ons such as the wedding website at <strong>KSh 1,999</strong>. Tracked payment by payment, with receipts.</p>
+    </div>
+    <div>
+      <h4>You → vendors</h4>
+      <p>Whatever you agree for each service. It is recorded on the deal so the budget, the balance and the receipts all agree.</p>
+    </div>
+    <div>
+      <h4>Vendor → platform</h4>
+      <p>A <strong>10%</strong> commission on each confirmed deal (<strong>15%</strong> for premium listings). You never pay this separately — it comes out of the vendor's side.</p>
+    </div>
+  </div>
+
+  <p class="note">One login door for everybody · each account sees only its own wedding, its own deals, its own money.</p>
+</div>
+</body>
+</html>

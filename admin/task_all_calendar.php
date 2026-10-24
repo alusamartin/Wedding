@@ -3,7 +3,7 @@
 <?php
 
     $booking = Booking::find_booking_all();
-    if (!is_staff()) { redirect_to("../");}
+    require_staff_subscribed();
     global $db;
     $bdd = $db->pdo();
     $sql = "SELECT id, title, location, start, end, color FROM events";
@@ -35,7 +35,7 @@
 <head>
    <meta charset='utf-8' />
 
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="css/dashboard.css">
     <link href="css/modern-admin.css" rel="stylesheet">
     <link href='calendar/all.css' rel='stylesheet'>
@@ -46,11 +46,11 @@
 
     <script src='calendar/moment.min.js'></script>
 
-    <script src='calendar/jquery.min.js'></script>
+    <script src='calendar/jquery-3.7.1.min.js'></script>
 
-<!--     <script src="js/jquery-3.2.1.slim.min.js"></script>-->
+<!--     <script src="js/jquery-3.7.1.slim.min.js"></script>-->
 
-    <script src="js/bootstrap.min.js"></script>
+    <script src="js/bootstrap.min.js?v=4.6.2"></script>
 
     <script src='calendar/fullcalendar.min.js'></script>
     <link rel="stylesheet" type="text/css"

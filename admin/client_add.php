@@ -4,7 +4,7 @@
     $count = 0;
     $error = '';
     $firstname = $lastname = $email = $wedding_date = $bride = $groom = $phone = $city = '';
-    if (!is_staff()) { redirect_to("../"); }
+    require_staff_subscribed();
 
     // $booking_id = $_GET['booking'];
     // $user_id = $_GET['user_id'];
@@ -116,11 +116,11 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
         <title>Add New Client Information - Administrator</title>
-        <link href="css/bootstrap.min.css" rel="stylesheet">        <link href="css/dashboard.css" rel="stylesheet">
+        <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">        <link href="css/dashboard.css" rel="stylesheet">
         <link href="css/modern-admin.css" rel="stylesheet">
         <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
         <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet">
-        <link rel="stylesheet" href="../css/bootstrap-datepicker.css">
+        <link rel="stylesheet" href="../css/bootstrap-datepicker.css?v=1.10.1">
         <style>
             body {
                 margin-bottom: 2%;
@@ -261,12 +261,12 @@
 <!-- Bootstrap core JavaScript
 ================================================== -->
 <!-- Placed at the end of the document so the pages load faster -->
-<script src="js/jquery-3.2.1.slim.min.js"></script>
+<script src="js/jquery-3.7.1.slim.min.js"></script>
 <script>window.jQuery || document.write('<script src="../../../../assets/js/vendor/jquery-slim.min.js"><\/script>')</script>
 <script src="js/popper.min.js"></script>
-<script src="../js/jquery.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
-<script src="../js/bootstrap-datepicker.min.js"></script>
+<script src="../js/jquery-3.7.1.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
+<script src="../js/bootstrap-datepicker.min.js?v=1.10.1"></script>
 <script>
   
     $(document).ready(function() {

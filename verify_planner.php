@@ -4,7 +4,7 @@
  * Planner email verification — the gate between signup and the trial.
  *
  *  GET ?token=... : consume the single-use token (SignupGuard::verify) —
- *                   stamp the account verified, START the 14-day trial
+ *                   stamp the account verified, START the free trial
  *                   (WPMS_TRIAL_DAYS), auto-sign-in and route to
  *                   subscription.php, the activation page.
  *  GET ?sent=1    : "check your inbox" panel shown after registering.
@@ -15,7 +15,7 @@
  *
  * An invalid/expired token lands here too, with the resend form to recover.
  */
-$prefillEmail = isset($_GET['email']) ? (string) $_GET['email'] : '';
+$prefillEmail = isset($_GET['email']) ? (string)($_GET['email'] ?? '') : '';
 $showResend   = false;
 
 // Signed-in and verified? Straight to the role home — the token is moot.
@@ -55,7 +55,7 @@ if (isset($_POST['resend_verification'])) {
 }
 
 // Token consumption: the actual activation.
-$token = isset($_GET['token']) ? trim((string) $_GET['token']) : '';
+$token = isset($_GET['token']) ? trim((string)($_GET['token'] ?? '')) : '';
 if ($token !== '') {
     $row = SignupGuard::verify($token);
     if ($row !== false) {
@@ -101,7 +101,7 @@ if ($token !== '') {
 } elseif (isset($_GET['sent'])) {
     $session->message("
         <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
-          <strong><i class='mdi mdi-email-newsletter'></i></strong>  Almost there! We've emailed you a verification link. Open it to start your 14-day free trial.
+          <strong><i class='mdi mdi-email-newsletter'></i></strong>  Almost there! We've emailed you a verification link. Open it to start your 6-month free trial.
           <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
             <span aria-hidden=\"true\">&times;</span>
           </button>
@@ -115,7 +115,7 @@ if ($token !== '') {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Verify Your Email — Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/modern.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
     <style>
@@ -181,7 +181,7 @@ if ($token !== '') {
     </p>
     <p class="mt-4 mb-0 text-center text-muted">&copy; <?php echo date('Y')?> Everafter Planner</p>
 </div>
-<script src="js/jquery.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
+<script src="js/jquery-3.7.1.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
 </body>
 </html>

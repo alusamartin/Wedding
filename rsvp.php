@@ -18,6 +18,9 @@ include 'admin/include/init.php';
 $token = (string) ($_GET['g'] ?? $_POST['token'] ?? '');
 $guest = $token !== '' ? Guest::find_by_rsvp_token($token) : null;
 $flash = '';
+// Toned, not always green: a refusal or a failed save is not good news, and a
+// success-coloured box saying "try again later" reads as a bug.
+$flashTone = 'success';
 
 if ($guest) {
     $booking = Booking::find_by_booking_id((int) $guest->booking_id);
@@ -27,9 +30,25 @@ if ($guest) {
 }
 
 if ($guest !== null && isset($_POST['rsvp'], $_POST['status'])) {
-    $status = (string) $_POST['status'];
+    $status = (string)($_POST['status'] ?? '');
     $note   = trim((string) ($_POST['note'] ?? ''));
-    if (Guest::record_rsvp($token, $status, $note)) {
+
+    /*
+     * The shared abuse guard (PublicGuard, v2.14). This is the one anonymous
+     * POST that becomes a bell AND an email for a planner, so a loop over one
+     * invitation link must not be a loop over their inbox: over the ceiling,
+     * nothing is written at all — no answer, no notification, no outbox row —
+     * and the guest is told to try again. The token is counted as its hash,
+     * never in the clear: a link is a capability, and a counter table is not
+     * somewhere to keep one.
+     */
+    $wait = PublicGuard::attempt(PublicGuard::RSVP, PublicGuard::subjectHash($token));
+
+    if ($wait > 0) {
+        $flashTone = 'warning';
+        $flash = 'That is a lot of answers from this connection. Please try again in '
+            . max(1, (int) ceil($wait / 60)) . ' minute(s) — or ask the couple to take your answer directly.';
+    } elseif (Guest::record_rsvp($token, $status, $note)) {
         // Refresh for the confirmation view.
         $guest = Guest::find_by_rsvp_token($token);
 
@@ -38,7 +57,7 @@ if ($guest !== null && isset($_POST['rsvp'], $_POST['status'])) {
         if ($plannerId > 0) {
             $answer  = ['yes' => 'confirmed', 'no' => 'declined', 'maybe' => 'answered maybe'][$status] ?? $status;
             $guestLabel = trim((string) $guest->fullname) !== '' ? $guest->fullname : 'A guest';
-            Notification::create(
+            Notification::create_for_staff(
                 $plannerId,
                 (int) $guest->booking_id,
                 $guestLabel . ' ' . $answer . ' their invitation (RSVP).',
@@ -53,6 +72,7 @@ if ($guest !== null && isset($_POST['rsvp'], $_POST['status'])) {
                 ? 'Sorry you can\'t make it — thank you for letting us know.'
                 : 'Thank you — we\'ve noted that you might attend.');
     } else {
+        $flashTone = 'warning';
         $flash = 'We couldn\'t save that answer. Please try again.';
     }
 }
@@ -66,7 +86,7 @@ $couple = trim(($booking->bride ?? '') . ' & ' . ($booking->groom ?? ''));
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= $guest ? 'RSVP — ' . htmlspecialchars($couple) : 'Invitation Link'; ?> - Everafter Planner</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -98,7 +118,7 @@ $couple = trim(($booking->bride ?? '') . ' & ' . ($booking->groom ?? ''));
                 </p>
             <?php else: ?>
                 <?php if ($flash !== ''): ?>
-                    <div class="alert alert-success" style="font-size:14px;"><?= htmlspecialchars($flash); ?></div>
+                    <div class="alert alert-<?= $flashTone; ?>" style="font-size:14px;"><?= htmlspecialchars($flash); ?></div>
                 <?php endif; ?>
 
                 <?php $answered = in_array($guest->rsvp_status, ['yes', 'no', 'maybe'], true); ?>

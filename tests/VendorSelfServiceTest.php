@@ -45,6 +45,8 @@ final class VendorSelfServiceTest extends TestCase
     private static array $probeBookingIds = [];
     /** @var int[] probe tblvendor_packages ids created by this run */
     private static array $probePackageIds = [];
+    /** @var int[] probe tblvendor_services ids created by this run */
+    private static array $probeServiceIds = [];
 
     public static function setUpBeforeClass(): void
     {
@@ -90,7 +92,11 @@ final class VendorSelfServiceTest extends TestCase
     public static function tearDownAfterClass(): void
     {
         if (self::$db !== null) {
-            foreach (['tblvendor_bookings' => self::$probeBookingIds, 'tblvendor_packages' => self::$probePackageIds] as $table => $ids) {
+            foreach ([
+                'tblvendor_bookings' => self::$probeBookingIds,
+                'tblvendor_packages' => self::$probePackageIds,
+                'tblvendor_services' => self::$probeServiceIds,
+            ] as $table => $ids) {
                 if ($ids !== []) {
                     try {
                         self::$db->execute("DELETE FROM {$table} WHERE id IN (" . implode(',', $ids) . ")");
@@ -102,6 +108,7 @@ final class VendorSelfServiceTest extends TestCase
         }
         self::$probeBookingIds = [];
         self::$probePackageIds = [];
+        self::$probeServiceIds = [];
 
         if (is_resource(self::$serverProc)) {
             proc_terminate(self::$serverProc);
@@ -264,6 +271,41 @@ final class VendorSelfServiceTest extends TestCase
         return $id;
     }
 
+    /**
+     * Can the page ACTION this booking — does it render the hidden
+     * booking_row_id field for it?
+     *
+     * The own-row assertion used to match the id as a whole number anywhere in
+     * the body. That is not an ownership check: the body is ~20 KB of HTML and
+     * an id can legitimately collide with a number from another table. It did:
+     * auto-increment ids are per table, so after a rebuild a probe booking id
+     * (203) equalled the id of a second vendor listing the account may switch
+     * to, which the listing switcher prints as an option value. The page was
+     * scoped correctly; the assertion was not.
+     *
+     * The precise signal is the form control a transition posts through: a row
+     * the page may change carries name="booking_row_id" value="<id>". A real
+     * leak still fails loudly, because a leaked row prints that field too.
+     */
+    private static function bodyNamesRowId(int $id, string $body): bool
+    {
+        return preg_match('/name="booking_row_id" value="' . $id . '"/', $body) === 1;
+    }
+
+    /** Seed an active probe SERVICE row for the given vendor (v2.27). */
+    private static function seedService(int $vendorId): int
+    {
+        global $db;
+        $db->execute(
+            "INSERT INTO tblvendor_services (vendor_id, title, pricing_unit, price, is_active)
+             VALUES (:vid, :title, 'flat', 7500.00, 1)",
+            [':vid' => $vendorId, ':title' => self::TAG . ' foreign service']
+        );
+        $id = (int) $db->lastInsertId();
+        self::$probeServiceIds[] = $id;
+        return $id;
+    }
+
     /** Seed an active probe package for the given vendor. */
     private static function seedPackage(int $vendorId): int
     {
@@ -302,7 +344,7 @@ final class VendorSelfServiceTest extends TestCase
         // gated pages never leak their HTML into the redirect response (the
         // pre-audit bug: the full admin page rode along in the 302 body).
         self::login(self::STAFF_EMAIL, self::STAFF_PASS);
-        foreach (['vendor_home.php', 'vendor_profile.php', 'vendor_packages.php'] as $page) {
+        foreach (['vendor_home.php', 'vendor_profile.php', 'vendor_packages.php', 'vendor_services.php'] as $page) {
             $res = self::http('GET', '/admin/' . $page);
             self::assertSame(302, $res['status'], "staff must bounce off {$page}");
             self::assertStringStartsWith('../', $res['location'] ?? '', "staff bounce from {$page} must stay on-site");
@@ -338,8 +380,8 @@ final class VendorSelfServiceTest extends TestCase
             self::assertStringNotContainsString($marker, $body, 'vendor home must not leak PHP issues');
         }
         self::assertStringContainsString('My Bookings', $body);
-        self::assertStringContainsString((string) $ownId, $body, 'the vendor must see their own probe booking');
-        self::assertStringNotContainsString((string) $foreignId, $body, 'the vendor must NOT see another vendor\'s booking');
+        self::assertTrue(self::bodyNamesRowId($ownId, $body), 'the vendor must see their own probe booking (id ' . $ownId . ')');
+        self::assertFalse(self::bodyNamesRowId($foreignId, $body), 'the vendor must NOT see another vendor\'s booking (id ' . $foreignId . ')');
     }
 
     #[Group('integration')]
@@ -437,6 +479,74 @@ final class VendorSelfServiceTest extends TestCase
         ]);
         $active = (int) $db->fetchValue('SELECT is_active FROM tblvendor_packages WHERE id = :id', [':id' => $ownNew]);
         self::assertSame(0, $active, 'toggle must hide the vendor\'s own package');
+    }
+
+    #[Group('integration')]
+    public function testVendorServicePageScopesEveryMutationToTheSignedInVendor(): void
+    {
+        $this->requireHttp();
+        global $db;
+        self::login(self::VENDOR_EMAIL, self::VENDOR_PASS);
+
+        $foreign = self::seedService(self::$vendorBId);
+        $token   = self::fetchCsrf('/admin/vendor_services.php');
+
+        // Another vendor's service cannot be deleted, edited or toggled through
+        // this page — the model re-proves vendor_id in each statement, so a
+        // posted id is just a number.
+        self::http('POST', '/admin/vendor_services.php', [
+            '_token' => $token, 'action' => 'delete', 'service_id' => (string) $foreign,
+        ]);
+        self::http('POST', '/admin/vendor_services.php', [
+            '_token' => $token, 'action' => 'edit', 'service_id' => (string) $foreign,
+            'title' => self::TAG . ' hijacked', 'price' => '1', 'unit' => 'flat',
+        ]);
+        self::http('POST', '/admin/vendor_services.php', [
+            '_token' => $token, 'action' => 'toggle', 'service_id' => (string) $foreign,
+        ]);
+        $foreignRow = $db->fetchOne('SELECT * FROM tblvendor_services WHERE id = :id', [':id' => $foreign]);
+        self::assertNotNull($foreignRow, 'a foreign delete must be refused');
+        self::assertSame(self::TAG . ' foreign service', (string) $foreignRow->title, 'a foreign edit must be refused');
+        self::assertEqualsWithDelta(7500.0, (float) $foreignRow->price, 0.01, 'a foreign edit changed no price');
+        self::assertSame(1, (int) $foreignRow->is_active, 'a foreign toggle must be refused');
+
+        // Own service: the custom form stores it with its unit, so the price is
+        // comparable, and the page prints the labelled line back.
+        self::http('POST', '/admin/vendor_services.php', [
+            '_token'   => $token,
+            'action'   => 'add_custom',
+            'title'    => self::TAG . ' page service',
+            'unit'     => 'per_guest',
+            'price'    => '1500',
+            'min_qty'  => '100',
+            'includes' => 'staff, serving dishes',
+            'tags'     => 'Rustic, halal',
+        ]);
+        $ownId = (int) $db->fetchValue(
+            'SELECT id FROM tblvendor_services WHERE vendor_id = :v AND title = :t ORDER BY id DESC LIMIT 1',
+            [':v' => self::$vendorAId, ':t' => self::TAG . ' page service']
+        );
+        self::assertGreaterThan(0, $ownId, 'own service add must succeed');
+        self::$probeServiceIds[] = $ownId;
+
+        $own = $db->fetchOne('SELECT * FROM tblvendor_services WHERE id = :id', [':id' => $ownId]);
+        self::assertSame('per_guest', (string) $own->pricing_unit);
+        self::assertNull($own->catalog_id, 'a custom service is not linked to the vocabulary');
+        self::assertSame('rustic,halal', (string) $own->tags, 'taste tags are normalised on the way in');
+
+        $body = self::http('GET', '/admin/vendor_services.php')['body'];
+        self::assertStringContainsString('My Services', $body);
+        self::assertStringContainsString('KSh 1,500 / guest (min 100 guests)', $body,
+            'the page must show the price with its unit — that is what makes it comparable');
+        self::assertStringNotContainsString(self::TAG . ' foreign service', $body,
+            'another vendor\'s service must not appear on this page');
+
+        // Own toggle works and is reported.
+        self::http('POST', '/admin/vendor_services.php', [
+            '_token' => $token, 'action' => 'toggle', 'service_id' => (string) $ownId,
+        ]);
+        self::assertSame(0, (int) $db->fetchValue('SELECT is_active FROM tblvendor_services WHERE id = :id', [':id' => $ownId]),
+            'toggle must hide the vendor\'s own service');
     }
 
     #[Group('integration')]

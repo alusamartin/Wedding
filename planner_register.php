@@ -6,7 +6,8 @@
  * A wedding planner fills name/email/phone/password and gets a staff account
  * that is UNVERIFIED: no trial, no sign-in yet. The account is activated by
  * proving the mailbox — the token link emailed here opens verify_planner.php,
- * which stamps the account verified, STARTS the 14-day trial (WPMS_TRIAL_DAYS)
+ * which stamps the account verified, STARTS the free trial (WPMS_TRIAL_DAYS,
+ * six months by default)
  * and signs the planner straight into subscription.php, the activation page.
  * No admin seeds the account; no unproven mailbox gets free entitlements.
  *
@@ -92,13 +93,13 @@ if ($session->is_signed_in() && isset($_SESSION['id'])) {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <meta name="description" content="Start your 14-day free Everafter Planner trial — the Kenyan wedding planning back office.">
+    <meta name="description" content="Start your 6-month free Everafter Planner trial — the Kenyan wedding planning back office.">
     <meta name="author" content="">
 
     <title>Planner Sign Up — Start Your Free Trial</title>
 
     <!-- Bootstrap core CSS -->
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min.css?v=4.6.2" rel="stylesheet">
     <link href="css/modern.css" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="https://cdn.materialdesignicons.com/2.1.19/css/materialdesignicons.min.css">
 
@@ -196,7 +197,7 @@ if ($session->is_signed_in() && isset($_SESSION['id'])) {
     <?= $session->csrf_field(); ?>
     <div class="text-center">
         <a href="index.php"><img class="mb-3" src="images/logo/everafter-crest.png" alt="Everafter Planner" style="height:88px;"></a>
-        <div class="trial-badge"><i class="mdi mdi-gift-outline"></i> 14 days free · every feature · no card needed</div>
+        <div class="trial-badge"><i class="mdi mdi-gift-outline"></i> 6 months free · every feature · no card needed</div>
         <h3 class="h3 mb-2 font-weight-normal">Planners — Start Here</h3>
         <p class="login-sub">Run your wedding business: clients, guests, budgets, vendors, M-Pesa.
             Your free trial opens the full back office — activate a plan when you're ready.</p>
@@ -227,13 +228,13 @@ if ($session->is_signed_in() && isset($_SESSION['id'])) {
         <i class="mdi mdi-rocket-launch-outline mr-1"></i> Start my free trial
     </button>
     <p class="mt-3 mb-0 text-center" style="font-size:12.5px; color:var(--muted);">
-        After 14 days, plans start at <strong>KSh 2,999/mo</strong> — cancel any time.
+        After 6 months, plans start at <strong>KSh 2,999/mo</strong> — cancel any time.
     </p>
     <p class="mt-3 mb-0 text-center" style="font-size:13px;">Already have an account? <a href="login.php">Sign in</a></p>
     <p class="mt-4 mb-0 text-center text-muted" style="font-size:13px;">Couple planning a wedding? <a href="index.php#sign-up">Register your wedding here</a></p>
     <p class="mt-4 mb-0 text-center text-muted">&copy; <?php echo date('Y')?> Everafter Planner</p>
 </form>
-<script src="js/jquery.min.js"></script>
-<script src="js/bootstrap.min.js"></script>
+<script src="js/jquery-3.7.1.min.js"></script>
+<script src="js/bootstrap.min.js?v=4.6.2"></script>
 </body>
 </html>
