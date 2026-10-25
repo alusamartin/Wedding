@@ -20,6 +20,17 @@
         die();
     }
 
+    /*
+     * Ownership on the row about to be edited — the door guard reads
+     * `booking_id`/`booking` from the request, this reads the RESOLVED row, so a
+     * hand-built POST cannot reach a wedding the form would have refused.
+     */
+    if (!booking_visible_to_session($booking_detail)) {
+        $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-lock"></i></strong> That wedding is not one of yours.</div>');
+        redirect_to("client.php");
+        die();
+    }
+
     $categories = Category::find_all();
     
     if (isset($_POST['submit'])) {

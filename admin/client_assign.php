@@ -21,6 +21,19 @@
         die();
     }
 
+    /*
+     * Ownership, restated on the row this page WRITES. `planner_scope_guard_request()`
+     * already refuses another planner's wedding at the door, but this form
+     * changes the wedding itself — bride, groom, date, and the assigned
+     * organizer — so the check sits next to the write as well as at the door.
+     * A gate that only guards the GET would still let a stale POST through.
+     */
+    if (!booking_visible_to_session($booking_detail)) {
+        $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-lock"></i></strong> That wedding is not one of yours.</div>');
+        redirect_to("client.php");
+        die();
+    }
+
     $categories = Category::find_all();
     
     if (isset($_POST['confirm'])) {

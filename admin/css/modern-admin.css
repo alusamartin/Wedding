@@ -52,14 +52,26 @@ a:hover{ color:var(--brand-900); }
    the one loud thing, and a KSh figure can run long. */
 .card-counter i{ display:none !important; }
 .card-counter .count-numbers{
-  right:18px !important; top:20px !important; font-weight:800 !important;
+  /*
+   * LEFT-anchored, next to the 3px accent. Both spans are absolutely positioned
+   * by the legacy inline block in dashboard.php (right:35px), which the restyle
+   * did not neutralise — so the number and its label were pinned to the tile's
+   * right edge and the left two-thirds of every tile sat empty, while a long
+   * label ran back toward the middle. `left` + `right:auto` is what puts the
+   * count where the eye starts, and keeps it consistent with the couple's
+   * .stat-card tiles.
+   */
+  left:18px !important; right:auto !important; top:20px !important; font-weight:800 !important;
   /* Long KSh figures share the tile with the watermark icon: the size scales
      with the viewport so "KSh 1,284,000.00" still fits a col-md-3 tile. */
   font-size:clamp(19px, 1.9vw, 26px) !important;
   letter-spacing:-.02em; color:var(--text-strong) !important;
 }
 .card-counter .count-name{
-  right:18px !important; top:64px !important; font-size:11px !important; letter-spacing:.08em;
+  /* Both edges, so the span has a real width for the ellipsis and a label that
+     outgrows a 250px tile shortens instead of spilling out of the card. */
+  left:18px !important; right:18px !important; top:66px !important; text-align:left; font-size:11px !important;
+  letter-spacing:.08em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   text-transform:uppercase; opacity:1 !important; color:var(--text-muted) !important;
 }
 

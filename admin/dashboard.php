@@ -2,7 +2,17 @@
 <?php
      require_staff_subscribed();
 
-    $user_count =  Account_Details::count_user();
+    /*
+     * "Total Customers" means the couples THIS planner can open, not every
+     * account on the platform — the tile sits beside a booking count that has
+     * been scoped since per-planner scoping shipped, and the two disagreeing
+     * was both a small information leak (a planner could read platform size)
+     * and a wrong number for the person reading it. Super admins and installs
+     * with scoping off keep the platform-wide count, exactly as before.
+     */
+    $user_count = planner_scope_planner_id() > 0
+        ? Booking::count_couples(planner_scope_sql('organizer_id'))
+        : Account_Details::count_user();
     // The weddings THIS planner is scoped to — a count of every booking on the
     // platform would tell a planner how much business their colleagues hold,
     // which is exactly what per-planner scoping exists to stop. Super admins

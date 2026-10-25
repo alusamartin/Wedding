@@ -184,7 +184,21 @@ function planner_scope_guard_request(): void
     if (planner_scope_planner_id() <= 0) {
         return; // not a scoped planner: nothing to narrow
     }
-    $requested = (int) ($_POST['booking_id'] ?? $_GET['booking_id'] ?? 0);
+    /*
+     * `booking` is the same wedding under a second name: client_assign.php and
+     * client_edit.php link to `?booking=N`, and while this guard read only
+     * `booking_id` those two pages were a hole in the rule it exists to apply.
+     * A scoped planner could open the assignment form for somebody else's
+     * wedding and POST it — and that form WRITES: it sets bride/groom/date and
+     * reassigns `organizer_id`, so the bypass did not just reveal the row, it
+     * could take the wedding over. Both names, GET and POST, now name the
+     * wedding the guard checks.
+     */
+    $requested = (int) (
+        $_POST['booking_id'] ?? $_GET['booking_id']
+        ?? $_POST['booking']    ?? $_GET['booking']
+        ?? 0
+    );
     if ($requested <= 0) {
         return; // a list page, or a page that takes no wedding
     }

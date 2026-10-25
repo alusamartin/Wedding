@@ -441,6 +441,38 @@ final class PlannerScopingHttpTest extends TestCase
         self::assertSame(200, $a['status'], 'A\'s own wedding is unaffected');
     }
 
+    /**
+     * `?booking=` is the same wedding under a second name.
+     *
+     * The door guard in init.php read only `booking_id`, while the two pages
+     * that own a wedding's identity — the assignment form and the client edit
+     * form — link to `?booking=N`. That left them as a hole in the rule: a
+     * scoped planner could OPEN another planner's assignment form and POST it,
+     * and the form reassigns organizer_id, which is a wedding takeover rather
+     * than a read. Both spellings are refused now, at the door and again
+     * against the resolved row.
+     */
+    public function testTheBookingAliasCannotReachAnotherPlannersWedding(): void
+    {
+        $this->requireScoping();
+
+        $userA = (int) self::$db->fetchValue(
+            'SELECT user_id FROM tblweddingbook WHERE booking_id = :b',
+            [':b' => self::$bookingA]
+        );
+        self::assertGreaterThan(0, $userA, 'the fixture booking has a couple account');
+
+        foreach (['client_assign.php', 'client_edit.php'] as $page) {
+            $refused = self::http('B', 'GET', '/admin/' . $page . '?booking=' . self::$bookingA . '&user_id=' . $userA);
+            self::assertSame(302, $refused['status'], $page . ' bounces B before its body runs');
+            self::assertStringContainsString('client.php', $refused['location'], $page . ' lands B on their own list');
+            self::assertSame('', trim($refused['body']), $page . ' renders none of the wedding');
+        }
+
+        $own = self::http('A', 'GET', '/admin/client_assign.php?booking=' . self::$bookingA . '&user_id=' . $userA);
+        self::assertSame(200, $own['status'], 'the owner still opens the assignment form by the same link');
+    }
+
     // ==================================================================
     // 3. The enquiries ledger
     // ==================================================================

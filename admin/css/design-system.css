@@ -21,6 +21,14 @@ body{ background:var(--admin-bg); }
   box-shadow:var(--shadow-soft);
   border-left:3px solid var(--brand-500);
   transition:transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+  /*
+   * Fill the column. Bootstrap's row is a flex line that stretches its columns,
+   * but the tile inside kept its natural height, so a row of tiles ended in a
+   * ragged staircase whenever one carried a second line of copy ("KSh 129,600
+   * over your budget", "Plan your vendors"). Height resolves to auto anywhere
+   * the tile is not in a flex column, so this only bites where it should.
+   */
+  height:100%;
 }
 .stat-card:hover{ transform:translateY(-2px); box-shadow:var(--shadow-lift); }
 .stat-card.success{ border-left-color:var(--success); }
@@ -55,11 +63,30 @@ body{ background:var(--admin-bg); }
 .booking-table{
   background:var(--surface-0);
   border-radius:var(--radius-card);
-  overflow:hidden;
+  /*
+   * Scroll, never clip. These tables run six to nine columns wide (935px on
+   * the couple's bookings) inside a phone-width column (~350px), so
+   * `overflow:hidden` hid the wedding date, progress, status and actions with
+   * no way to reach them. `auto` keeps the rounded corners and gives the list
+   * a horizontal swipe on narrow screens.
+   */
+  overflow-x:auto;
+  overflow-y:hidden;
   border:1px solid var(--stone-200);
   box-shadow:var(--shadow-soft);
+  -webkit-overflow-scrolling:touch;
 }
 .booking-table table{ font-size:12px; margin:0; }
+/*
+ * DataTables' bootstrap4 wrapper puts Bootstrap .row gutters INSIDE the panel:
+ * -15px side margins with 15px columns. The "Show N entries" control therefore
+ * hung 14px outside the card's left edge (and was clipped), and the last row
+ * pushed scrollWidth 15px past the panel, which now that the panel scrolls
+ * would show a permanent horizontal scrollbar on a wide screen. Keep the
+ * inset, drop the negative margins.
+ */
+.booking-table .dataTables_wrapper > .row{ margin-left:0; margin-right:0; padding:0 15px; }
+.booking-table .dataTables_wrapper > .row > div{ padding-left:0; padding-right:0; }
 .booking-table thead th{
   background:var(--stone-50);
   border-bottom:1px solid var(--stone-200);

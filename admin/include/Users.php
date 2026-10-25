@@ -37,7 +37,13 @@ class Users extends DB_Object
     public $size;
 
     public $upload_directory = "upload/users";
-    public $image_placeholder = "http://placehold.it/64x64&text=images";
+    /*
+     * A LOCAL placeholder, not http://placehold.it/64x64&text=images. That host
+     * has been dead for years and the URL was plain http, so every staff member
+     * without a photo rendered a broken image and a mixed-content warning on an
+     * HTTPS install. This file ships with the app.
+     */
+    public $image_placeholder = "upload/users/user-icn-p-min.png";
     public $errors = array();
 
     public $upload_errors_array = array(

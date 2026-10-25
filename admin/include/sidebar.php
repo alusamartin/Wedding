@@ -35,7 +35,19 @@ if (!$sidebar_user) {
         $shell_name = (string) ($sidebar_user->email ?? 'Account');
     }
     $shell_initial = strtoupper(substr($shell_name, 0, 1));
-    $shell_avatar  = (string) ($sidebar_user->profile_picture_picture() ?? '');
+    /*
+     * Only use the photo when the FILE is really there. The column can name a
+     * picture that was never uploaded (every seeded account does), and the old
+     * code pointed <img> at it regardless — a 404 and a broken avatar in the
+     * top bar on every staff page. Missing file = the initials circle, which is
+     * what a couple already gets. basename() keeps the path inside the upload
+     * directory whatever the column holds.
+     */
+    $shell_avatar  = '';
+    $shell_picture = basename((string) ($sidebar_user->profile_picture ?? ''));
+    if ($shell_picture !== '' && is_file(SITE_ROOT . DS . 'upload' . DS . 'users' . DS . $shell_picture)) {
+        $shell_avatar = 'upload/users/' . rawurlencode($shell_picture);
+    }
     $shell_profile = 'users_profile.php';
 }
 
@@ -177,7 +189,7 @@ if (!$sidebar_user) {
             'client_vendor_plan.php?booking_id=' . $coupleThreadBooking
                 . '&user_id=' . (int) ($_SESSION['id'] ?? 0),
             'clipboard-text-outline',
-            'Vendor plan &amp; total',
+            'Vendor plan & total',
         ];
     }
     $couple_links[] = ['api_tokens.php', 'robot', 'AI Assistant'];

@@ -459,16 +459,32 @@
 <script>
   
     $(document).ready(function() {
+        /*
+         * Count the guest total up — but never let the animation be the only
+         * thing that writes it. In a background tab (rAF throttled) or with
+         * animations off, `step` never runs and the panel would read "0 guests"
+         * for a wedding that has a list. The server-rendered number is restored
+         * by `finish`, on complete and on a timeout.
+         */
         $('.count').each(function () {
-            $(this).prop('Counter',0).animate({
-                Counter: $(this).text()
-            }, {
-                duration: 4000,
+            var $el = $(this);
+            var target = parseInt($el.text().replace(/,/g, ''), 10);
+            if (isNaN(target)) { return; }
+            var done = false;
+            var finish = function () {
+                if (done) { return; }
+                done = true;
+                $el.text(target.toLocaleString());
+            };
+            $({ Counter: 0 }).animate({ Counter: target }, {
+                duration: 1200,
                 easing: 'swing',
-                step: function (now) {
-                    $(this).text(Math.ceil(now));
-                }
+                step: function () {
+                    if (!done) { $el.text(Math.ceil(this.Counter).toLocaleString()); }
+                },
+                complete: finish
             });
+            window.setTimeout(finish, 1600);
         });
 
         // $('#wedding_date').datepicker();

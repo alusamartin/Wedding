@@ -322,7 +322,11 @@
         .booking-table {
             background: #fff;
             border-radius: 8px;
-            overflow: hidden;
+            /* Scroll (not clip) on a phone: see design-system.css — the table
+               is wider than the column and the hidden columns matter. */
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
             box-shadow: 0 2px 8px rgba(0,0,0,0.08);
         }
         .booking-table table {
@@ -795,7 +799,13 @@
 </div>
 </div>
 
-<script src="js/jquery-3.7.1.slim.min.js"></script>
+<!--
+    Full jQuery, not the slim build: the KPI counter at the bottom of this page
+    uses .animate(), which slim deliberately omits — it threw "$(...).animate is
+    not a function" on every visit and the counted-up totals never ran. The full
+    build is already shipped in this folder and used by other admin pages.
+-->
+<script src="js/jquery-3.7.1.min.js?v=3.7.1"></script>
 <script src="js/popper.min.js"></script>
 <script src="js/bootstrap.min.js?v=4.6.2"></script>
 <script src="js/jquery.dataTables.min.js?v=1.13.11"></script>
@@ -826,19 +836,37 @@
         // Tooltips
         $('[data-toggle="tooltip"]').tooltip();
 
-        // Animate stats on load
+        /*
+         * Count the KPI tiles up on load — but the NUMBER must never depend on
+         * the animation finishing. The old version wrote only from `step`, so a
+         * tab opened in the background (requestAnimationFrame throttled, the
+         * animation never ticks past its first frame) showed "0" for Pending,
+         * Confirmed and Guests while the table underneath said otherwise. The
+         * server-rendered value is the truth: `finish` puts it back, `complete`
+         * calls it, and a timeout calls it anyway in case the animation never
+         * runs at all.
+         */
         $('.stat-card .value').each(function() {
             var $this = $(this);
-            var value = parseInt($this.text().replace(/,/g, ''));
-            if (!isNaN(value)) {
-                $({ Counter: 0 }).animate({ Counter: value }, {
-                    duration: 1000,
-                    easing: 'swing',
-                    step: function() {
-                        $this.text(Math.ceil(this.Counter).toLocaleString());
-                    }
-                });
+            var value = parseInt($this.text().replace(/,/g, ''), 10);
+            if (isNaN(value)) {
+                return; // "KSh 245,000" — money is formatted, not counted
             }
+            var done = false;
+            var finish = function() {
+                if (done) { return; }
+                done = true;
+                $this.text(value.toLocaleString());
+            };
+            $({ Counter: 0 }).animate({ Counter: value }, {
+                duration: 1000,
+                easing: 'swing',
+                step: function() {
+                    if (!done) { $this.text(Math.ceil(this.Counter).toLocaleString()); }
+                },
+                complete: finish
+            });
+            window.setTimeout(finish, 1400);
         });
     });
 </script>

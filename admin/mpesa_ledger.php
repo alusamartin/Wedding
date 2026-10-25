@@ -24,6 +24,22 @@
             redirect_to('mpesa_ledger.php');
             die();
         }
+        /*
+         * Accepting a payment is the OPERATOR's decision, not a planner's.
+         * The ledger itself stays readable to every staff member (planners need
+         * to reconcile their own bookings), but "accept" writes verified_at on
+         * a callback nobody has claimed — and once verified, that M-Pesa code
+         * can be attached to ANY booking by whoever holds it. Without this
+         * gate a planner could take a stranger's unclaimed payment, accept it,
+         * then record it against their own couple's budget: money moved between
+         * tenants with two clicks. The page copy and the audit note already say
+         * "accepted manually by <admin>"; this makes the rule true.
+         */
+        if (!is_super_admin()) {
+            $session->message('<div class="alert alert-danger"><strong><i class="mdi mdi-lock"></i></strong> Only the platform owner can accept a payment. Ask an administrator to verify it.</div>');
+            redirect_to('mpesa_ledger.php');
+            die();
+        }
         $id = (int)($_POST['accept_id'] ?? 0);
         // Only a pending row can be accepted; verified_at is stamped with the
         // accepting admin's email in reject_reason='accepted-by ...' style notes.
@@ -174,7 +190,7 @@
                                 <span class="text-success"><?= htmlspecialchars($refLabel($r)); ?></span>
                             <?php elseif ($r->reject_reason !== null): ?>
                                 <span class="text-danger"><?= htmlspecialchars($r->reject_reason); ?></span>
-                            <?php else: ?>
+                            <?php elseif (is_super_admin()): ?>
                                 <form method="post" class="form-inline">
                                     <?= $session->csrf_field(); ?>
                                     <input type="hidden" name="accept_id" value="<?= (int) $r->id; ?>">
@@ -183,6 +199,9 @@
                                         <i class="mdi mdi-check"></i> Accept
                                     </button>
                                 </form>
+                            <?php else: ?>
+                                <span class="text-muted" style="font-size:11px;"
+                                      title="Unclaimed payments are verified by the platform owner">awaiting owner check</span>
                             <?php endif; ?>
                         </td>
                     </tr>
