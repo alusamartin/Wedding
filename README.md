@@ -480,6 +480,23 @@ payment that Safaricom reported to the public callback endpoint
 | `WPMS_MPESA_CALLBACK_PASS` | *(off)* | Optional shared secret; endpoint must be called as `mpesa_c2b.php?key=<secret>` |
 | `WPMS_MPESA_TOLERANCE` | `0.01` | Amount match tolerance (fraction; default 1%) |
 
+### SMS (Africa's Talking)
+
+Every text the platform sends — RSVP reminders, deadline chasers, booking
+confirmations, lockout alerts — goes through `SMS::send()` and is logged in
+`tblsms_logs`, which charges the planner's credits. Credentials are read from
+the environment, like the M-Pesa settings:
+
+| Env var | Default | Effect |
+|---|---|---|
+| `WPMS_AT_USERNAME` | `wpms` | Your Africa's Talking username |
+| `WPMS_AT_API_KEY` | *(off)* | API key. Empty = dev mode: the message is logged and the credit balance moves, but nothing is transmitted |
+| `WPMS_AT_REQUIRE` | *(off)* | `1` = a missing key is a hard failure instead of dev mode — for an install that must never pretend a text was sent |
+
+A send is only recorded as `sent` when Africa's Talking reports that recipient
+as `Success`, and the credit is refunded when it does not — a 201 for the
+request is not a delivery.
+
 ### M-Pesa STK push (pay without leaving the app)
 
 Beyond passively verifying typed codes, the app can **initiate** payments:
@@ -882,8 +899,9 @@ Each text is sent through `SMS::send_courtesy()` (best-effort: a missing
 number, empty credits or a gateway failure never blocks the action — the
 in-app bell notification always fires first and is the reliable channel),
 charged to the booking's **assigned planner** credits, and logged in
-`tblsms_logs` like every other send. Without an Africa's Talking API key
-the messages are logged as `sent` in dev mode without delivery.
+`tblsms_logs` like every other send. With no `WPMS_AT_API_KEY` set the
+messages are logged as `sent` in dev mode without delivery (see
+**SMS (Africa's Talking)** above).
 
 Planners can also remind guests **manually** from the RSVP dashboard: tick
 pending guests and either *Send SMS to selected* (staff-only, CSRF-protected

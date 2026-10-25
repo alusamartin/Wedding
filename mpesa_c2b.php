@@ -43,7 +43,7 @@ declare(strict_types=1);
 
 // Standalone endpoint: no session, no bootstrap that could emit output.
 require_once __DIR__ . '/admin/include/config.php';
-require_once __DIR__ . '/admin/include/Database.php';
+require_once __DIR__ . '/admin/include/database.php';
 require_once __DIR__ . '/admin/include/db_object.php';
 require_once __DIR__ . '/admin/include/Helper.php';
 require_once __DIR__ . '/admin/include/Monetization.php';
@@ -122,7 +122,23 @@ try {
     error_log('[WPMS][mpesa_c2b] log write failed (run migrations/v2.1_phase1_hardening.sql?): ' . $e->getMessage());
 }
 
-$result = MpesaC2B::ingest($data);
+/*
+ * ingest() validates and stores, and returns its refusals as data — but it is
+ * still PHP running against a live database, and an unexpected Throwable here
+ * (a fatal in a helper, a driver error outside its PDOException catch) would
+ * escape as HTTP 500. That breaks the one contract this endpoint has with
+ * Safaricom: any non-200 is a reason to retry, and a retry storm against a
+ * broken path is how a payment outage becomes a handset outage. The raw payload
+ * is already in tblmpesa_callback_log by this point, so accepting the
+ * notification and logging the failure leaves it reconcilable by hand.
+ */
+try {
+    $result = MpesaC2B::ingest($data);
+} catch (Throwable $e) {
+    error_log('[WPMS][mpesa_c2b] ingest threw (' . $e->getMessage() . ') for TransID '
+        . (string) ($data['TransID'] ?? '?') . ' — payload kept in tblmpesa_callback_log');
+    mpesa_reply(0, 'Accepted');
+}
 if (!$result['ok']) {
     error_log('[WPMS][mpesa_c2b] ingest rejected: ' . ($result['error'] ?? '?'));
     mpesa_reply(1, 'Rejected: ' . ($result['error'] ?? 'invalid payload'));

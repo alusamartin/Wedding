@@ -61,7 +61,7 @@ $to     = isset($opts['to']) ? trim((string) $opts['to']) : '';
 
 $root = dirname(__DIR__);
 require $root . '/admin/include/config.php';
-require_once $root . '/admin/include/Database.php';
+require_once $root . '/admin/include/database.php';
 require_once $root . '/admin/include/db_object.php';
 require_once $root . '/admin/include/Helper.php';
 require_once $root . '/admin/include/Monetization.php';
@@ -206,13 +206,15 @@ $summary = 'due ' . count($due) . ', sent ' . $sent . ', queued ' . $queued . ',
  * started — so a run that selected two owners and delivered none is the
  * 'nothing to show for its window' case, not a quiet success.
  *
- * A dry run is a deliberate no-op: it writes no mail row and must not be
- * reported as an idle job.
+ * A DRY RUN WRITES NO HEARTBEAT AT ALL. That is the rule JobWatch is built on
+ * ("a dry run is not a run") and the one its own tests assert for the other
+ * jobs: a heartbeat is a claim that the job ran, and `last_finished_at` is the
+ * only thing the watchdog ages. Recording NOOP here made a crontab left on
+ * `--dry-run` look permanently healthy — the exact silence the watcher exists
+ * to report.
  */
 $handed = $sent + $queued;
-if ($dryRun) {
-    JobWatch::record(JobWatch::BUSINESS_PULSE, JobWatch::NOOP, 0, 'dry run — nothing sent', 0, null, count($due));
-} else {
+if (!$dryRun) {
     JobWatch::record(
         JobWatch::BUSINESS_PULSE,
         $failed > 0 ? JobWatch::FAILED : JobWatch::OK,

@@ -122,7 +122,7 @@ final class CoupleBookingOwnershipTest extends TestCase
                 require_once __DIR__ . '/../admin/include/db_object.php';
             }
             if (!class_exists('Database', false)) {
-                require_once __DIR__ . '/../admin/include/Database.php';
+                require_once __DIR__ . '/../admin/include/database.php';
             }
             foreach (['Accounts', 'Account_Details', 'Booking', 'Events'] as $class) {
                 if (!class_exists($class, false)) {

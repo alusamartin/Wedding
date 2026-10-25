@@ -34,7 +34,7 @@ $cap    = max(1, (int) ($opts['max-attempts'] ?? 5));
 // Bootstrap exactly like the test harness does (config → Database → model).
 $root = dirname(__DIR__);
 require $root . '/admin/include/config.php';
-require_once $root . '/admin/include/Database.php';
+require_once $root . '/admin/include/database.php';
 require_once $root . '/admin/include/db_object.php';
 if (!class_exists('Notification', false)) {
     require_once $root . '/admin/include/Notification.php';

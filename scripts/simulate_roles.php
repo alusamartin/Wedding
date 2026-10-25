@@ -38,7 +38,7 @@ require __DIR__ . '/cli_guard.php'; // CLI-only: refuse to run over HTTP
  */
 
 require_once __DIR__ . '/../admin/include/config.php';
-require_once __DIR__ . '/../admin/include/Database.php';
+require_once __DIR__ . '/../admin/include/database.php';
 
 /*
  * PHP problem shapes only. A bare /warning/i match is useless — this codebase

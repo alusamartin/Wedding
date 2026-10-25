@@ -31,7 +31,7 @@ $unreadDays = max(1, (int) ($opts['unread-days'] ?? 180));
 // Bootstrap exactly like the other cron scripts (config → Database → model).
 $root = dirname(__DIR__);
 require $root . '/admin/include/config.php';
-require_once $root . '/admin/include/Database.php';
+require_once $root . '/admin/include/database.php';
 require_once $root . '/admin/include/db_object.php';
 if (!class_exists('Notification', false)) {
     require_once $root . '/admin/include/Notification.php';

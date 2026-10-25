@@ -65,7 +65,7 @@ $limit = max(1, (int) ($opts['limit'] ?? 100));
 // Bootstrap exactly like the other cron scripts (config → Database → models).
 $root = dirname(__DIR__);
 require $root . '/admin/include/config.php';
-require_once $root . '/admin/include/Database.php';
+require_once $root . '/admin/include/database.php';
 require_once $root . '/admin/include/db_object.php';
 require_once $root . '/admin/include/Helper.php';
 require_once $root . '/admin/include/VendorThread.php';
@@ -170,18 +170,24 @@ if (!$quiet) {
 
 /*
  * The heartbeat the watchdog judges: alerts ACTUALLY sent, against the backlog
- * this run's window held. A dry run stamps nothing, so it reports NOOP and
- * leaves the item count honest.
+ * this run's window held.
+ *
+ * A DRY RUN WRITES NO HEARTBEAT AT ALL — the same rule, and the same reason, as
+ * the empty-queue branch above: `last_finished_at` is the only thing the
+ * watchdog ages, so a NOOP row from a `--dry-run` crontab would make a planner
+ * whose conversations never escalate look like a healthy job forever.
  */
-JobWatch::record(
-    JobWatch::THREAD_ESCALATION,
-    $dry ? JobWatch::NOOP : ($failed > 0 && $alerted === 0 ? JobWatch::FAILED : JobWatch::OK),
-    $dry ? 0 : $alerted,
-    mb_substr($summary, 0, JobWatch::SUMMARY_MAX),
-    ($failed > 0 && $alerted === 0) ? 1 : 0,
-    null,
-    count($queue)
-);
+if (!$dry) {
+    JobWatch::record(
+        JobWatch::THREAD_ESCALATION,
+        ($failed > 0 && $alerted === 0) ? JobWatch::FAILED : JobWatch::OK,
+        $alerted,
+        mb_substr($summary, 0, JobWatch::SUMMARY_MAX),
+        ($failed > 0 && $alerted === 0) ? 1 : 0,
+        null,
+        count($queue)
+    );
+}
 
 flock($lock, LOCK_UN);
 fclose($lock);

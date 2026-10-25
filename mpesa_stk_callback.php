@@ -36,7 +36,7 @@ declare(strict_types=1);
 // Liquidation (deposit rows), Booking/Categories (deposit validation) and
 // Notification (bell + email receipts) — none load without init.php here.
 require_once __DIR__ . '/admin/include/config.php';
-require_once __DIR__ . '/admin/include/Database.php';
+require_once __DIR__ . '/admin/include/database.php';
 require_once __DIR__ . '/admin/include/db_object.php';
 require_once __DIR__ . '/admin/include/Helper.php';
 require_once __DIR__ . '/admin/include/Monetization.php';

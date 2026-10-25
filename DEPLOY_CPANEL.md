@@ -127,6 +127,18 @@ You now have: DB `cpaneluser_everafter`, user `cpaneluser_wpms`, password.
 > installs from `deploy/schema.sql` already carry the table. Idempotent:
 > re-running it is harmless.
 >
+> **Upgrading a database that was created before v3.2?** One more migration,
+> and this one is **recommended on any real install**:
+> `migrations/v3.2_hot_path_indexes.sql` adds three indexes — `tblguest`
+> (`booking_id`), `tblweddingbook` (`user_id`) and `tblweddingbook`
+> (`organizer_id`). Every guest-list page, the RSVP tools, the reminder jobs,
+> the couple's "my booking" lookup and per-planner scoping filter by exactly
+> these columns, and none of them was indexed. On the demo's few thousand rows
+> the difference is invisible; on a planner's book of thirty weddings it is the
+> difference between a page and a pause. Indexes only — no table, column or row
+> is touched, and nothing reads differently afterwards. Fresh installs from
+> `deploy/schema.sql` already carry them. Idempotent: re-running it is harmless.
+>
 > **Upgrading a database that was created before v3.1?** One more migration,
 > and this one is **optional**: `migrations/v3.1_vendor_service_tiers.sql` adds
 > `tblvendor_service_tiers` and `tblvendor_package_tiers` — the Silver / Gold /

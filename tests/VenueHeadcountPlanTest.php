@@ -138,7 +138,7 @@ final class VenueHeadcountPlanTest extends TestCase
         }
         try {
             if (!class_exists('Database', false)) {
-                require_once __DIR__ . '/../admin/include/Database.php';
+                require_once __DIR__ . '/../admin/include/database.php';
             }
             if (!class_exists('DB_Object', false)) {
                 require_once __DIR__ . '/../admin/include/db_object.php';

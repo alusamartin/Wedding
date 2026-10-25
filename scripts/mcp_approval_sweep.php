@@ -47,7 +47,7 @@ $limit = max(1, (int) ($opts['limit'] ?? 200));
 // Bootstrap exactly like the other cron scripts (config → Database → models).
 $root = dirname(__DIR__);
 require $root . '/admin/include/config.php';
-require_once $root . '/admin/include/Database.php';
+require_once $root . '/admin/include/database.php';
 require_once $root . '/admin/include/db_object.php';
 require_once $root . '/admin/include/ApiToken.php';
 require_once $root . '/admin/include/McpApprovals.php';
@@ -105,18 +105,25 @@ if (!$quiet) {
  * The heartbeat the watchdog judges: rows ACTUALLY closed, against the backlog
  * this run's window held. Zero closed with zero waiting is a quiet fortnight of
  * no Tier-3 requests; zero closed with a backlog is a sweep that stopped
- * sweeping — which is exactly what the operator is told about. A dry run closes
- * nothing, so it reports NOOP and leaves the heartbeat's item count honest.
+ * sweeping — which is exactly what the operator is told about.
+ *
+ * A DRY RUN WRITES NO HEARTBEAT AT ALL. A NOOP row would still stamp
+ * `last_finished_at`, and that timestamp is the only thing the watchdog ages —
+ * so a crontab left on `--dry-run` would report a healthy sweep forever while
+ * nothing was ever closed. (The "not installed" NOOP above is different: that
+ * really is a run, and the summary says what is missing.)
  */
-JobWatch::record(
-    JobWatch::MCP_APPROVALS,
-    $dry ? JobWatch::NOOP : JobWatch::OK,
-    $dry ? 0 : (int) $report['expired'],
-    mb_substr($summary, 0, JobWatch::SUMMARY_MAX),
-    0,
-    null,
-    (int) $report['open']
-);
+if (!$dry) {
+    JobWatch::record(
+        JobWatch::MCP_APPROVALS,
+        JobWatch::OK,
+        (int) $report['expired'],
+        mb_substr($summary, 0, JobWatch::SUMMARY_MAX),
+        0,
+        null,
+        (int) $report['open']
+    );
+}
 
 flock($lock, LOCK_UN);
 fclose($lock);

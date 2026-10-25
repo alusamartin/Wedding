@@ -18,6 +18,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
         $contact_error = 'Please provide your name and a message.';
     } elseif (!filter_var($contact_email, FILTER_VALIDATE_EMAIL)) {
         $contact_error = 'Please enter a valid email address so we can reply.';
+    } elseif (($contact_wait = PublicGuard::attempt(PublicGuard::CONTACT)) > 0) {
+        /*
+         * The shared abuse guard (v2.14), applied last so a typo in the form
+         * does not spend one of the visitor's five messages. Every other
+         * anonymous door in the product is behind this same counter; this form
+         * was the one that is not a database write and therefore slipped
+         * through — while still being the loudest: each submission runs mail()
+         * against the operator's own inbox and SMTP quota.
+         */
+        $contact_error = 'That is a few messages from this connection already. Please try again in '
+            . max(1, (int) ceil($contact_wait / 60)) . ' minute(s), or email us directly at '
+            . $contact_recipient . '.';
     } else {
         // Strip CR/LF to block header injection through name/email.
         $safe_name  = str_replace(["\r", "\n"], '', $contact_name);

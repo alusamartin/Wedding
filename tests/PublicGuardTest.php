@@ -296,6 +296,43 @@ final class PublicGuardTest extends TestCase
         self::assertSame(0, PublicGuard::attempt(PublicGuard::CALLBACK, $subject));
     }
 
+    /**
+     * The public contact form is a door too.
+     *
+     * It was the one anonymous POST the guard missed, because it writes no
+     * database row and the original survey of "places a visitor can make the
+     * database write" did not list it. It is still the loudest amplification in
+     * the product: every submission runs mail() against the operator's inbox
+     * and SMTP quota. Its subject is deliberately empty — every honest visitor
+     * is a different person, so the thing worth bounding is one connection.
+     */
+    public function testTheContactFormIsCountedPerCallerAndRefusedPastItsCeiling(): void
+    {
+        $this->requireDb();
+        $ip = PublicGuard::clientIp();
+        self::$db->execute(
+            'DELETE FROM tblpublic_throttle WHERE kind = :k AND ip = :i',
+            [':k' => PublicGuard::CONTACT, ':i' => $ip]
+        );
+
+        $cap = PublicGuard::LIMITS[PublicGuard::CONTACT]['ip'];
+        self::assertGreaterThan(0, $cap, 'the door has a ceiling at all');
+
+        for ($i = 1; $i <= $cap; $i++) {
+            self::assertSame(0, PublicGuard::attempt(PublicGuard::CONTACT), "message {$i} is inside the ceiling");
+        }
+        self::assertGreaterThan(0, PublicGuard::attempt(PublicGuard::CONTACT), 'the message past the ceiling is refused');
+        self::assertGreaterThan(0, PublicGuard::secondsRemaining(PublicGuard::CONTACT), 'and the refusal reports a wait');
+
+        // A full contact door must not take the RSVP or payment paths with it.
+        self::assertSame(0, PublicGuard::attempt(PublicGuard::RSVP, self::subject('contact-door')), 'one door never silences another');
+
+        self::$db->execute(
+            'DELETE FROM tblpublic_throttle WHERE kind = :k AND ip = :i',
+            [':k' => PublicGuard::CONTACT, ':i' => $ip]
+        );
+    }
+
     public function testAnRsvpTokenIsCountedAsItsHashAndNeverInTheClear(): void
     {
         $this->requireDb();

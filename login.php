@@ -29,8 +29,10 @@
 
      // Built-in brute-force throttle (tbllogin_throttle): too many failed
      // sign-ins for this (email, IP) pair — or from this IP overall — short-
-     // circuits the attempt BEFORE any credential lookup. Checked before the
-     // CSRF token too, so the lock can't be probed with tokenless requests.
+     // circuits the attempt BEFORE any credential lookup. It runs AFTER the
+     // CSRF check above, which is deliberate: a request with no token never
+     // reaches a credential lookup and is never counted as a failure, so the
+     // lock cannot be probed — or filled — by tokenless traffic.
      $throttle_wait = LoginThrottle::secondsRemaining($input_email);
      if ($throttle_wait > 0) {
          $mins = max(1, (int) ceil($throttle_wait / 60));

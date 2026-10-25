@@ -60,7 +60,7 @@ final class VendorPlanTest extends TestCase
         require_once __DIR__ . '/../admin/include/Helper.php';
         try {
             if (!class_exists('Database', false)) {
-                require_once __DIR__ . '/../admin/include/Database.php';
+                require_once __DIR__ . '/../admin/include/database.php';
             }
             if (!class_exists('DB_Object', false)) {
                 require_once __DIR__ . '/../admin/include/db_object.php';

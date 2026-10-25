@@ -155,13 +155,58 @@ class Session
         $current = $this->computeFingerprint();
         if (!hash_equals($_SESSION['_fingerprint'], $current)) {
             error_log('[WPMS][Session] Fingerprint mismatch — possible hijack. IP/UA changed. Forcing logout.');
+            $this->audit('fingerprint_mismatch');
             $this->forceLogout('Session invalidated for security. Please log in again.');
+        }
+    }
+
+    /**
+     * One row in tblsession_audits — who signed in, from where, on what.
+     *
+     * SYSTEM_OVERVIEW §7 promises this trail ("audit rows in tblsession_audits")
+     * and the table has existed since v2.1, but nothing ever wrote to it: the
+     * platform could tell you an account was breached only from the PHP error
+     * log, which rotates and is not queryable. Every security-relevant event in
+     * this class now lands here: login, logout, the 15-minute ID rotation, a
+     * privilege change, an inactivity timeout and a fingerprint mismatch (the
+     * hijack signal).
+     *
+     * FAIL SILENT, ALWAYS. This class is on the path of every request; a missing
+     * table (a fresh install that never ran v2.1, a test database) or a locked
+     * row must never turn a sign-in into a 500. The event still reaches the
+     * error log, which is the fallback the trail is meant to replace.
+     *
+     * user_id is NULL for an event that happens before authentication (the
+     * login row passes its own id explicitly, because $_SESSION is not bound
+     * yet at that moment).
+     */
+    private function audit(string $event, ?int $user_id = null): void
+    {
+        global $db;
+        if (!isset($db) || !is_object($db)) {
+            return;
+        }
+        try {
+            $db->execute(
+                'INSERT INTO tblsession_audits (user_id, event, ip_address, user_agent, fingerprint)
+                 VALUES (:uid, :event, :ip, :ua, :fp)',
+                [
+                    ':uid'   => $user_id ?? (isset($_SESSION['id']) ? (int) $_SESSION['id'] : null),
+                    ':event' => $event,
+                    ':ip'    => mb_substr((string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'), 0, 45),
+                    ':ua'    => mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 512),
+                    ':fp'    => (string) ($_SESSION['_fingerprint'] ?? $this->computeFingerprint()),
+                ]
+            );
+        } catch (Throwable $e) {
+            error_log('[WPMS][Session] audit row not written (' . $event . '): ' . $e->getMessage());
         }
     }
 
     private function enforceTimeout(): void
     {
         if (isset($_SESSION['_last_activity']) && (time() - (int) $_SESSION['_last_activity'] > self::INACTIVITY_TIMEOUT)) {
+            $this->audit('timeout');
             $this->forceLogout('Session expired due to inactivity. Please log in again.');
             return;
         }
@@ -176,6 +221,7 @@ class Session
         $last = (int) ($_SESSION['_last_regeneration'] ?? $_SESSION['_created'] ?? time());
         if (time() - $last >= self::REGENERATE_INTERVAL) {
             $this->regenerate();
+            $this->audit('regenerate');
         }
     }
 
@@ -276,6 +322,7 @@ class Session
         $_SESSION['privilege_level'] = $user->access_level ?? $user->designation ?? 'user';
 
         $this->signed_in = true;
+        $this->audit('login', (int) $userId);
     }
 
     /**
@@ -289,12 +336,20 @@ class Session
         if (isset($_SESSION['privilege_level'])) {
             // Re-read from DB if needed — caller should update session value
         }
+        $this->audit('privilege_change');
     }
 
     public function logout(): void
     {
         // Clear auth keys but keep flash message slot if set by forceLogout
         $flash = $_SESSION['message'] ?? null;
+        // Read the actor BEFORE the session is emptied — the logout row is about
+        // the account that is leaving, and after the unset there is nobody left
+        // to name.
+        $actor = isset($_SESSION['id']) ? (int) $_SESSION['id'] : null;
+        if ($actor !== null) {
+            $this->audit('logout', $actor);
+        }
 
         unset($_SESSION['id']);
         unset($_SESSION['user_email']);

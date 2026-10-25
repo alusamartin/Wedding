@@ -52,7 +52,7 @@ final class SignupFormValidationTest extends TestCase
         require_once __DIR__ . '/../admin/include/config.php';
         try {
             if (!class_exists('Database', false)) {
-                require_once __DIR__ . '/../admin/include/Database.php';
+                require_once __DIR__ . '/../admin/include/database.php';
             }
             global $db;
             $db = self::$db = new Database();

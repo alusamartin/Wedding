@@ -50,7 +50,7 @@ $limit   = max(1, (int) ($opts['limit'] ?? 100));
 
 $root = dirname(__DIR__);
 require $root . '/admin/include/config.php';
-require_once $root . '/admin/include/Database.php';
+require_once $root . '/admin/include/database.php';
 require_once $root . '/admin/include/db_object.php';
 require_once $root . '/admin/include/Helper.php';
 require_once $root . '/admin/include/Guest.php';

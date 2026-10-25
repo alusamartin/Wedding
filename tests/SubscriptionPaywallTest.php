@@ -148,7 +148,7 @@ final class SubscriptionPaywallTest extends TestCase
         require_once __DIR__ . '/../admin/include/config.php';
         try {
             if (!class_exists('Database', false)) {
-                require_once __DIR__ . '/../admin/include/Database.php';
+                require_once __DIR__ . '/../admin/include/database.php';
             }
             if (!class_exists('DB_Object', false)) {
                 require_once __DIR__ . '/../admin/include/db_object.php';
@@ -671,7 +671,7 @@ final class SubscriptionPaywallTest extends TestCase
         $snippet = "<?php\n"
             . "require '" . $root . "/vendor/autoload.php';\n"
             . "require '" . $root . "/admin/include/config.php';\n"
-            . "if (!class_exists('Database', false)) { require '" . $root . "/admin/include/Database.php'; }\n"
+            . "if (!class_exists('Database', false)) { require '" . $root . "/admin/include/database.php'; }\n"
             . "if (!class_exists('DB_Object', false)) { require '" . $root . "/admin/include/db_object.php'; }\n"
             . "global \$db; \$db = new Database();\n"
             . "\$out = [];\n"

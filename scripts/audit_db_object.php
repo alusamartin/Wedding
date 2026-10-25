@@ -13,7 +13,7 @@ require __DIR__ . '/cli_guard.php'; // CLI-only: refuse to run over HTTP
  */
 
 require __DIR__ . '/../admin/include/config.php';
-require_once __DIR__ . '/../admin/include/Database.php';
+require_once __DIR__ . '/../admin/include/database.php';
 require_once __DIR__ . '/../admin/include/db_object.php';
 
 global $db;

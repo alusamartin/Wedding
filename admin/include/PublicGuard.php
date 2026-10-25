@@ -111,6 +111,20 @@ class PublicGuard
     public const MCP = 'mcp';
 
     /**
+     * The public contact form (contact.php) — one POST sends one email.
+     *
+     * This door writes no database row, which is why it was the only anonymous
+     * POST the guard did not cover. It is still an amplifier: every submission
+     * runs mail(), so a loop over the form is a loop over the operator's inbox
+     * and a loop over the SMTP quota — and, because the message body is free
+     * text, a way to relay spam through the product's own domain. The subject is
+     * the caller alone ('' = the caller row): there is no per-target ceiling,
+     * because every honest visitor is a different person and the thing worth
+     * bounding is how much one connection can send.
+     */
+    public const CONTACT = 'contact';
+
+    /**
      * Every door the guard knows, with its ceilings and window. An unknown kind
      * is a programming error (there is no default ceiling that could be right
      * for an unspecified door), so attempt() throws rather than guessing.
@@ -122,6 +136,9 @@ class PublicGuard
         self::SITE     => ['subject' => 10,   'ip' => 120,  'window' => 3600],
         self::CALLBACK => ['subject' => 60,   'ip' => 480,  'window' => 3600],
         self::MCP      => ['subject' => 240,  'ip' => 1200, 'window' => 3600],
+        // Five messages an hour from one connection is generous for a person
+        // typing on a phone and meaningless for a script.
+        self::CONTACT  => ['subject' => 5,    'ip' => 5,    'window' => 3600],
     ];
 
     /** Rows untouched for this long are deleted by prune(). */

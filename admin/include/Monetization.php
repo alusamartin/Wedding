@@ -2071,36 +2071,89 @@ class SMS
     {
         global $db;
 
-        $credits = self::get_credits($user_id);
-        $cost    = self::calculate_cost($message);
+        $cost = (int) ceil(self::calculate_cost($message));
 
-        if ($credits < $cost) {
+        /*
+         * SPEND FIRST, ATOMICALLY. This used to read the balance, send, and then
+         * deduct — a check-then-act race two overlapping jobs can lose between
+         * the read and the write: both see one credit, both send, and the second
+         * deduction is clamped to zero by GREATEST(0, …), so a planner gets two
+         * paid messages for one credit. The conditional UPDATE is the check and
+         * the charge in one statement, so a balance cannot go negative and a
+         * message is only sent once its credit is actually held. A failed send
+         * refunds it below.
+         */
+        if (!self::spend_credits($user_id, $cost)) {
             return ['success' => false, 'error' => 'Insufficient SMS credits. Please purchase more.'];
         }
 
         $phone = self::format_phone($phone);
 
-        $sql  = "INSERT INTO tblsms_logs (user_id, booking_id, phone, message, cost, status) VALUES (:uid, :bid, :phone, :msg, :cost, 'pending')";
-        $stmt = $db->prepare($sql);
-        $stmt->execute([
-            ':uid'   => $user_id,
-            ':bid'   => $booking_id,
-            ':phone' => $phone,
-            ':msg'   => $message,
-            ':cost'  => $cost,
-        ]);
-        $sms_id = (int) $db->the_insert_id();
+        try {
+            $sql  = "INSERT INTO tblsms_logs (user_id, booking_id, phone, message, cost, status) VALUES (:uid, :bid, :phone, :msg, :cost, 'pending')";
+            $stmt = $db->prepare($sql);
+            $stmt->execute([
+                ':uid'   => $user_id,
+                ':bid'   => $booking_id,
+                ':phone' => $phone,
+                ':msg'   => $message,
+                ':cost'  => $cost,
+            ]);
+            $sms_id = (int) $db->the_insert_id();
 
-        $response = self::africastalking_send($phone, $message);
+            $response = self::africastalking_send($phone, $message);
 
-        if ($response['success']) {
-            $db->execute("UPDATE tblsms_logs SET status = 'sent', sent_at = NOW() WHERE id = :id", [':id' => $sms_id]);
-            self::deduct_credits($user_id, $cost);
-        } else {
-            $db->execute("UPDATE tblsms_logs SET status = 'failed' WHERE id = :id", [':id' => $sms_id]);
+            if (!empty($response['success'])) {
+                $db->execute("UPDATE tblsms_logs SET status = 'sent', sent_at = NOW() WHERE id = :id", [':id' => $sms_id]);
+            } else {
+                $db->execute("UPDATE tblsms_logs SET status = 'failed' WHERE id = :id", [':id' => $sms_id]);
+                self::refund_credits($user_id, $cost);
+            }
+
+            return $response;
+        } catch (Throwable $e) {
+            // Nothing was delivered, so the credit goes back: a failure in our
+            // own bookkeeping must never cost the planner a message they did
+            // not send.
+            self::refund_credits($user_id, $cost);
+            error_log('[WPMS][Sms] send failed before delivery: ' . $e->getMessage());
+            return ['success' => false, 'error' => 'The message could not be recorded or sent.']; 
         }
+    }
 
-        return $response;
+    /**
+     * Charge credits only if the balance covers them — the atomic half of
+     * send(). Returns false when the row is missing or short, so the caller
+     * sends nothing.
+     */
+    public static function spend_credits(mixed $user_id, int $credits): bool
+    {
+        if ($credits <= 0) {
+            return true; // nothing to charge (an empty/short message)
+        }
+        global $db;
+        $stmt = $db->prepare(
+            'UPDATE tblsms_credits
+                SET credits = credits - :c, total_used = total_used + :c2
+              WHERE user_id = :uid AND credits >= :c3'
+        );
+        $stmt->execute([':c' => $credits, ':c2' => $credits, ':c3' => $credits, ':uid' => (int) $user_id]);
+        return $stmt->rowCount() > 0;
+    }
+
+    /** Give back credits a failed send held (the counterpart of spend_credits()). */
+    public static function refund_credits(mixed $user_id, int $credits): bool
+    {
+        if ($credits <= 0) {
+            return true;
+        }
+        global $db;
+        $stmt = $db->prepare(
+            'UPDATE tblsms_credits
+                SET credits = credits + :c, total_used = GREATEST(0, total_used - :c2)
+              WHERE user_id = :uid'
+        );
+        return $stmt->execute([':c' => $credits, ':c2' => $credits, ':uid' => (int) $user_id]);
     }
 
     /**
@@ -2312,19 +2365,59 @@ class SMS
         return $stmt->execute([':c' => $c, ':c2' => $c, ':uid' => (int) $user_id]);
     }
 
+    /**
+     * One message through Africa's Talking.
+     *
+     * The credentials used to be two literals inside this method — `$username =
+     * 'wpms'` and `$api_key = ''` — so the key could never be set: every send
+     * took the "dev mode" branch, reported SUCCESS, and charged the planner a
+     * credit while nothing left the server. On a Kenyan install SMS is how
+     * reminders actually reach people, so that is the difference between a
+     * working product and a very convincing demo. Credentials now come from the
+     * environment, exactly like the M-Pesa settings, and an install with no key
+     * keeps the documented dev behaviour (logged, not sent, no charge — send()
+     * refunds because success is reported here only for a real delivery).
+     *
+     * The endpoint is /version1/messaging (plural). The old /version1/message
+     * path does not exist at Africa's Talking, so even a configured key would
+     * have failed on every message.
+     *
+     * @return array{success:bool, message?:string, error?:string, response?:mixed}
+     */
     public static function africastalking_send(string $phone, string $message): array
     {
-        $username = 'wpms';
-        $api_key  = '';
+        $username = trim((string) getenv('WPMS_AT_USERNAME'));
+        if ($username === '') {
+            $username = 'wpms';
+        }
+        $api_key = trim((string) getenv('WPMS_AT_API_KEY'));
 
-        if (empty($api_key)) {
-            return ['success' => true, 'message' => 'Dev mode: SMS logged but not sent'];
+        if ($api_key === '') {
+            /*
+             * DEV MODE, and it says so. `success` is true deliberately: the
+             * platform's own flows (a reminder run, an RSVP confirmation) must
+             * behave normally on a machine with no SMS account, and the demo's
+             * credit balance should move exactly as it would in production — so
+             * the message is reported delivered (and charged) while the log row
+             * is the only place it ever exists. WPMS_AT_REQUIRE=1 turns that
+             * into a hard failure for an install that must never pretend.
+             */
+            if (in_array(strtolower(trim((string) getenv('WPMS_AT_REQUIRE'))), ['1', 'true', 'yes', 'on'], true)) {
+                return ['success' => false, 'error' => 'WPMS_AT_API_KEY is not set and WPMS_AT_REQUIRE is on'];
+            }
+            return ['success' => true, 'message' => 'Dev mode: no WPMS_AT_API_KEY — SMS logged but not sent'];
         }
 
-        $ch = curl_init('https://api.africastalking.com/version1/message');
+        if (!function_exists('curl_init')) {
+            return ['success' => false, 'error' => 'cURL is not available on this server'];
+        }
+
+        $ch = curl_init('https://api.africastalking.com/version1/messaging');
         curl_setopt_array($ch, [
             CURLOPT_POST => true,
             CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 8,
+            CURLOPT_TIMEOUT => 20,
             CURLOPT_HTTPHEADER => [
                 'apiKey: ' . $api_key,
                 'Content-Type: application/x-www-form-urlencoded',
@@ -2337,12 +2430,35 @@ class SMS
             ])
         ]);
         $response  = curl_exec($ch);
-        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $http_code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
 
-        if ($http_code === 201) {
-            return ['success' => true, 'response' => json_decode((string) $response, true)];
+        if ($response === false) {
+            return ['success' => false, 'error' => 'Africa\'s Talking was unreachable: ' . $curlError];
         }
-        return ['success' => false, 'error' => $response];
+
+        $decoded = json_decode((string) $response, true);
+
+        if ($http_code < 200 || $http_code >= 300) {
+            return ['success' => false, 'error' => 'Africa\'s Talking HTTP ' . $http_code . ': ' . mb_substr((string) $response, 0, 300)];
+        }
+
+        /*
+         * A 2xx is not a delivery. AT answers 201 for the REQUEST and reports
+         * each recipient's own status inside SMSMessageData — a rejected number
+         * or a bad sender ID arrives as 201 with status "InvalidPhoneNumber" /
+         * "InvalidSenderId". Reading the body is the difference between a log
+         * that says "sent" and a message that arrived.
+         */
+        $recipients = $decoded['SMSMessageData']['Recipients'] ?? null;
+        if (is_array($recipients) && $recipients !== []) {
+            $status = (string) ($recipients[0]['status'] ?? '');
+            if ($status !== '' && strcasecmp($status, 'Success') !== 0) {
+                return ['success' => false, 'error' => 'Africa\'s Talking rejected the message: ' . $status, 'response' => $decoded];
+            }
+        }
+
+        return ['success' => true, 'response' => $decoded];
     }
 }
 

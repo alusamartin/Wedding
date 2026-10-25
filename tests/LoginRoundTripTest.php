@@ -25,7 +25,7 @@ final class LoginRoundTripTest extends TestCase
     {
         if (!class_exists('DB_Object', false)) {
             require_once __DIR__ . '/../admin/include/config.php';
-            require_once __DIR__ . '/../admin/include/Database.php';
+            require_once __DIR__ . '/../admin/include/database.php';
             require_once __DIR__ . '/../admin/include/db_object.php';
         }
         if (!class_exists('Accounts', false)) {

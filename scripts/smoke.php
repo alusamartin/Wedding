@@ -166,7 +166,7 @@ final class Smoke
         try {
             if (!class_exists('Database', false)) {
                 require_once __DIR__ . '/../admin/include/config.php';
-                require_once __DIR__ . '/../admin/include/Database.php';
+                require_once __DIR__ . '/../admin/include/database.php';
             }
             global $db;
             if (!isset($db) || !($db instanceof Database)) {
@@ -188,7 +188,7 @@ final class Smoke
         try {
             if (!class_exists('Database', false)) {
                 require_once __DIR__ . '/../admin/include/config.php';
-                require_once __DIR__ . '/../admin/include/Database.php';
+                require_once __DIR__ . '/../admin/include/database.php';
             }
             global $db;
             if (!isset($db) || !($db instanceof Database)) {

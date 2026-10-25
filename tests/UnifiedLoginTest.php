@@ -37,7 +37,7 @@ final class UnifiedLoginTest extends TestCase
         require_once __DIR__ . '/../admin/include/config.php';
         try {
             if (!class_exists('Database', false)) {
-                require_once __DIR__ . '/../admin/include/Database.php';
+                require_once __DIR__ . '/../admin/include/database.php';
             }
             global $db;
             $db = new Database();
@@ -122,6 +122,49 @@ final class UnifiedLoginTest extends TestCase
         self::assertSame('../login.php', $alias['location']);
     }
 
+    /**
+     * A successful sign-in leaves a row in tblsession_audits.
+     *
+     * SYSTEM_OVERVIEW §7 has promised this trail since v2.1 ("audit rows in
+     * tblsession_audits") and the table has existed all along, but nothing ever
+     * wrote to it — so "was this account accessed?" could only be answered from
+     * a rotating PHP error log. Session now records login, logout, the 15-minute
+     * rotation, privilege changes, inactivity timeouts and fingerprint
+     * mismatches; this asserts the login row against a real HTTP sign-in, which
+     * is the only way to prove the wiring rather than the method.
+     */
+    #[Group('integration')]
+    public function testSuccessfulLoginLeavesAnAuditRow(): void
+    {
+        $db = self::auditDb();
+        if ($db === null) {
+            self::markTestSkipped('tblsession_audits unavailable — audit-trail test skipped');
+        }
+
+        $accountId = (int) $db->fetchValue(
+            'SELECT user_id FROM tblaccounts WHERE user_email = :e LIMIT 1',
+            [':e' => self::CLIENT_EMAIL]
+        );
+        self::assertGreaterThan(0, $accountId, 'the seeded client must exist');
+        $highWater = (int) $db->fetchValue('SELECT COALESCE(MAX(id), 0) FROM tblsession_audits');
+
+        $res = self::login(self::CLIENT_EMAIL, self::CLIENT_PASS);
+        self::assertSame(302, $res['status']);
+
+        $row = $db->fetchOne(
+            'SELECT * FROM tblsession_audits WHERE id > :b AND event = :ev ORDER BY id ASC LIMIT 1',
+            [':b' => $highWater, ':ev' => 'login']
+        );
+        self::assertNotNull($row, 'a successful sign-in must write a login row');
+        self::assertSame($accountId, (int) $row->user_id, 'the row names the account that signed in');
+        self::assertSame('127.0.0.1', (string) $row->ip_address);
+        self::assertSame(64, strlen((string) $row->fingerprint), 'the fingerprint is the 64-hex HMAC');
+
+        // The trail is append-only in production; this suite leaves the table as
+        // it found it, like every other integration test here.
+        $db->execute('DELETE FROM tblsession_audits WHERE id > :b', [':b' => $highWater]);
+    }
+
     #[Group('integration')]
     public function testAdminLoginPageIsRetiredToPermanentRedirect(): void
     {
@@ -134,6 +177,23 @@ final class UnifiedLoginTest extends TestCase
     // ------------------------------------------------------------------
     // Harness
     // ------------------------------------------------------------------
+
+    /** The audit table's database, or null when v2.1 was never applied here. */
+    private static function auditDb(): ?Database
+    {
+        try {
+            global $db;
+            if (!isset($db) || !($db instanceof Database)) {
+                require_once __DIR__ . '/../admin/include/config.php';
+                require_once __DIR__ . '/../admin/include/database.php';
+                $db = new Database();
+            }
+            $db->fetchValue('SELECT COUNT(*) FROM tblsession_audits');
+            return $db;
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
 
     /** GET the unified login page for CSRF, then POST credentials. */
     private static function login(string $email, string $pass): array

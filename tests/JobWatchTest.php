@@ -50,6 +50,9 @@ final class JobWatchTest extends TestCase
     private const RENEWALS       = __DIR__ . '/../scripts/subscription_renewals.php';
     private const RSVP_REMINDERS = __DIR__ . '/../scripts/rsvp_reminders.php';
     private const DEADLINE_SMS   = __DIR__ . '/../scripts/deadline_sms.php';
+    private const BUSINESS_PULSE = __DIR__ . '/../scripts/business_pulse_email.php';
+    private const MCP_APPROVALS  = __DIR__ . '/../scripts/mcp_approval_sweep.php';
+    private const ESCALATION     = __DIR__ . '/../scripts/thread_escalation.php';
 
     /** Every leg of subscription_renewals switched off — the safe way to run it. */
     private const NO_LEGS = ['WPMS_SUB_AUTO_RENEW' => '0', 'WPMS_SUB_GRACE' => '0', 'WPMS_TRIAL_NURTURE' => '0'];
@@ -73,9 +76,24 @@ final class JobWatchTest extends TestCase
     {
         require_once __DIR__ . '/../admin/include/config.php';
         try {
-            foreach (['Database', 'DB_Object', 'Helper', 'Monetization', 'Notification', 'JobWatch'] as $class) {
+            /*
+             * Class name => file name, spelled out. Two of these files are not
+             * named after their class (`Database` lives in database.php,
+             * `DB_Object` in db_object.php), so building the path from the class
+             * name worked on Windows only and was a fatal on the Linux CI runner
+             * this suite is supposed to guard.
+             */
+            $requires = [
+                'Database'     => 'database.php',
+                'DB_Object'    => 'db_object.php',
+                'Helper'       => 'Helper.php',
+                'Monetization' => 'Monetization.php',
+                'Notification' => 'Notification.php',
+                'JobWatch'     => 'JobWatch.php',
+            ];
+            foreach ($requires as $class => $file) {
                 if (!class_exists($class, false)) {
-                    require_once __DIR__ . '/../admin/include/' . ($class === 'Monetization' ? 'Monetization' : $class) . '.php';
+                    require_once __DIR__ . '/../admin/include/' . $file;
                 }
             }
             global $db;
@@ -710,6 +728,42 @@ final class JobWatchTest extends TestCase
         self::assertNull(
             self::$db->fetchOne('SELECT * FROM tbljob_heartbeats WHERE job = :j', [':j' => JobWatch::DEADLINE_SMS]),
             'a dry run wrote nothing, so it must not make deadline_sms look alive'
+        );
+    }
+
+    /**
+     * The other three jobs obey the same rule: a dry run is not a run.
+     *
+     * These three used to record a NOOP heartbeat on `--dry-run`, which stamps
+     * `last_finished_at` — the only field the watchdog ages — so a crontab left
+     * on the flag reported a healthy job forever while nothing was ever sent,
+     * closed or escalated. That is precisely the silence JobWatch exists to
+     * report, so the invariant is asserted for every job that has the flag.
+     */
+    #[Group('integration')]
+    public function testEveryOtherJobLeavesNoHeartbeatOnADryRun(): void
+    {
+        $this->requireDb();
+
+        $pulse = self::runScript(self::BUSINESS_PULSE, '--quiet --dry-run', ['WPMS_MAIL_ENABLED' => '0']);
+        self::assertSame(0, $pulse['code'], $pulse['out']);
+        self::assertNull(
+            self::$db->fetchOne('SELECT * FROM tbljob_heartbeats WHERE job = :j', [':j' => JobWatch::BUSINESS_PULSE]),
+            'a dry business pulse sent nothing, so it must not make the job look alive'
+        );
+
+        $sweep = self::runScript(self::MCP_APPROVALS, '--quiet --dry-run --limit=5');
+        self::assertSame(0, $sweep['code'], $sweep['out']);
+        self::assertNull(
+            self::$db->fetchOne('SELECT * FROM tbljob_heartbeats WHERE job = :j', [':j' => JobWatch::MCP_APPROVALS]),
+            'a dry sweep closed nothing, so it must not make the job look alive'
+        );
+
+        $escalation = self::runScript(self::ESCALATION, '--quiet --dry-run --limit=5');
+        self::assertSame(0, $escalation['code'], $escalation['out']);
+        self::assertNull(
+            self::$db->fetchOne('SELECT * FROM tbljob_heartbeats WHERE job = :j', [':j' => JobWatch::THREAD_ESCALATION]),
+            'a dry escalation alerted nobody, so it must not make the job look alive'
         );
     }
 

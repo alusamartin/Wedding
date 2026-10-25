@@ -31,7 +31,7 @@ final class DatabasePDOTest extends TestCase
 
     public function testDatabaseFileUsesPDO(): void
     {
-        $src = (string) file_get_contents(__DIR__ . '/../admin/include/Database.php');
+        $src = (string) file_get_contents(__DIR__ . '/../admin/include/database.php');
         self::assertStringContainsString('PDO', $src);
         self::assertStringContainsString('ATTR_ERRMODE', $src);
         self::assertStringContainsString('ERRMODE_EXCEPTION', $src, 'PDO must be in exception mode');
@@ -43,7 +43,7 @@ final class DatabasePDOTest extends TestCase
 
     public function testDatabaseExposesPDOHandle(): void
     {
-        $src = (string) file_get_contents(__DIR__ . '/../admin/include/Database.php');
+        $src = (string) file_get_contents(__DIR__ . '/../admin/include/database.php');
         self::assertStringContainsString('function pdo(): PDO', $src);
         self::assertStringContainsString('function prepare(string $sql): PDOStatement', $src);
         self::assertStringContainsString('function execute(string $sql, array $params', $src);
@@ -53,7 +53,7 @@ final class DatabasePDOTest extends TestCase
 
     public function testDatabaseEscapeStringIsDeprecated(): void
     {
-        $src = (string) file_get_contents(__DIR__ . '/../admin/include/Database.php');
+        $src = (string) file_get_contents(__DIR__ . '/../admin/include/database.php');
         self::assertStringContainsString('function escape_string', $src);
         // Must trigger deprecation
         self::assertStringContainsString('E_USER_DEPRECATED', $src);
@@ -107,7 +107,7 @@ final class DatabasePDOTest extends TestCase
             self::markTestSkipped('config.php not found');
         }
         require_once __DIR__ . '/../admin/include/config.php';
-        require_once __DIR__ . '/../admin/include/Database.php';
+        require_once __DIR__ . '/../admin/include/database.php';
 
         global $db;
         if (!isset($db) || !($db instanceof Database)) {
@@ -132,7 +132,7 @@ final class DatabasePDOTest extends TestCase
     public function testPreparedStatementPreventsInjection(): void
     {
         require_once __DIR__ . '/../admin/include/config.php';
-        require_once __DIR__ . '/../admin/include/Database.php';
+        require_once __DIR__ . '/../admin/include/database.php';
         global $db;
         if (!isset($db)) $db = new Database();
 
