@@ -40,6 +40,9 @@ require __DIR__ . '/cli_guard.php'; // CLI-only: refuse to run over HTTP
  *        migrations/v2.29_vendor_plan.sql                   (which offering a vendor deal is for)
  *        migrations/v2.30_proposals.sql                     (the proposal lifecycle: brief, options, choice)
  *        migrations/v3.1_vendor_service_tiers.sql           (silver/gold/platinum pricing for services and packages)
+ *        migrations/v3.2_hot_path_indexes.sql               (indexes on the columns every page filters by)
+ *        migrations/v3.3_deal_answer_note.sql               (the reason a vendor gives when they decline)
+ *        migrations/v3.4_app_devices.sql                    (the Android app's device bearer tokens)
  *      NOT imported: migrations/v2.18_mcp_grants.sql — that file is an OPERATOR
  *      script (CREATE USER + 67 column/table GRANTs against a fixed `dbwedding`
  *      name), not schema. It has no place in a throwaway demo/test database.
@@ -104,6 +107,12 @@ $files = [
     __DIR__ . '/../migrations/v2.29_vendor_plan.sql',
     __DIR__ . '/../migrations/v2.30_proposals.sql',
     __DIR__ . '/../migrations/v3.1_vendor_service_tiers.sql',
+    __DIR__ . '/../migrations/v3.2_hot_path_indexes.sql',
+    __DIR__ . '/../migrations/v3.3_deal_answer_note.sql',
+    // Without this the seeded database has no tblapp_devices, and every app
+    // sign-in fails at the door while the website works perfectly — a gap that
+    // only shows up when someone points the phone at a fresh install.
+    __DIR__ . '/../migrations/v3.4_app_devices.sql',
 ];
 foreach ($files as $f) {
     if (!is_file($f)) {

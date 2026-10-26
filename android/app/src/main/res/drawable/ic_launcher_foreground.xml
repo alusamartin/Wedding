@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Two interlocking rings, drawn inside the adaptive-icon safe zone. -->
+    <path
+        android:pathData="M44,54 A13,13 0 1,1 44,80 A13,13 0 1,1 44,54 Z"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M64,54 A13,13 0 1,1 64,80 A13,13 0 1,1 64,54 Z"
+        android:strokeColor="#FFF5F2"
+        android:strokeWidth="4"
+        android:fillColor="#00000000" />
+</vector>

@@ -127,6 +127,33 @@ You now have: DB `cpaneluser_everafter`, user `cpaneluser_wpms`, password.
 > installs from `deploy/schema.sql` already carry the table. Idempotent:
 > re-running it is harmless.
 >
+> **Serving the Android app (the couple's companion app)?** One migration, and
+> this one is **required for that feature only**: `migrations/v3.4_app_devices.sql`
+> adds `tblapp_devices` — one row per phone that has signed in, holding the
+> SHA-256 of its bearer, when it expires, the last IP that used it and a
+> `revoked_at` column. The website never reads it, so skipping it changes
+> nothing on the site; the app's sign-in then fails with a server error and
+> `[WPMS][App]` in the PHP error log names the missing table, because an auth
+> layer with no table to check a token against must refuse rather than welcome.
+> **To revoke a lost phone:** set `revoked_at = NOW()` on its row in phpMyAdmin
+> (the `device_name` column is what the phone called itself). Nothing to
+> backfill, and it is idempotent: re-running it is harmless.
+>
+> **Upgrading a database that was created before v3.3?** One more migration, and
+> this one is **optional**: `migrations/v3.3_deal_answer_note.sql` adds
+> `tblvendor_bookings.status_note` (the short reason whoever drops a deal gives)
+> and `status_note_by` (who that was — vendor or planner). The vendor writes it
+> beside Accept/Decline on **My Bookings** and in a calendar day's drawer; the
+> planner writes it beside Confirm/Cancel on **Vendor Enquiries**. The couple
+> then read it on **My enquiries** and **Vendor Plan & Total**, the vendor reads
+> it on their own ledger, and the planner on theirs — attributed, instead of a
+> bare grey badge. Every surface guards the read, so without the migration the
+> platform behaves exactly as before and the forms simply store the reason in
+> the deal's `notes` trail alone. Nothing to backfill: a cancelled deal from
+> before it has no reason, which is the truth. Idempotent: re-running it is
+> harmless, and fresh installs from `deploy/schema.sql` already carry the
+> columns.
+>
 > **Upgrading a database that was created before v3.2?** One more migration,
 > and this one is **recommended on any real install**:
 > `migrations/v3.2_hot_path_indexes.sql` adds three indexes — `tblguest`
@@ -332,7 +359,16 @@ You now have: DB `cpaneluser_everafter`, user `cpaneluser_wpms`, password.
    both `WPMS_MPESA_*_CALLBACK_PASS` values, and `WPMS_CRON_BRIDGE_KEY`.
    Only `.env.example` (placeholders) belongs in version control.
 
-7. **Never upload `.git`, `.freebuff/` or any dot-file.** If you zip the
+7. **Never upload `android/`.** It is the couples' app project, not a page: its
+   `keystore/everafter-release.jks` is the release **signing key** and
+   `keystore.properties` beside it holds that key's password in plain text.
+   Whoever reads both can publish an update that every installed app will
+   accept as genuine. The key never leaves the machine that builds the APK.
+   `android/keystore.properties` and the whole `keystore/` folder are
+   gitignored, and the root `.htaccess` now refuses `/android/` as a second
+   layer — but not uploading it is the real protection.
+
+8. **Never upload `.git`, `.freebuff/` or any dot-file.** If you zip the
    working copy instead of the build artifact, `.git/` rides along — and a
    reachable `.git/` leaks the whole source tree plus every secret ever
    committed to it. `.freebuff/` (local agent logs) and
@@ -419,6 +455,20 @@ Other accounts, if you want them:
    **500** for it, it denies `AllowOverride Options` — replace that block with
    `IndexIgnore *` inside `<IfModule mod_autoindex.c>` (same effect, weaker
    override requirement).
+
+   **`/api/v1/` is the one directory that must stay reachable** — it is the
+   Android app's door, and it refuses every call without a valid bearer. Check
+   it answers JSON rather than a 403:
+
+   ```bash
+   curl -s https://yourdomain.co.ke/api/v1/?r=ping
+   # {"ok":true,"data":{"api":"1.0",...}}
+
+   # The money and message routes must refuse a stranger with 401 — not 404
+   # (route missing) and not 500 (a class or table the server cannot load):
+   curl -s -o /dev/null -w '%{http_code}\n' https://yourdomain.co.ke/api/v1/?r=budget    # 401
+   curl -s -o /dev/null -w '%{http_code}\n' https://yourdomain.co.ke/api/v1/?r=messages  # 401
+   ```
 
    Nothing under `scripts/` is a web page: those files back up the database,
    send SMS/email and prune rows. They are protected by two independent layers

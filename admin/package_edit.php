@@ -57,7 +57,7 @@
               // redirect_to("edit_user.php?id={$room->id}");
               $session->message("
                 <div class=\"alert alert-success alert-dismissible fade show\" role=\"alert\">
-                  <strong><i class='mdi mdi-check'></i></strong>The {$category->title} is successfully updated.
+                  <strong><i class='mdi mdi-check'></i></strong>The {$category->wedding_type} is successfully updated.
                   <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
                     <span aria-hidden=\"true\">&times;</span>
                   </button>

@@ -2159,7 +2159,12 @@ final class RoleSim
 
                     preg_match('#Weddings on watch</h6><div class="value">(\d+)<#', $driftPage, $listed);
                     $dash = $this->http('GET', '/admin/dashboard.php')['body'];
-                    preg_match('#headroom\.php.*?badge-warning[^>]*>(\d+)<#s', $dash, $badge);
+                    // The shell renders nav badges as `app-nav-badge is-warn`
+                    // (css/app-shell.css). The old `badge-warning` class was the
+                    // Bootstrap markup from before the app shell, so this probe
+                    // was asserting against a string no page emits any more —
+                    // it reported a missing badge on a dashboard that had one.
+                    preg_match('#headroom\.php.*?app-nav-badge[^>]*>\s*(\d+)\s*<#s', $dash, $badge);
                     $this->assert('P8', 'the navigation badge counts the same weddings the headroom page lists',
                         isset($listed[1], $badge[1]) && (int) $badge[1] === (int) $listed[1] && (int) $listed[1] >= 1,
                         'the page lists ' . ($listed[1] ?? '?') . ' and the badge shows '

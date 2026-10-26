@@ -1,0 +1,18 @@
+# Android build output and machine-specific files
+local.properties
+.gradle/
+build/
+app/build/
+*.iml
+.idea/
+captures/
+.cxx/
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# The release signing key and the file that holds its password. A signing key
+# in a repository is a signing key anybody can publish an update with.
+keystore/
+keystore.properties

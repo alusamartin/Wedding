@@ -23,6 +23,11 @@ final class VendorEnquiriesLedgerTest extends TestCase
 {
     private const STAFF_EMAIL = 'wafula@wpms.co.ke';
     private const STAFF_PASS  = 'Admin@2024!';
+    /** The couple on booking 200 and the vendor they enquired with. */
+    private const COUPLE_EMAIL = 'brian.wafula@gmail.com';
+    private const COUPLE_PASS  = 'Test@1234';
+    private const VENDOR_EMAIL = 'kamau@nyamachoma.co.ke';
+    private const VENDOR_PASS  = 'Vendor@2024';
 
     private static ?Database $db = null;
     private static ?string $base = null;
@@ -292,6 +297,21 @@ final class VendorEnquiriesLedgerTest extends TestCase
         $this->requireDb();
         self::login(self::STAFF_EMAIL, self::STAFF_PASS);
 
+        /*
+         * The Cancel button must carry `formnovalidate`. The amount box beside it
+         * is `required` for Confirm, and a general enquiry has no package price to
+         * prefill it with — so without the attribute the browser refuses the
+         * submit ("please fill out this field") and the planner cannot drop the
+         * enquiry at all. Found in a browser, which is the only place it shows:
+         * every POST below is hand-made and never runs form validation.
+         */
+        $page = self::http('GET', '/admin/vendor_enquiries.php')['body'];
+        self::assertMatchesRegularExpression(
+            '/value="cancelled"\s+formnovalidate/',
+            $page,
+            'the cancel button must skip the amount field\'s validation'
+        );
+
         $id = self::makeProbeEnquiry('Cancel-flow probe enquiry');
         $token = self::fetchCsrfToken();
 
@@ -307,6 +327,139 @@ final class VendorEnquiriesLedgerTest extends TestCase
         ]);
         self::assertSame(302, $bad['status']);
         self::assertSame('cancelled', self::enquiryStatus($id));
+    }
+
+    /**
+     * The planner's own reason for dropping a deal (v3.3b).
+     *
+     * The couple and the vendor read the same grey badge, and until now the
+     * planner's cancel was as silent as the vendor's used to be: "cancelled"
+     * with nobody's name and no sentence, which reads like the wedding is off.
+     * The reason is stored on the CURRENT answer, attributed to the planner, and
+     * read back by all three parties — and, the part that is easy to get wrong,
+     * CLEARED by any other answer, so "the couple moved the 26th" can never sit
+     * beside a deal that has since been reopened.
+     */
+    #[Group('integration')]
+    public function testPlannerCancelCarriesAReasonToCoupleAndVendor(): void
+    {
+        $this->requireDb();
+        self::login(self::STAFF_EMAIL, self::STAFF_PASS);
+
+        // Vendor 200 (Nyama Choma Masters) on booking 200: the couple's own
+        // wedding, so the reason has somewhere to be read from.
+        $id    = self::makeProbeEnquiry('Planner-reason probe enquiry', 200, 201);
+        $token = self::fetchCsrfToken();
+        $notifBefore = (int) self::$db->fetchValue('SELECT COALESCE(MAX(id), 0) FROM tblnotifications');
+        $smsBefore   = (int) self::$db->fetchValue('SELECT COALESCE(MAX(id), 0) FROM tblsms_logs');
+
+        $res = self::http('POST', '/admin/vendor_enquiries.php', [
+            'enquiry_id'  => $id,
+            'to'          => 'cancelled',
+            '_token'      => $token,
+            'status_note' => "Couple moved the wedding to the 26th <b>TBC</b>\n\nring me before booking anything",
+        ]);
+        self::assertSame(302, $res['status']);
+        // The bell and the courtesy SMS are this probe's, so teardown takes them.
+        foreach ((array) self::$db->fetchAll('SELECT id FROM tblnotifications WHERE id > :m', [':m' => $notifBefore]) as $n) {
+            self::$probeNotifIds[] = (int) $n->id;
+        }
+        foreach ((array) self::$db->fetchAll('SELECT id FROM tblsms_logs WHERE id > :m', [':m' => $smsBefore]) as $s) {
+            self::$probeSmsIds[] = (int) $s->id;
+        }
+
+        $row = self::fetchEnquiry($id);
+        self::assertSame('cancelled', (string) $row->status);
+        self::assertSame(
+            'Couple moved the wedding to the 26th TBC ring me before booking anything',
+            (string) $row->status_note,
+            'the reason is stored as one flat, tag-free line'
+        );
+        self::assertSame('planner', (string) $row->status_note_by, 'attributed to the planner, not the vendor');
+        self::assertStringContainsString('reason:', (string) $row->notes, 'the notes trail keeps what was said');
+
+        // The planner reads their own words back on the ledger they work from.
+        $ledger = self::http('GET', '/admin/vendor_enquiries.php?status=cancelled')['body'];
+        self::assertStringContainsString('You said', $ledger);
+        self::assertStringContainsString('Couple moved the wedding to the 26th', $ledger);
+        self::assertStringNotContainsString('<b>TBC</b>', $ledger, 'the reason is escaped, never markup');
+
+        // The couple reads it, attributed to the person who decided.
+        self::login(self::COUPLE_EMAIL, self::COUPLE_PASS);
+        $couple = self::http('GET', '/admin/client_vendors.php?booking_id=200&user_id=200')['body'];
+        self::assertStringContainsString('Your planner said:', $couple);
+        self::assertStringContainsString('Couple moved the wedding to the 26th', $couple);
+        self::assertStringNotContainsString('<b>TBC</b>', $couple);
+
+        // …and on the plan, where a dropped line otherwise just vanishes.
+        $plan = self::http('GET', '/admin/client_vendor_plan.php?booking_id=200&user_id=200')['body'];
+        self::assertStringContainsString('Your planner said', $plan);
+
+        // The vendor reads the same sentence on their own ledger, and knows it
+        // was not the couple's words nor their own.
+        self::login(self::VENDOR_EMAIL, self::VENDOR_PASS);
+        $vendor = self::http('GET', '/admin/vendor_home.php')['body'];
+        self::assertStringContainsString('Your planner said', $vendor);
+        self::assertStringContainsString('Couple moved the wedding to the 26th', $vendor);
+
+        /*
+         * The vendor is TOLD, not only able to find out: a cancellation is their
+         * diary changing, and the couple were belled and texted while the vendor
+         * heard nothing until they next opened My Bookings — too late to re-let a
+         * date they were holding. Bell + best-effort SMS, both carrying the
+         * planner's reason, because "we found another caterer" and "the date
+         * moved" are different answers to "shall I hold the day?".
+         */
+        $vendorUid = (int) self::$db->fetchValue('SELECT user_id FROM tblvendors WHERE id = 200');
+        self::assertGreaterThan(0, $vendorUid, 'the probe vendor needs a portal account for this to mean anything');
+        $bells = (array) self::$db->fetchAll(
+            'SELECT user_id, recipient_type, message, link FROM tblnotifications WHERE id > :m',
+            [':m' => $notifBefore]
+        );
+        $vendorBells = array_values(array_filter(
+            $bells,
+            static fn($n): bool => (string) $n->recipient_type === 'user' && (int) $n->user_id === $vendorUid
+        ));
+        self::assertCount(1, $vendorBells, 'exactly one bell to the vendor, not one per submit');
+        self::assertStringContainsString('cancelled by their planner', (string) $vendorBells[0]->message);
+        self::assertStringContainsString('26th', (string) $vendorBells[0]->message, 'the reason travels with the news');
+        self::assertStringContainsString('status=cancelled', (string) $vendorBells[0]->link, 'and opens the deals that are off');
+
+        $vendorSms = array_values(array_filter(
+            array_map(static fn($r): string => (string) $r->message, (array) self::$db->fetchAll(
+                'SELECT message FROM tblsms_logs WHERE id > :m', [':m' => $smsBefore]
+            )),
+            static fn(string $t): bool => str_contains($t, 'cancelled by their planner')
+        ));
+        self::assertCount(1, $vendorSms, 'one courtesy SMS to the vendor, same as the couple get');
+        self::assertStringContainsString('26th', $vendorSms[0]);
+
+        // A second press of Cancel on an already-cancelled deal tells nobody
+        // again: the bell is a fact about a change, not a receipt per click.
+        self::login(self::STAFF_EMAIL, self::STAFF_PASS);
+        $token = self::fetchCsrfToken();
+        self::http('POST', '/admin/vendor_enquiries.php', [
+            'enquiry_id' => $id, 'to' => 'cancelled', '_token' => $token, 'status_note' => 'again',
+        ]);
+        self::assertSame(
+            1,
+            (int) self::$db->fetchValue(
+                "SELECT COUNT(*) FROM tblnotifications WHERE id > :m AND recipient_type = 'user' AND user_id = :u",
+                [':m' => $notifBefore, ':u' => $vendorUid]
+            ),
+            're-cancelling a cancelled deal must not bell the vendor twice'
+        );
+
+        // Reopening clears it — the column is the CURRENT answer, and the trail
+        // above keeps the sentence for good.
+        self::http('POST', '/admin/vendor_enquiries.php', [
+            'enquiry_id' => $id, 'to' => 'pending', '_token' => $token,
+            'status_note' => 'should be ignored on a reopen',
+        ]);
+        $row = self::fetchEnquiry($id);
+        self::assertSame('pending', (string) $row->status);
+        self::assertNull($row->status_note, 'a reopen carries no reason, so the old one goes');
+        self::assertNull($row->status_note_by, 'and the attribution goes with it');
     }
 
     /**
@@ -608,13 +761,17 @@ final class VendorEnquiriesLedgerTest extends TestCase
         }
     }
 
-    /** Insert a pending probe enquiry on booking 200 / vendor 203; tracks cleanup. */
-    private static function makeProbeEnquiry(string $note): int
+    /**
+     * Insert a pending probe enquiry on booking 200; tracks cleanup. Vendor and
+     * package default to Safari Transport (203), whose package is the probe's own.
+     */
+    private static function makeProbeEnquiry(string $note, int $vendorId = 203, ?int $packageId = null): int
     {
+        $packageId ??= $vendorId;
         self::$db->execute(
             "INSERT INTO tblvendor_bookings (vendor_id, booking_id, package_id, event_date, amount, commission, status, notes)
-             VALUES (203, 200, 203, '2026-12-19', 0, 0, 'pending', :note)",
-            [':note' => $note]
+             VALUES (:v, 200, :p, '2026-12-19', 0, 0, 'pending', :note)",
+            [':v' => $vendorId, ':p' => $packageId, ':note' => $note]
         );
         $id = (int) self::$db->fetchValue('SELECT MAX(id) FROM tblvendor_bookings');
         self::$probeIds[] = $id;

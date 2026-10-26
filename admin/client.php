@@ -103,6 +103,27 @@
     }
 
     /*
+     * The hero's subject. A couple opens this page to see their own wedding,
+     * so the greeting is their names and the distance to the day — not the
+     * word "Bookings". A planner or admin keeps a management header, because
+     * this page is a list of weddings for them, not one wedding.
+     */
+    $hero_booking    = null;
+    $hero_days       = null;
+    $hero_date_label = '';
+    if (!$is_staff_view) {
+        $hero_booking = $confirmed[0] ?? ($pending[0] ?? ($all_bookings[0] ?? null));
+        if ($hero_booking !== null && !empty($hero_booking->wedding_date)
+            && strtotime((string) $hero_booking->wedding_date) !== false) {
+            $hero_days = (int) floor(
+                (strtotime((string) $hero_booking->wedding_date) - strtotime(date('Y-m-d'))) / 86400
+            );
+            $hero_date_label = format_date_kd((string) $hero_booking->wedding_date);
+        }
+    }
+    $vendor_over = $vendor_caps > 0 && $vendor_total > $vendor_caps;
+
+    /*
      * THE PLANNING TILE (couple's own view only).
      *
      * "Am I on track?" is what the checklist answers one item at a time; until
@@ -118,7 +139,7 @@
     $plan_progress  = null;
     $checklist_link = '';
     if (!$is_staff_view) {
-        $plan_booking = $confirmed[0] ?? ($pending[0] ?? ($all_bookings[0] ?? null));
+        $plan_booking = $hero_booking;
         if ($plan_booking !== null) {
             $plan_progress = Checklist::progress(
                 (int) $plan_booking->booking_id,
@@ -431,6 +452,62 @@
             gap: 5px;
             flex-wrap: wrap;
         }
+        /*
+         * A COUPLE'S OWN VIEW — one card per wedding.
+         *
+         * A couple has one wedding, so the staff table underneath (Client
+         * column showing themselves, "Show 10 entries", a status filter for
+         * statuses they cannot change, a search box for couples they do not
+         * have) answered questions they never ask. These cards are the same
+         * facts in the order a couple asks them: when is the day, what is
+         * paid, how much is booked, what is left to do — and one obvious way
+         * into each.
+         */
+        .wedding-card {
+            background: var(--surface-0); border: 1px solid var(--stone-200);
+            border-radius: var(--radius-card); box-shadow: var(--shadow-soft);
+            margin-bottom: 16px; overflow: hidden;
+        }
+        .wedding-card .wc-head { display: flex; gap: 16px; align-items: flex-start; padding: 18px 20px; }
+        .wc-date {
+            width: 56px; flex: 0 0 56px; text-align: center; padding: 7px 0;
+            background: var(--brand-50); border: 1px solid var(--brand-100); border-radius: 12px;
+        }
+        .wc-date .d { display: block; font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+            font-size: 20px; font-weight: 700; line-height: 1; color: var(--brand-900); }
+        .wc-date .m { display: block; margin-top: 3px; font-size: 9.5px; font-weight: 700;
+            letter-spacing: .1em; text-transform: uppercase; color: var(--brand-700); }
+        .wc-id { min-width: 0; flex: 1 1 auto; }
+        .wc-id h3 { margin: 0 0 4px; font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+            font-size: 17px; font-weight: 700; letter-spacing: -.02em; color: var(--text-strong); }
+        .wc-id p { margin: 0; font-size: 12.5px; color: var(--text-muted); }
+        .wc-pill { display: inline-block; margin-top: 8px; font-size: 10px; font-weight: 700;
+            letter-spacing: .06em; text-transform: uppercase; padding: 3px 9px;
+            border-radius: var(--radius-pill); }
+        .wc-pill.is-ok { background: var(--success-tint); color: var(--success-ink); }
+        .wc-pill.is-wait { background: var(--warning-tint); color: var(--warning-ink); }
+        .wc-meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 16px; padding: 0 20px 18px; }
+        .wc-label { display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+            margin-bottom: 6px; font-size: 10.5px; font-weight: 700; letter-spacing: .07em;
+            text-transform: uppercase; color: var(--text-muted); }
+        .wc-label strong { font-size: 12px; font-weight: 600; letter-spacing: 0;
+            text-transform: none; color: var(--text-body); }
+        .wc-bar { height: 6px; border-radius: var(--radius-pill); overflow: hidden;
+            background: var(--stone-100); }
+        .wc-bar span { display: block; height: 100%; border-radius: var(--radius-pill);
+            background: var(--brand-500); }
+        .wc-bar span.is-ok { background: var(--success); }
+        .wc-bar span.is-tight { background: var(--danger); }
+        .wc-links { display: flex; gap: 8px; flex-wrap: wrap; padding: 13px 20px;
+            border-top: 1px solid var(--stone-100); background: var(--stone-50); }
+        .wc-links .btn { font-size: 12px; font-weight: 600; padding: 6px 12px;
+            border-radius: var(--radius-control); }
+        @media (max-width: 575.98px) {
+            .wedding-card .wc-head { padding: 16px; }
+            .wc-meters { padding: 0 16px 16px; }
+            .wc-links { padding: 12px 16px; }
+        }
         @media (max-width: 768px) {
             .stat-card { margin-bottom: 10px; }
             .btn-group-sm .btn { padding: 3px 6px; }
@@ -450,20 +527,125 @@
         </div>
     <?php endif; ?>
 
-    <!-- Page Header -->
-    <div class="d-flex justify-content-between align-items-center mb-4" style="border-bottom: 2px solid #E2E8F0; padding-bottom: 15px;">
-        <div>
-            <h4 class="mb-1"><i class="mdi mdi-calendar-multiple-check" style="color:#065F46"></i> Wedding Bookings</h4>
-            <p class="text-muted mb-0" style="font-size: 13px;"><?= $is_staff_view ? 'Manage all wedding bookings, track progress, and access planning tools' : 'Track your wedding booking and planning progress'; ?></p>
-        </div>
-        <div class="table-actions">
-            <?php if ($is_staff_view) : ?>
-                <a href="client_add.php" class="btn btn-success"><i class="mdi mdi-plus"></i> New Booking</a>
-                <button class="btn btn-outline-secondary" onclick="window.print()"><i class="mdi mdi-printer"></i> Print</button>
-            <?php endif; ?>
-            <a href="logout.php" class="btn btn-outline-danger"><i class="mdi mdi-logout"></i> Sign Out</a>
-        </div>
-    </div>
+    <!-- Hero: a couple sees their wedding and how far away it is; staff see the book -->
+    <?php if ($is_staff_view): ?>
+        <section class="dash-hero" aria-labelledby="bookingsHeroTitle">
+            <div>
+                <p class="dash-hero-eyebrow"><?= htmlspecialchars(format_date_kd(date('Y-m-d'))); ?></p>
+                <h1 class="dash-hero-title" id="bookingsHeroTitle">Wedding bookings</h1>
+                <p class="dash-hero-sub">
+                    <strong><?= (int) $total_pending; ?></strong> pending &middot;
+                    <strong><?= (int) $total_confirmed; ?></strong> confirmed &middot;
+                    guests, budget, checklist and vendors for each wedding live behind the eye button.
+                </p>
+            </div>
+            <div class="dash-hero-actions">
+                <a href="client_add.php" class="btn btn-primary"><i class="mdi mdi-plus mr-1"></i>New booking</a>
+                <button class="btn btn-outline-secondary" onclick="window.print()"><i class="mdi mdi-printer mr-1"></i>Print</button>
+            </div>
+        </section>
+    <?php elseif ($hero_booking !== null): ?>
+        <?php
+        $hero_couple = trim((string) $hero_booking->bride . ' & ' . (string) $hero_booking->groom);
+        if ($hero_couple === '' || $hero_couple === '&') {
+            $hero_couple = 'Your wedding';
+        }
+        $hero_countdown = '';
+        if ($hero_days !== null) {
+            if ($hero_days > 1) {
+                $hero_countdown = $hero_days . ' days to go';
+            } elseif ($hero_days === 1) {
+                $hero_countdown = 'Tomorrow is the day';
+            } elseif ($hero_days === 0) {
+                $hero_countdown = 'Today is the day';
+            } else {
+                $hero_countdown = 'Wedding day has passed';
+            }
+        }
+        $hero_vendors_link = 'client_vendors.php?booking_id=' . (int) $hero_booking->booking_id
+            . '&user_id=' . (int) $hero_booking->user_id;
+        ?>
+        <section class="dash-hero" aria-labelledby="bookingsHeroTitle">
+            <div>
+                <p class="dash-hero-eyebrow">
+                    <?= htmlspecialchars($hero_date_label !== '' ? $hero_date_label : 'Your wedding'); ?><?= $hero_countdown !== '' ? ' &middot; ' . htmlspecialchars($hero_countdown) : ''; ?>
+                </p>
+                <h1 class="dash-hero-title" id="bookingsHeroTitle"><?= htmlspecialchars($hero_couple); ?></h1>
+                <p class="dash-hero-sub">
+                    <?php if ($hero_days !== null && $hero_days >= 0): ?>
+                        <strong><?= (int) $hero_days; ?></strong> day<?= $hero_days === 1 ? '' : 's'; ?> left to plan &mdash;
+                    <?php endif; ?>
+                    guests, payments, checklist and vendors all live here.
+                </p>
+            </div>
+            <div class="dash-hero-actions">
+                <?php if ($checklist_link !== '' && $plan_progress !== null): ?>
+                    <a class="btn btn-primary" href="<?= htmlspecialchars($checklist_link); ?>">
+                        <i class="mdi mdi-checkbox-marked-outline mr-1"></i>
+                        <?= $plan_progress['seeded'] ? 'Open checklist' : 'Start checklist'; ?>
+                    </a>
+                <?php endif; ?>
+                <a class="btn btn-outline-secondary" href="<?= htmlspecialchars($hero_vendors_link); ?>">
+                    <i class="mdi mdi-storefront-outline mr-1"></i>Find vendors
+                </a>
+            </div>
+        </section>
+    <?php endif; ?>
+
+    <?php
+    /*
+     * What actually needs the couple today: an unconfirmed date, overdue
+     * milestones, vendors past the budget. Same counts the pages behind them
+     * use; no card when there is nothing to say.
+     */
+    if (!$is_staff_view) {
+        $coupleAttention = [];
+        if ($total_pending > 0 && $hero_booking !== null) {
+            $coupleAttention[] = [
+                'is-warn', 'mdi-clock-outline', (string) $total_pending,
+                'Awaiting confirmation',
+                'Your planner is reviewing the date',
+                'client_manage_account_details.php?booking_id=' . (int) $hero_booking->booking_id . '&user_id=' . (int) $hero_booking->user_id,
+            ];
+        }
+        if ($plan_progress !== null && (int) $plan_progress['overdue'] > 0) {
+            $coupleAttention[] = [
+                'is-danger', 'mdi-alert-circle-outline', (string) (int) $plan_progress['overdue'],
+                'Overdue milestones',
+                'Tasks past the date the plan set for them',
+                $checklist_link,
+            ];
+        }
+        if ($vendor_tile && $vendor_over) {
+            $coupleAttention[] = [
+                'is-warn', 'mdi-cash-multiple', format_ksh($vendor_total - $vendor_caps),
+                'Over the vendor budget',
+                'Your chosen vendors cost more than the caps you set',
+                $vendor_link,
+            ];
+        }
+        if ($coupleAttention !== []): ?>
+            <div class="attention-grid">
+                <?php foreach ($coupleAttention as [$tone, $icon, $count, $label, $hint, $href]): ?>
+                    <a class="attention-card <?= $tone; ?>" href="<?= htmlspecialchars($href); ?>">
+                        <span class="attention-icon"><i class="mdi <?= $icon; ?>" aria-hidden="true"></i></span>
+                        <span class="attention-body">
+                            <span class="attention-count"><?= htmlspecialchars($count); ?></span>
+                            <span class="attention-label"><?= htmlspecialchars($label); ?></span>
+                            <span class="attention-hint"><?= htmlspecialchars($hint); ?></span>
+                        </span>
+                        <i class="mdi mdi-arrow-right attention-go" aria-hidden="true"></i>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+        <?php elseif ($hero_booking !== null): ?>
+            <div class="attention-clear">
+                <i class="mdi mdi-check-circle-outline" aria-hidden="true"></i>
+                You are on track &mdash; nothing needs your attention today.
+            </div>
+        <?php endif;
+    }
+    ?>
 
     <!-- Statistics Cards -->
     <div class="row mb-4">
@@ -499,8 +681,8 @@
             <?php
             // Over budget is the one figure here a couple must not have to work
             // out: it is stated in words, in red, and the tile opens the plan so
-            // the category that caused it is one click away.
-            $vendor_over = $vendor_caps > 0 && $vendor_total > $vendor_caps;
+            // the category that caused it is one click away. ($vendor_over is
+            // computed above, because the hero's attention strip reports it too.)
             ?>
             <div class="<?= $tile_class; ?>">
                 <div class="stat-card" style="border-left-color:var(--info);">
@@ -564,6 +746,124 @@
     </div>
     <?php endif; ?>
 
+    <?php
+    /*
+     * THE COUPLE'S OWN VIEW: one card per wedding.
+     *
+     * Everything below the hero used to be the planner's table — a Client
+     * column naming the couple themselves, "Show 10 entries", and a status
+     * filter for statuses only a planner can change. A couple has one wedding
+     * and three questions, so the card states those first (when is the day,
+     * what is paid, what is left to do) and puts one button on each answer.
+     *
+     * Every figure here is read with the SAME helper the destination page
+     * uses — Liquidation, Guest, Checklist, Category — so a card can never
+     * disagree with the page it opens, and this block writes nothing.
+     */
+    if (!$is_staff_view):
+        $couple_confirmed_ids = array_map(static fn($row) => (int) $row->booking_id, $confirmed);
+        $couple_first = $all_bookings[0] ?? null;
+    ?>
+    <div class="dash-section-head">
+        <h2 class="dash-section-title">Your wedding</h2>
+        <?php if ($couple_first !== null): ?>
+            <a href="client_vendors.php?booking_id=<?= (int) $couple_first->booking_id; ?>&amp;user_id=<?= (int) $couple_first->user_id; ?>">Browse vendors &rarr;</a>
+        <?php endif; ?>
+    </div>
+    <?php if ($all_bookings === []): ?>
+        <div class="card mb-4" style="border:1px solid var(--stone-200); border-radius:var(--radius-card); box-shadow:var(--shadow-soft);">
+            <div class="card-body" style="padding:26px 22px; text-align:center;">
+                <i class="mdi mdi-calendar-heart" style="font-size:34px; color:var(--brand-500);"></i>
+                <p class="mt-2 mb-1" style="font-size:14px; font-weight:600; color:var(--text-strong);">No wedding on your account yet</p>
+                <p class="hint mb-3" style="max-width:46ch; margin:0 auto 12px;">Tell us the date and the venue, and your planner will come back with package options you can compare side by side.</p>
+                <a href="../contact.php" class="btn btn-primary btn-sm"><i class="mdi mdi-email-outline mr-1"></i>Talk to a planner</a>
+            </div>
+        </div>
+    <?php else: ?>
+        <?php foreach ($all_bookings as $couple_wedding):
+            $cw_id      = (int) $couple_wedding->booking_id;
+            $cw_qs      = 'booking_id=' . $cw_id . '&user_id=' . (int) $couple_wedding->user_id;
+            $cw_ok      = in_array($cw_id, $couple_confirmed_ids, true);
+            $cw_cat     = Category::find_by_id((int) ($couple_wedding->wedding_type ?? 0));
+            $cw_price   = $cw_cat ? (float) $cw_cat->price : 0.0;
+            $cw_pkg     = $cw_cat ? (string) $cw_cat->wedding_type : '';
+            $cw_paid    = (float) Liquidation::getTotalAmount($cw_id);
+            $cw_balance = max(0.0, $cw_price - $cw_paid);
+            $cw_pct     = $cw_price > 0 ? (int) min(100, floor($cw_paid / $cw_price * 100)) : 0;
+            $cw_guests  = (int) Guest::count_guest($cw_id);
+            $cw_plan    = Checklist::progress($cw_id, (string) ($couple_wedding->wedding_date ?? ''));
+            $cw_names   = trim((string) ($couple_wedding->bride ?? '') . ' & ' . (string) ($couple_wedding->groom ?? ''));
+            if ($cw_names === '' || $cw_names === '&') {
+                $cw_names = trim((string) ($couple_wedding->firstname ?? '') . ' ' . (string) ($couple_wedding->lastname ?? ''));
+            }
+            if ($cw_names === '') {
+                $cw_names = 'Your wedding';
+            }
+            $cw_date = (string) ($couple_wedding->wedding_date ?? '');
+            $cw_has_date = $cw_date !== '' && strtotime($cw_date) !== false;
+            $cw_when = 'Date to be set with your planner';
+            $cw_days = null;
+            if ($cw_has_date) {
+                $cw_days = (int) floor((strtotime(date('Y-m-d', strtotime($cw_date))) - strtotime(date('Y-m-d'))) / 86400);
+                $cw_when = format_date_kd($cw_date) . ' &middot; ' . (
+                    $cw_days > 1 ? $cw_days . ' days to go'
+                    : ($cw_days === 1 ? 'tomorrow' : ($cw_days === 0 ? 'today' : 'the day has passed'))
+                );
+            }
+            // Inside 30 days with a balance left is the one payment state a
+            // couple must not have to work out from two numbers.
+            $cw_tight = $cw_balance > 0 && $cw_days !== null && $cw_days >= 0 && $cw_days <= 30;
+        ?>
+        <article class="wedding-card">
+            <div class="wc-head">
+                <div class="wc-date">
+                    <span class="d"><?= $cw_has_date ? htmlspecialchars(date('d', strtotime($cw_date))) : '·'; ?></span>
+                    <span class="m"><?= $cw_has_date ? htmlspecialchars(strtoupper(date('M', strtotime($cw_date)))) : 'TBD'; ?></span>
+                </div>
+                <div class="wc-id">
+                    <h3><?= htmlspecialchars($cw_names); ?></h3>
+                    <p><?= htmlspecialchars($cw_pkg !== '' ? $cw_pkg : 'Package to be agreed'); ?> &middot; <?= $cw_when; ?></p>
+                    <span class="wc-pill <?= $cw_ok ? 'is-ok' : 'is-wait'; ?>"><?= $cw_ok ? 'Confirmed' : 'Waiting on confirmation'; ?></span>
+                </div>
+            </div>
+            <div class="wc-meters">
+                <div>
+                    <div class="wc-label">
+                        <span>Payments</span>
+                        <strong><?= $cw_price > 0 ? format_ksh($cw_paid) . ' of ' . format_ksh($cw_price) : format_ksh($cw_paid) . ' received'; ?></strong>
+                    </div>
+                    <div class="wc-bar"><span class="<?= $cw_price > 0 && $cw_balance <= 0 ? 'is-ok' : ($cw_tight ? 'is-tight' : ''); ?>" style="width:<?= $cw_pct; ?>%;"></span></div>
+                    <p class="hint mt-1 mb-0"><?php if ($cw_price <= 0): ?>Your planner will confirm the package price.<?php elseif ($cw_balance <= 0): ?>Fully paid &mdash; nothing outstanding.<?php else: ?><?= format_ksh($cw_balance); ?> left<?= $cw_tight ? ' &middot; settle before the day' : ''; ?><?php endif; ?></p>
+                </div>
+                <div>
+                    <div class="wc-label">
+                        <span>Checklist</span>
+                        <strong><?= (int) $cw_plan['done']; ?> of <?= (int) $cw_plan['total']; ?> done</strong>
+                    </div>
+                    <div class="wc-bar"><span class="<?= (int) $cw_plan['pct'] >= 100 ? 'is-ok' : ''; ?>" style="width:<?= (int) $cw_plan['pct']; ?>%;"></span></div>
+                    <p class="hint mt-1 mb-0"><?php if (!$cw_plan['seeded']): ?>Not started &mdash; open it and the Kenyan milestones appear.<?php elseif ((int) $cw_plan['overdue'] > 0): ?><span style="color:var(--danger-ink); font-weight:600;"><?= (int) $cw_plan['overdue']; ?> past their date</span><?php elseif ((int) $cw_plan['pct'] >= 100): ?>Everything ticked.<?php else: ?>On track.<?php endif; ?></p>
+                </div>
+                <div>
+                    <div class="wc-label">
+                        <span>Guests</span>
+                        <strong><?= $cw_guests; ?> invited</strong>
+                    </div>
+                    <p class="hint mt-1 mb-0" style="margin-top:6px;"><?= $cw_guests > 0 ? 'Open the list to add names or check who has replied.' : 'Nobody on the list yet — start with family.'; ?></p>
+                </div>
+            </div>
+            <div class="wc-links">
+                <a class="btn btn-primary btn-sm" href="client_manage_account_details.php?<?= $cw_qs; ?>"><i class="mdi mdi-eye-outline mr-1"></i>Open wedding</a>
+                <a class="btn btn-outline-secondary btn-sm" href="client_guests.php?<?= $cw_qs; ?>"><i class="mdi mdi-account-multiple-outline mr-1"></i>Guests</a>
+                <a class="btn btn-outline-secondary btn-sm" href="client_checklist.php?<?= $cw_qs; ?>"><i class="mdi mdi-checkbox-marked-outline mr-1"></i>Checklist</a>
+                <a class="btn btn-outline-secondary btn-sm" href="client_budget.php?<?= $cw_qs; ?>"><i class="mdi mdi-cash-multiple mr-1"></i>Budget</a>
+                <a class="btn btn-outline-secondary btn-sm" href="client_vendors.php?<?= $cw_qs; ?>"><i class="mdi mdi-storefront-outline mr-1"></i>Vendors</a>
+            </div>
+        </article>
+        <?php endforeach; ?>
+    <?php endif; ?>
+    <?php endif; /* !$is_staff_view */ ?>
+
+    <?php if ($is_staff_view): ?>
     <!-- Filter Bar -->
     <div class="filter-bar">
         <div class="row align-items-center">
@@ -597,8 +897,10 @@
         </div>
     </div>
 
+    <?php endif; /* staff view: filters + tables */ ?>
+
     <!-- All Bookings Table -->
-    <?php if ($status_filter == 'all' || $status_filter == ''): ?>
+    <?php if ($is_staff_view && ($status_filter == 'all' || $status_filter == '')): ?>
     <div class="booking-table mb-4">
         <div class="section-header d-flex justify-content-between align-items-center">
             <h5><i class="mdi mdi-view-list"></i> All Bookings</h5>
@@ -646,7 +948,7 @@
     <?php endif; ?>
 
     <!-- Pending Bookings Table -->
-    <?php if ($status_filter == 'pending'): ?>
+    <?php if ($is_staff_view && $status_filter == 'pending'): ?>
     <div class="booking-table mb-4">
         <div class="section-header d-flex justify-content-between align-items-center">
             <h5><i class="mdi mdi-clock-outline text-warning"></i> Pending Bookings</h5>
@@ -681,7 +983,7 @@
     <?php endif; ?>
 
     <!-- Confirmed Bookings Table -->
-    <?php if ($status_filter == 'confirmed'): ?>
+    <?php if ($is_staff_view && $status_filter == 'confirmed'): ?>
     <div class="booking-table mb-4">
         <div class="section-header d-flex justify-content-between align-items-center">
             <h5><i class="mdi mdi-check-circle text-success"></i> Confirmed Bookings</h5>

@@ -230,6 +230,18 @@
                                     <span class="chip" style="background:<?= $chip[1]; ?>; color:<?= $chip[2]; ?>;"><?= $chip[0]; ?></span>
                                     <?php if ($status === 'cancelled'): ?>
                                         <div class="hint">not in the total</div>
+                                        <?php /* v3.3 — the reason, so a dropped line
+                                                   explains itself here as well as on the
+                                                   enquiries list, and names who said
+                                                   it (vendor decline vs planner cut). */ ?>
+                                        <?php $planWhy = DealNote::text($row); ?>
+                                        <?php if ($planWhy !== ''): ?>
+                                            <div class="hint" style="color:#475569;">
+                                                <i class="mdi mdi-quote-open"></i>
+                                                <strong><?= htmlspecialchars(DealNote::attribution($row)); ?>:</strong>
+                                                <?= htmlspecialchars($planWhy); ?>
+                                            </div>
+                                        <?php endif; ?>
                                     <?php endif; ?>
                                 </td>
                             </tr>

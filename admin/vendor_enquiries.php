@@ -321,7 +321,9 @@
             die();
         }
 
-        $stmt = $db->prepare('SELECT vb.*, v.business_name, b.user_id AS couple_user_id FROM tblvendor_bookings vb JOIN tblvendors v ON v.id = vb.vendor_id JOIN tblweddingbook b ON b.booking_id = vb.booking_id WHERE vb.id = :id LIMIT 1');
+        // The vendor's own account and phone come along: a cancellation is their
+        // diary changing, so they are told as well as the couple (v3.3c).
+        $stmt = $db->prepare('SELECT vb.*, v.business_name, v.user_id AS vendor_user_id, v.phone AS vendor_phone, b.user_id AS couple_user_id, b.bride, b.groom, b.wedding_date FROM tblvendor_bookings vb JOIN tblvendors v ON v.id = vb.vendor_id JOIN tblweddingbook b ON b.booking_id = vb.booking_id WHERE vb.id = :id LIMIT 1');
         $stmt->execute([':id' => $id]);
         $row = $stmt->fetch(PDO::FETCH_OBJ);
         if ($row === null) {
@@ -365,6 +367,34 @@
             }
         }
 
+        /*
+         * Why the planner is dropping it (v3.3). Optional, and only read on a
+         * cancel: confirming does not need explaining, and a stray value in the
+         * field must not travel with an Accept. `status_note` is the answer that
+         * is CURRENT, so both branches write it — a confirm CLEARS whatever the
+         * vendor said when they first declined, exactly as the vendor's own
+         * answer does. Otherwise "already booked that Saturday" would sit beside
+         * a deal the planner has since agreed.
+         *
+         * The attribution is written alongside it: the couple and the vendor
+         * read the same badge, and "your planner said" is a different phone call
+         * from "the vendor said".
+         */
+        $plannerReason = $to === 'cancelled'
+            ? DealNote::clean((string) ($_POST['status_note'] ?? ''))
+            : '';
+        $noteSets   = '';
+        $noteParams = [];
+        if (DealNote::installed()) {
+            // NULL, not '', so "no reason was given" is one value everywhere.
+            $noteSets           .= ', status_note = :snote';
+            $noteParams[':snote'] = $plannerReason !== '' ? $plannerReason : null;
+            if (DealNote::author_installed()) {
+                $noteSets              .= ', status_note_by = :snote_by';
+                $noteParams[':snote_by'] = $plannerReason !== '' ? DealNote::PLANNER : null;
+            }
+        }
+
         // Confirming requires a deal amount (defaults to the package price).
         $amount = null;
         if ($to === 'confirmed') {
@@ -389,29 +419,27 @@
                     . ($_SESSION['user_email'] ?? 'staff') . ': ' . VendorAvailability::alert($clash) . "]\n";
             }
             $stmt = $db->prepare(
-                "UPDATE tblvendor_bookings
-                    SET status = 'confirmed', amount = :amt, commission = :comm,
-                        notes = CONCAT(:note, notes)
-                  WHERE id = :id"
+                'UPDATE tblvendor_bookings SET status = \'confirmed\', amount = :amt, commission = :comm,'
+                . ' notes = CONCAT(:note, notes)' . $noteSets . ' WHERE id = :id'
             );
             $stmt->execute([
                 ':amt'  => $amount,
                 ':comm' => $commission,
                 ':note' => $confirmNote,
                 ':id'   => $id,
-            ]);
+            ] + $noteParams);
         } else {
+            $trailNote = '[' . date('j M Y') . ' — ' . $to . ' by ' . ($_SESSION['user_email'] ?? 'staff')
+                . ($plannerReason !== '' ? '; reason: "' . $plannerReason . '"' : '') . ".]\n";
             $stmt = $db->prepare(
-                "UPDATE tblvendor_bookings
-                    SET status = :st,
-                        notes = CONCAT(:note, notes)
-                  WHERE id = :id"
+                'UPDATE tblvendor_bookings SET status = :st, notes = CONCAT(:note, notes)'
+                . $noteSets . ' WHERE id = :id'
             );
             $stmt->execute([
                 ':st'   => $to,
-                ':note' => '[' . date('j M Y') . ' — ' . $to . ' by ' . ($_SESSION['user_email'] ?? 'staff') . ".]\n",
+                ':note' => $trailNote,
                 ':id'   => $id,
-            ]);
+            ] + $noteParams);
         }
 
         // The card numbers are derived, not tallied: a deal that has just been
@@ -468,7 +496,11 @@
                                . ($amount !== null && $amount > 0 ? ' (deal ' . format_ksh($amount) . ')' : '')
                                . '. Your planner finalized the details.',
                 'completed' => $row->business_name . ' has completed their services for your wedding. Thank you for planning with us.',
-                'cancelled' => 'Your enquiry with ' . $row->business_name . ' was cancelled — your planner will help you find an alternative.',
+                // The reason is clipped: the column is 255 characters and a
+                // full one would push the sentence over it on a strict server.
+                'cancelled' => 'Your enquiry with ' . $row->business_name . ' was cancelled'
+                               . ($plannerReason !== '' ? ' — ' . DealNote::short($plannerReason, 110) : '')
+                               . '. Your planner will help you find an alternative.',
                 'pending'   => 'Your enquiry with ' . $row->business_name . ' was reopened — your planner is reviewing it again.',
             ];
             Notification::create_for_couple(
@@ -497,9 +529,62 @@
                         . (!empty($row->wedding_date) ? ' (' . format_date_kd((string) $row->wedding_date) . ')' : '')
                         . ' — deal locked at ' . format_ksh((float) ($amount ?? 0)) . '. Your planner finalized the details.';
                 } else {
-                    $smsText = 'Habari! Your ' . $row->business_name . ' enquiry was cancelled. Your planner will help you find a great alternative.';
+                    /*
+                     * The planner's own words travel with the cancellation: the
+                     * SMS is often the only thing the couple sees before they
+                     * ring, and "cancelled" alone reads like the wedding is off.
+                     * Cut to 90 characters — the budget the vendor's decline SMS
+                     * already uses — so it stays one segment, not three.
+                     */
+                    $smsText = 'Habari! Your ' . $row->business_name . ' enquiry was cancelled'
+                        . ($plannerReason !== '' ? ': "' . mb_substr($plannerReason, 0, 90) . '"' : '')
+                        . '. Your planner will help you find a great alternative.';
                 }
                 SMS::send_courtesy($cphone, $smsText, $organizerId, (int) $row->booking_id);
+            }
+        }
+
+        /*
+         * The vendor's own bell and phone (v3.3c). Until now a cancellation was
+         * the vendor's diary changing in silence: the couple were told twice and
+         * the vendor found out the next time they opened My Bookings — which for
+         * a date they were holding for a booking fee is too late to re-let it.
+         * The planner's words travel with the news because "we found another
+         * caterer" and "the date moved to the 26th" are different answers to
+         * "shall I hold the day?".
+         *
+         * Only on the transition INTO cancelled, so a double submit cannot ring
+         * them twice. Best-effort SMS (charged to the planner's credits, like the
+         * couple's); the bell above fires either way.
+         */
+        if ($to === 'cancelled' && (string) $row->status !== 'cancelled') {
+            $vendorUid   = (int) ($row->vendor_user_id ?? 0);
+            $vendorPhone = trim((string) ($row->vendor_phone ?? ''));
+            $coupleNames = trim(($row->bride ?? '') . ' & ' . ($row->groom ?? ''), ' &');
+            $coupleNames = $coupleNames !== '' ? mb_substr($coupleNames, 0, 60) : 'a couple';
+            $dayText     = !empty($row->wedding_date) ? ' (' . format_date_kd((string) $row->wedding_date) . ')' : '';
+
+            if ($vendorUid > 0) {
+                Notification::create_for_vendor(
+                    $vendorUid,
+                    (int) $row->booking_id,
+                    'Your booking for ' . $coupleNames . '\'s wedding' . $dayText . ' was cancelled by their planner.'
+                        . ($plannerReason !== '' ? ' They said: "' . DealNote::short($plannerReason, 100) . '".' : '')
+                        . ' It is off your calendar.',
+                    'vendor_home.php?status=cancelled'
+                );
+            }
+
+            if ($vendorPhone !== '') {
+                $organizerId = (int) $db->fetchValue(
+                    'SELECT organizer_id FROM tblweddingbook WHERE booking_id = :b LIMIT 1',
+                    [':b' => (int) $row->booking_id]
+                );
+                $vendorSms = 'Habari ' . mb_substr(trim((string) $row->business_name), 0, 40) . '! Your '
+                    . $coupleNames . ' booking' . $dayText . ' was cancelled by their planner'
+                    . ($plannerReason !== '' ? ': "' . mb_substr($plannerReason, 0, 80) . '"' : '')
+                    . '. It is off your calendar.';
+                SMS::send_courtesy($vendorPhone, $vendorSms, $organizerId, (int) $row->booking_id);
             }
         }
 
@@ -931,6 +1016,25 @@
                         </td>
                         <td>
                             <span class="badge <?= $badge; ?>"><i class="mdi mdi-<?= $icon; ?>"></i> <?= ucfirst($e->status); ?></span>
+                            <?php /*
+                                v3.3 — the reason a deal was dropped, in the words
+                                of whoever dropped it. It is the difference between
+                                "find another caterer" and "the 19th is gone, ask
+                                about the 26th", which is a different phone call to
+                                a different person — so it belongs on the row, not
+                                buried in the deal's history. The planner reads
+                                their own cancels back as "You said", the vendor's
+                                as "Vendor said", because on a shared badge the
+                                attribution IS the information.
+                            */ ?>
+                            <?php $dealWhy = (string) $e->status === 'cancelled' ? DealNote::text($e) : ''; ?>
+                            <?php if ($dealWhy !== ''): ?>
+                                <div class="mt-1" style="font-size:11px; line-height:1.4; color:#475569;">
+                                    <i class="mdi mdi-quote-open"></i>
+                                    <strong><?= DealNote::author($e) === DealNote::PLANNER ? 'You said' : 'Vendor said'; ?>:</strong>
+                                    <?= htmlspecialchars($dealWhy); ?>
+                                </div>
+                            <?php endif; ?>
                             <a class="vt-glance" href="<?= htmlspecialchars(VendorThread::opener_url((int) $e->id, array_filter([
                                 'status' => $status_filter !== '' ? $status_filter : null,
                                 'unread' => $unread_filter ? 1 : null,
@@ -979,8 +1083,29 @@
                                 <button type="submit" name="to" value="confirmed" class="btn btn-sm btn-success mr-1" title="Confirm at this amount (10% commission)">
                                     <i class="mdi mdi-check"></i> Confirm
                                 </button>
-                                <button type="submit" name="to" value="cancelled" class="btn btn-sm btn-outline-secondary" title="Cancel this enquiry">
-                                    <i class="mdi mdi-close"></i>
+                                <?php /*
+                                    v3.3 — one optional line, read only when the
+                                    press is Cancel: the couple and the vendor
+                                    read the same grey badge, and "your planner
+                                    found a better price" is the sentence that
+                                    stops them ringing to ask why.
+                                */ ?>
+                                <input type="text" name="status_note" maxlength="<?= DealNote::MAX; ?>"
+                                       class="form-control form-control-sm mr-1" style="max-width: 170px;"
+                                       placeholder="Cancelling? Say why (optional)"
+                                       aria-label="Reason for cancelling, shown to the couple and the vendor"
+                                       title="Only used with Cancel — the couple and the vendor see your words">
+                                <?php /*
+                                    `formnovalidate` matters: the amount box above is
+                                    `required` for Confirm, and a general enquiry has
+                                    no package price to prefill it with — so without
+                                    this, a Cancel on that row never left the browser
+                                    ("please fill out this field") and the planner
+                                    could not drop an enquiry at all. Cancelling reads
+                                    no amount, so the browser has nothing to check.
+                                */ ?>
+                                <button type="submit" name="to" value="cancelled" formnovalidate class="btn btn-sm btn-outline-secondary" title="Cancel this enquiry">
+                                    <i class="mdi mdi-close"></i> Cancel
                                 </button>
                                 <?php if ($clash !== []): ?>
                                     <!--

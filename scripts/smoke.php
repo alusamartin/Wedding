@@ -595,7 +595,12 @@ final class Smoke
                         $plannerPass  = getenv('SMOKE_PLANNER_PASS') ?: PLANNER_PASS;
                         if ($this->login('/login.php', $plannerEmail, $plannerPass, 'dashboard')) {
                             $dash2 = $this->http('GET', '/admin/dashboard.php', [], true);
-                            preg_match('~badge-pill badge-danger[^>]*>\s*(\d+)~', $dash2['body'], $bm);
+                            // The bell lives in the app shell now (css/app-shell.css):
+                            // `app-bell-dot` inside the header button. The Bootstrap
+                            // `badge-pill badge-danger` this used to match has been gone
+                            // since the shell landed, so the check was comparing the
+                            // database against a string no page prints.
+                            preg_match('~app-bell-dot">\s*(\d+)~', $dash2['body'], $bm);
                             $badgeCount = (int) ($bm[1] ?? 0);
                             $unread     = $organizer > 0 ? $this->dbUnreadCount($organizer) : 0;
                             $this->check('planner bell badge reflects the deposit alert',

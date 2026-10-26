@@ -40,8 +40,14 @@ body{ background:var(--admin-bg); }
   margin-bottom:6px; letter-spacing:.08em; font-weight:700;
 }
 .stat-card .value{
-  font-size:26px; font-weight:700; color:var(--text-strong);
-  font-variant-numeric:tabular-nums; letter-spacing:-.02em;
+  /*
+   * Money is the widest thing these tiles ever hold ("KSh 245,000") and the
+   * couple's dashboard runs five of them across one row, so a fixed 26px
+   * broke "KSh 245,000" onto two lines and left "KSh" alone above a number.
+   * Scale with the viewport, and never break a figure across lines.
+   */
+  font-size:clamp(19px,1.55vw,26px); font-weight:700; color:var(--text-strong);
+  font-variant-numeric:tabular-nums; letter-spacing:-.02em; white-space:nowrap;
 }
 .stat-card .trend{ font-size:11px; color:var(--success-ink); margin-top:5px; }
 .stat-card p, .stat-card .hint{ margin-bottom:0; }
@@ -94,6 +100,162 @@ body{ background:var(--admin-bg); }
   letter-spacing:.06em; padding:12px 8px; font-weight:700;
 }
 .booking-table tbody tr:hover{ background:var(--brand-50); }
+
+/* =====================================================================
+   DASHBOARD v2 — hero, attention strip, KPI notes, upcoming list
+
+   These four blocks are the composition layer the four role dashboards
+   share: a greeting that states today's context, a strip of the work that
+   is actually waiting, KPI tiles whose numbers carry a "so what" line, and
+   one operational list. Everything else on a dashboard is page-specific.
+
+   Deliberately quiet: white surfaces, one accent per card, no gradients on
+   content. The hero is the only place with a tint, so the eye lands there
+   first and then on the red/amber attention cards.
+   ===================================================================== */
+
+/* ---------- Hero: who you are, what day it is, what to do next ---------- */
+.dash-hero{
+  display:flex; align-items:flex-end; justify-content:space-between; gap:18px;
+  flex-wrap:wrap; padding:22px 24px; margin-bottom:20px;
+  background:
+    radial-gradient(560px 240px at 100% 0%, var(--brand-50), transparent 72%),
+    var(--surface-0);
+  border:1px solid var(--stone-200); border-radius:var(--radius-card);
+  box-shadow:var(--shadow-soft);
+}
+.dash-hero-eyebrow{
+  margin:0 0 5px; font-size:10.5px; font-weight:700; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--text-muted);
+}
+.dash-hero-title{
+  margin:0; font-family:'Plus Jakarta Sans','Inter',sans-serif;
+  font-size:clamp(22px,2.3vw,30px); font-weight:700; letter-spacing:-.03em;
+  color:var(--text-strong); line-height:1.15;
+}
+.dash-hero-sub{ margin:7px 0 0; font-size:13.5px; color:var(--text-muted); max-width:66ch; }
+.dash-hero-sub strong{ color:var(--text-body); font-weight:600; }
+.dash-hero-actions{ display:flex; gap:8px; flex-wrap:wrap; }
+.dash-hero-actions .btn{
+  border-radius:var(--radius-control); font-size:12.5px; font-weight:600; padding:8px 14px;
+}
+
+/* Mobile: actions below the greeting, and they fill the width in pairs. */
+@media (max-width:575.98px){
+  .dash-hero{ padding:18px; align-items:flex-start; }
+  .dash-hero-actions{ width:100%; }
+  .dash-hero-actions .btn{ flex:1 1 auto; text-align:center; }
+}
+
+/* ---------- Attention strip: the work waiting on this role ---------- */
+.attention-grid{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(228px,1fr));
+  gap:12px; margin-bottom:20px;
+}
+.attention-card{
+  display:flex; align-items:center; gap:14px; padding:14px 16px;
+  background:var(--surface-0); border:1px solid var(--stone-200);
+  border-left:3px solid var(--brand-500); border-radius:var(--radius-card);
+  box-shadow:var(--shadow-soft); text-decoration:none !important; color:inherit;
+  transition:transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.attention-card:hover{ transform:translateY(-2px); box-shadow:var(--shadow-lift); color:inherit; }
+.attention-card.is-warn{ border-left-color:var(--warning); }
+.attention-card.is-danger{ border-left-color:var(--danger); }
+.attention-icon{
+  width:38px; height:38px; flex:0 0 38px; display:inline-flex; align-items:center;
+  justify-content:center; border-radius:11px; font-size:18px;
+  background:var(--brand-50); color:var(--brand-700);
+}
+.attention-card.is-warn .attention-icon{ background:var(--warning-tint); color:var(--warning-ink); }
+.attention-card.is-danger .attention-icon{ background:var(--danger-tint); color:var(--danger-ink); }
+.attention-body{ min-width:0; }
+.attention-count{
+  display:block; font-family:'Plus Jakarta Sans','Inter',sans-serif;
+  font-size:21px; font-weight:700; line-height:1.1; color:var(--text-strong);
+  font-variant-numeric:tabular-nums;
+}
+.attention-label{
+  display:block; margin-top:2px; font-size:11.5px; font-weight:600;
+  letter-spacing:.04em; color:var(--text-body);
+}
+.attention-hint{
+  display:block; margin-top:1px; font-size:11px; color:var(--text-muted);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.attention-go{ margin-left:auto; color:var(--stone-500); font-size:16px; flex:0 0 auto; }
+
+/* Nothing waiting: one calm line, not an empty grid of zeroes. */
+.attention-clear{
+  display:flex; align-items:center; gap:10px; padding:14px 16px; margin-bottom:20px;
+  font-size:13px; color:var(--text-muted);
+  background:var(--surface-0); border:1px dashed var(--stone-300);
+  border-radius:var(--radius-card);
+}
+.attention-clear .mdi{ font-size:18px; color:var(--success-ink); }
+
+/* ---------- Section heading inside a dashboard ---------- */
+.dash-section-head{
+  display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+  margin:4px 0 10px;
+}
+.dash-section-title{
+  margin:0; font-size:11.5px; font-weight:700; letter-spacing:.09em;
+  text-transform:uppercase; color:var(--text-muted);
+}
+.dash-section-head a{ font-size:12px; font-weight:600; }
+
+/* ---------- KPI tile note ----------
+   The count is the loud thing; this line is the "compared with what / what
+   it means" that keeps a bare number from being a guessing game. The tile
+   grows to hold it rather than overlapping the label. */
+.card-counter{ height:126px !important; }
+.card-counter .count-note{
+  position:absolute; left:18px; right:18px; bottom:12px;
+  font-size:11.5px; color:var(--text-muted);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+
+/* ---------- Upcoming weddings (planner) ---------- */
+.wedding-list{ display:flex; flex-direction:column; }
+.wedding-row{
+  display:flex; align-items:center; gap:14px; padding:12px 16px;
+  border-top:1px solid var(--stone-100); text-decoration:none !important; color:inherit;
+}
+.wedding-row:first-child{ border-top:0; }
+.wedding-row:hover{ background:var(--brand-50); color:inherit; }
+.wedding-date{
+  width:52px; flex:0 0 52px; text-align:center; border-radius:10px;
+  background:var(--stone-50); border:1px solid var(--stone-200); padding:5px 0;
+}
+.wedding-date .d{ display:block; font-size:16px; font-weight:700; line-height:1; color:var(--text-strong); }
+.wedding-date .m{ display:block; margin-top:3px; font-size:9.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--text-muted); }
+.wedding-who{ min-width:0; flex:1 1 auto; }
+.wedding-who strong{ display:block; font-size:13.5px; font-weight:600; color:var(--text-strong); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wedding-who span{ font-size:11.5px; color:var(--text-muted); }
+.wedding-meta{ text-align:right; flex:0 0 auto; font-size:11.5px; color:var(--text-muted); }
+.wedding-meta .pill{ font-size:10px; padding:3px 9px; border-radius:999px; }
+
+/*
+ * Flags on a wedding that is drifting (dashboard "needing a nudge"). They sit
+ * where the date/meta block sits on a plain upcoming row, but they are the
+ * reason the row exists, so they are NEVER hidden on a phone — the row wraps
+ * and the flags move under the names instead.
+ */
+.nudge-flags{ display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; flex:0 0 auto; }
+.nudge-pill{
+  font-size:10.5px; font-weight:600; padding:3px 9px; white-space:nowrap;
+  border-radius:var(--radius-pill); background:var(--stone-100); color:var(--text-body);
+}
+.nudge-pill.is-warn{ background:var(--warning-tint); color:var(--warning-ink); }
+.nudge-pill.is-danger{ background:var(--danger-tint); color:var(--danger-ink); }
+
+@media (max-width:575.98px){
+  .wedding-meta{ display:none; }
+  .wedding-row{ padding:12px; }
+  .wedding-row:has(.nudge-flags){ flex-wrap:wrap; }
+  .nudge-flags{ width:100%; justify-content:flex-start; padding-left:66px; }
+}
 
 /* The two utility classes pages already carry but never had a rule. */
 .hint{ font-size:11.5px; line-height:1.5; color:var(--text-muted); }

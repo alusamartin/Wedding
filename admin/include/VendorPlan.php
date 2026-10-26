@@ -152,10 +152,18 @@ final class VendorPlan
             $offering_join = '';
         }
 
+        // v3.3 — why a line was dropped, and v3.3b who dropped it. Same rule as
+        // the offering columns above: the columns are named only when the
+        // database has them, so a pre-v3.3 install keeps its plan page instead of
+        // losing it to a missing column.
+        $note_col = DealNote::installed() ? 'vb.status_note, ' : 'NULL AS status_note, ';
+        $note_col .= DealNote::author_installed() ? 'vb.status_note_by, ' : 'NULL AS status_note_by, ';
+
         $rows = $db->fetchAll(
             'SELECT vb.id, vb.vendor_id, vb.booking_id, vb.package_id, '
             . $offering_cols . ' '
             . 'vb.features_id, vb.event_date, vb.amount, vb.status, vb.created_at, '
+            . $note_col
             . 'v.business_name, v.category, v.phone AS vendor_phone, '
             . 'p.title AS package_title, p.price AS package_price, p.capacity AS package_capacity, '
             . 'e.title AS function_title '

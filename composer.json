@@ -51,7 +51,9 @@
             "@test:db",
             "@code-audit",
             "@php vendor/bin/phpunit --no-coverage"
-        ]
+        ],
+        "preflight": "@php scripts/release_preflight.php",
+    "device": "@php scripts/device_smoke.php"
     },
     "config": {
         "optimize-autoloader": true,

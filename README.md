@@ -381,6 +381,23 @@ mysql -u root -p dbwedding < migrations/v2.30_proposals.sql
 #      everything works exactly as before and every surface shows one price.
 #      Idempotent.
 mysql -u root -p dbwedding < migrations/v3.1_vendor_service_tiers.sql
+
+# (ad) Optional — the reasons behind a "no" (v3.3).
+#      `migrations/v3.3_deal_answer_note.sql` adds two columns:
+#      `tblvendor_bookings.status_note` — the short reason whoever drops a deal
+#      gives — and `status_note_by`, the one word saying who it was (the vendor
+#      declining an enquiry, or the planner cancelling it). Both sides get the
+#      field where they already act: beside Accept/Decline on the vendor's own
+#      booking list and in a calendar day's drawer, and beside Confirm/Cancel on
+#      the planner's ledger. The reason is then shown, in the author's words and
+#      attributed, on the couple's enquiries list, on both vendor plan pages, on
+#      the planner's ledger and on the vendor's ledger — plus the couple's bell,
+#      their SMS, the planner's notification, and (when a planner cancels) the
+#      vendor's own bell and SMS. It is cleared by any other
+#      answer (so it never sits beside a confirmed deal) while the deal's dated
+#      `notes` line keeps it for good. Without it nothing changes and every page
+#      keeps working; the reason simply lives only in the notes trail. Idempotent.
+mysql -u root -p dbwedding < migrations/v3.3_deal_answer_note.sql
 ```**Already running a v2.0 database?** Apply (b), (d), (e), (f), (g), (h), (i), (j), (k), (l), (m), (p) and (q) only —
 plus (o) if you want the capacity headroom view to remember each planner's width (the page works without it),and (r) if you want an AI client to be able to reach the platform at all, and (s) if you want it to be able to
 change anything — writes need `WPMS_MCP_WRITES=1` too, and the money/message tools wait for an approval. Add (t)
@@ -398,6 +415,8 @@ Add (ab) if you want a registration to become a priced, chosen, confirmed weddin
 assigns by hand; without it sign-up still works and simply creates the pending booking it always did.
 Add (ac) if vendors should sell three levels of the same offer (Silver / Gold / Platinum) with what each includes
 and leaves out; without it every page keeps quoting the single price it always had.
+Add (ad) so a vendor's decline can carry a reason the couple and their planner read, instead of a bare grey badge;
+without it a decline still works and the reason only ever lives in the deal's notes trail.
 Add (w) if you want the vendor coverage board to judge only the services each function needs —
 without it the board counts all ten per function and its editor is read-only.
 Add (z) if you want vendors to list the individual services they sell — the priced pieces behind

@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">Everafter</string>
+    <string name="sign_in">Sign in</string>
+    <string name="email">Email</string>
+    <string name="password">Password</string>
+    <string name="home">Home</string>
+    <string name="checklist">Checklist</string>
+    <string name="guests">Guests</string>
+    <string name="more">More</string>
+    <string name="sign_out">Sign out</string>
+</resources>

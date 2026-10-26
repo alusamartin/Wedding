@@ -296,6 +296,15 @@
                                 <span class="chip" style="background:#FEF3C7; color:#92400E;">
                                     <?= htmlspecialchars($status_label); ?>
                                 </span>
+                                <?php /* v3.3 — the vendor's reason for saying no, in
+                                           their words, so the planner's plan explains
+                                           the gap without opening the ledger. */ ?>
+                                <?php $planWhy = $status === 'cancelled' ? DealNote::text($row) : ''; ?>
+                                <?php if ($planWhy !== ''): ?>
+                                    <div class="hint" style="color:#475569;">
+                                        <i class="mdi mdi-quote-open"></i> <?= htmlspecialchars($planWhy); ?>
+                                    </div>
+                                <?php endif; ?>
                                 <div class="mt-1">
                                     <a href="vendor_thread_open.php?deal_id=<?= (int) $row->id; ?>" class="hint">conversation</a>
                                     · <a href="vendor_enquiries.php?status=<?= urlencode($status); ?>" class="hint">ledger</a>

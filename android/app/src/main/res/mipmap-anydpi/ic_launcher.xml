@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pre-Android 8 fallback: the same mark on the brand fill, so an older
+     phone shows the product's icon rather than a generic Android robot. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M12,0 L96,0 A12,12 0 0,1 108,12 L108,96 A12,12 0 0,1 96,108 L12,108 A12,12 0 0,1 0,96 L0,12 A12,12 0 0,1 12,0 Z"
+        android:fillColor="#A8553A" />
+    <path
+        android:pathData="M40,54 A14,14 0 1,1 40,82 A14,14 0 1,1 40,54 Z"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M62,52 A14,14 0 1,1 62,80 A14,14 0 1,1 62,52 Z"
+        android:strokeColor="#FFF5F2"
+        android:strokeWidth="5"
+        android:fillColor="#00000000" />
+</vector>

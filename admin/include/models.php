@@ -135,6 +135,15 @@ require_once __DIR__ . DS . "VendorAvailability.php";
  */
 require_once __DIR__ . DS . "VendorThread.php";
 /*
+ * DealNote is the vendor's own words on a decline (v3.3): the optional line
+ * they get when they turn an enquiry down, which the couple and their planner
+ * then read instead of a bare grey badge. It is in the runtime include set
+ * because both ledgers, the couple's enquiries list and the plan pages render
+ * it, and it is required next to VendorThread because it is the same deal's
+ * story — the message thread is what they said, this is why they said no.
+ */
+require_once __DIR__ . DS . "DealNote.php";
+/*
  * VendorService is what one business sells, as distinct from the packages it
  * bundles (v2.27): the vendor's own page edits it, the staff marketplace and the
  * public profile read it. It is in the runtime include set because all three

@@ -113,8 +113,15 @@
     // This couple's enquiries with their live status — the loop-closer so
     // couples aren't sending enquiries into a void.
     global $db;
+    // v3.3 — the reason a deal was dropped travels with the row, and v3.3b the
+    // word saying who dropped it. Read only when the migration is installed, so
+    // an older database keeps this page rather than losing it to a column that
+    // does not exist yet.
+    $status_note_col = DealNote::installed() ? 'vb.status_note,' : 'NULL AS status_note,';
+    $status_note_col .= DealNote::author_installed() ? 'vb.status_note_by,' : 'NULL AS status_note_by,';
     $myEnquiries = $db->prepare(
-        'SELECT vb.id, vb.status, vb.event_date, vb.amount, vb.notes, vb.created_at, vb.rating,
+        'SELECT vb.id, vb.status, vb.event_date, vb.amount, vb.notes, vb.created_at, vb.rating, '
+        . $status_note_col . '
                 v.business_name, v.category,
                 p.title AS package_title
            FROM tblvendor_bookings vb
@@ -317,6 +324,24 @@
                                     · <strong style="color:#065F46;"><?= format_ksh((float) $enq->amount); ?></strong>
                                 <?php endif; ?>
                             </div>
+                            <?php /*
+                                v3.3 — why it was dropped, in the words of whoever
+                                dropped it. The badge alone left couples ringing
+                                their planner to ask, and the planner ringing the
+                                vendor to find out. The speaker is named because a
+                                couple deciding whether to ring the caterer or their
+                                planner needs to know which of them said no.
+                            */ ?>
+                            <?php $vendorWhy = (string) $enq->status === 'cancelled' ? DealNote::text($enq) : ''; ?>
+                            <?php if ($vendorWhy !== ''): ?>
+                                <div style="font-size:12px; line-height:1.45; color:#475569; max-width:560px;" class="mt-1">
+                                    <i class="mdi mdi-quote-open"></i>
+                                    <strong><?= DealNote::author($enq) === DealNote::PLANNER
+                                        ? 'Your planner said:'
+                                        : htmlspecialchars((string) $enq->business_name) . ' said:'; ?></strong>
+                                    <?= htmlspecialchars($vendorWhy); ?>
+                                </div>
+                            <?php endif; ?>
                         </div>
                         <div class="d-flex align-items-center">
                             <?php if ($deal_unread > 0): ?>

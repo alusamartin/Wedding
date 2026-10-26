@@ -38,6 +38,14 @@
 #                33 KB /.git/index all served 200, and every object in
 #                .git/objects is fetchable, so a visitor could clone the
 #                source (and any secret ever committed) straight off the site.
+#   android/     the couples' app project — not a page, and never will be.
+#                Serving it hands out the source, and the folder inside it,
+#                android/keystore/, holds the release SIGNING KEY plus the
+#                file with its password: a working-copy upload would make
+#                /android/keystore.properties fetchable as plain text, and
+#                whoever reads it can publish an update to every installed
+#                app. The key is gitignored too — two layers, because this
+#                one only works if the host honours .htaccess.
 # admin/include/ holds config.php and every model — never a public asset.
 # The scripts/ tools ALSO refuse to run outside the CLI (scripts/cli_guard.php),
 # so this rule is the first of two independent layers.
@@ -46,7 +54,7 @@
     # a literal space inside a bracket expression splits the directive into
     # extra whitespace-separated fields and Apache then fails every request in
     # this directory with "RewriteRule: bad flag delimiters" (HTTP 500).
-    RewriteRule ^(scripts|tests|deploy|migrations|docs|include|vendor|admin/include|\.git|DATABASE[[:space:]]FILE)(/|$) - [F,NC]
+    RewriteRule ^(scripts|tests|deploy|migrations|docs|include|vendor|admin/include|android|\.git|DATABASE[[:space:]]FILE)(/|$) - [F,NC]
 </IfModule>
 
 # --- Never serve dot-files or dot-directories --------------------------

@@ -87,9 +87,21 @@ $coupleThreadBooking = 0;
 try {
     $sidebar_db = $GLOBALS['db'] ?? null;
     if (!$sidebar_user && $sidebar_db instanceof Database) {
+        /*
+         * The same account-status filter the couple's own pages use
+         * (Booking::getBookingForUser()/ConfirmedBookingForUser()): only a
+         * 'pending' or 'confirm' account has a wedding the portal will show.
+         * Without this join a fraud-flagged or otherwise closed account still
+         * got the whole wedding menu — links to pages whose list is empty —
+         * which is how the sidebar and the dashboard came to disagree about
+         * whether that couple had a wedding at all.
+         */
         $coupleThreadBooking = (int) $sidebar_db->fetchValue(
-            "SELECT booking_id FROM tblweddingbook WHERE user_id = :me
-              ORDER BY (wedding_date IS NULL OR wedding_date < CURDATE()), wedding_date ASC, booking_id DESC
+            "SELECT b.booking_id
+               FROM tblweddingbook b
+               JOIN tblaccounts_detail a ON a.user_id = b.user_id
+              WHERE b.user_id = :me AND a.status IN ('pending', 'confirm')
+              ORDER BY (b.wedding_date IS NULL OR b.wedding_date < CURDATE()), b.wedding_date ASC, b.booking_id DESC
               LIMIT 1",
             [':me' => (int) ($_SESSION['id'] ?? 0)]
         );

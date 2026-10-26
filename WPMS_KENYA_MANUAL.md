@@ -771,6 +771,8 @@ shown; live prices do not rewrite it. Locking copies the amounts once into
 | amount | DECIMAL(10,2) | Booking amount |
 | commission | DECIMAL(10,2) | Everafter Planner commission |
 | status | ENUM('pending','confirmed','completed','cancelled') | Status |
+| status_note | VARCHAR(255) NULL | (v3.3) The words behind the current answer — the reason a vendor gave for declining or a planner for cancelling. Cleared by any other answer (confirm, complete, reopen) so it can never sit beside a live deal; the dated `notes` line keeps it for good. Shown to the couple, the vendor and the planner |
+| status_note_by | VARCHAR(12) NULL | (v3.3b) Who gave `status_note`: `vendor` or `planner`. NULL when no reason was given, and read as `vendor` on rows written before the column existed. The attribution is the information: "the caterer is already booked" is a different phone call from "your planner found a better price" |
 | notes | TEXT | Notes |
 | created_at | TIMESTAMP | Creation time |
 

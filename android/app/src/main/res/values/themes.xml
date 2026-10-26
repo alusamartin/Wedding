@@ -1,0 +1,11 @@
+<resources>
+    <!-- A bare platform theme on purpose: every pixel above the window is
+         drawn by Compose, and pulling in AppCompat/Material Components for a
+         splash colour would add a megabyte for one attribute. -->
+    <style name="Theme.Everafter" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/stone_50</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/stone_50</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

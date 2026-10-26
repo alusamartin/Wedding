@@ -4,6 +4,8 @@ declare(strict_types=1);
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
+require_once __DIR__ . '/../admin/include/DealNote.php';
+
 /**
  * Vendor self-service (access_level 0 staff accounts).
  *
@@ -436,6 +438,172 @@ final class VendorSelfServiceTest extends TestCase
 
         // Commission is NOT set by vendors — that stays a staff decision.
         self::assertEqualsWithDelta(0.0, (float) $row->commission, 0.01, 'vendor confirm must not touch staff commission');
+    }
+
+    /**
+     * v3.3 — a decline is not a dead end.
+     *
+     * The reason a vendor types when they say no travels: it is stored on the
+     * deal, read back by the vendor, shown to the planner on the row they work
+     * from, shown to the couple on their own enquiries list, and belled to the
+     * couple rather than trusting a best-effort SMS. Every HTML surface escapes
+     * it — it is a sentence somebody typed, never markup.
+     */
+    #[Group('integration')]
+    public function testVendorDeclineReasonReachesCoupleAndPlanner(): void
+    {
+        $this->requireHttp();
+        global $db;
+        self::login(self::VENDOR_EMAIL, self::VENDOR_PASS);
+
+        $ownId = self::seedBooking(self::$vendorAId);
+        $token = self::fetchCsrf('/admin/vendor_home.php');
+
+        $res = self::http('POST', '/admin/vendor_home.php', [
+            '_token'         => $token,
+            'booking_row_id' => (string) $ownId,
+            'to'             => 'cancelled',
+            'status_note'    => "Already booked that Saturday — try our sister studio <b>Bashiri</b>\n\ncall 0722 000 000",
+        ]);
+        self::assertSame(302, $res['status']);
+
+        $row = $db->fetchOne('SELECT * FROM tblvendor_bookings WHERE id = :id', [':id' => $ownId]);
+        self::assertSame('cancelled', (string) $row->status, 'the decline still moves the deal');
+        self::assertSame(
+            'Already booked that Saturday — try our sister studio Bashiri call 0722 000 000',
+            (string) $row->status_note,
+            'the stored reason is one flat line with tags stripped'
+        );
+        self::assertSame('vendor', (string) $row->status_note_by, 'the words are attributed to the vendor');
+        self::assertStringContainsString('reason:', (string) $row->notes, 'the notes trail keeps what was said');
+
+        // The vendor reads their own words back on the ledger.
+        self::assertStringContainsString('You said:', self::http('GET', '/admin/vendor_home.php')['body']);
+
+        // The planner reads them on the row they work from.
+        self::login(self::STAFF_EMAIL, self::STAFF_PASS);
+        $ledger = self::http('GET', '/admin/vendor_enquiries.php?status=cancelled')['body'];
+        self::assertStringContainsString('Vendor said:', $ledger, 'the planner sees the reason, not just the badge');
+        self::assertStringContainsString('try our sister studio', $ledger);
+        self::assertStringNotContainsString('<b>Bashiri</b>', $ledger, 'the reason is escaped, never markup');
+
+        /*
+         * And so does the couple, on their own enquiries list. The wedding and
+         * account ids are READ OFF the seeded booking this probe hangs from,
+         * never typed: a test that names a seeded record it does not create is
+         * a fixture it does not own, and sweep F6 says so out loud.
+         */
+        $owner = $db->fetchOne(
+            'SELECT vb.booking_id, b.user_id FROM tblvendor_bookings vb'
+            . ' JOIN tblweddingbook b ON b.booking_id = vb.booking_id WHERE vb.id = :id',
+            [':id' => $ownId]
+        );
+        self::login(self::CLIENT_EMAIL, self::CLIENT_PASS);
+        $couple = self::http(
+            'GET',
+            '/admin/client_vendors.php?booking_id=' . (int) $owner->booking_id . '&user_id=' . (int) $owner->user_id
+        )['body'];
+        self::assertStringContainsString('try our sister studio', $couple, 'the couple reads why, in the vendor\'s words');
+        self::assertStringContainsString('said:', $couple);
+        self::assertStringNotContainsString('<b>Bashiri</b>', $couple, 'the couple\'s list escapes it too');
+
+        // The bell as well as the phone — the SMS is best-effort, this is not.
+        $notified = (int) $db->fetchValue(
+            "SELECT COUNT(*) FROM tblnotifications WHERE booking_id = :b AND message LIKE '%declined your enquiry%'",
+            [':b' => (int) $owner->booking_id]
+        );
+        self::assertGreaterThan(0, $notified, 'a decline with a reason must reach the couple in-app');
+    }
+
+    /**
+     * The column is the answer that is CURRENT, not a history table: any other
+     * answer clears it, so "already booked that day" can never sit beside a
+     * reopened deal and send the couple back to a closed date.
+     */
+    #[Group('integration')]
+    public function testAnyOtherAnswerClearsTheStoredDeclineReason(): void
+    {
+        $this->requireHttp();
+        global $db;
+        self::login(self::VENDOR_EMAIL, self::VENDOR_PASS);
+
+        $ownId = self::seedBooking(self::$vendorAId);
+        $token = self::fetchCsrf('/admin/vendor_home.php');
+
+        self::http('POST', '/admin/vendor_home.php', [
+            '_token'         => $token,
+            'booking_row_id' => (string) $ownId,
+            'to'             => 'cancelled',
+            'status_note'    => 'Fully booked that weekend',
+        ]);
+        self::assertSame(
+            'Fully booked that weekend',
+            (string) $db->fetchValue('SELECT status_note FROM tblvendor_bookings WHERE id = :id', [':id' => $ownId])
+        );
+
+        // Re-opening the deal (the vendor changed their mind about the date).
+        $token = self::fetchCsrf('/admin/vendor_home.php');
+        self::http('POST', '/admin/vendor_home.php', [
+            '_token'         => $token,
+            'booking_row_id' => (string) $ownId,
+            'to'             => 'pending',
+        ]);
+
+        $row = $db->fetchOne('SELECT * FROM tblvendor_bookings WHERE id = :id', [':id' => $ownId]);
+        self::assertSame('pending', (string) $row->status);
+        self::assertNull($row->status_note, 'a reopened deal must not keep the old reason');
+        // The audit trail still remembers it — clearing the column is not forgetting.
+        self::assertStringContainsString('Fully booked that weekend', (string) $row->notes);
+
+        // A decline with no reason is silence, not an empty sentence.
+        $token = self::fetchCsrf('/admin/vendor_home.php');
+        self::http('POST', '/admin/vendor_home.php', [
+            '_token'         => $token,
+            'booking_row_id' => (string) $ownId,
+            'to'             => 'cancelled',
+        ]);
+        self::assertNull(
+            $db->fetchValue('SELECT status_note FROM tblvendor_bookings WHERE id = :id', [':id' => $ownId]),
+            'no reason is stored as NULL, not as an empty string'
+        );
+    }
+
+    /** A courtesy input is not a place to paste an email. */
+    #[Group('integration')]
+    public function testAnOverlongDeclineReasonIsCutToTheStoredLength(): void
+    {
+        $this->requireHttp();
+        global $db;
+        self::login(self::VENDOR_EMAIL, self::VENDOR_PASS);
+
+        $ownId = self::seedBooking(self::$vendorAId);
+        $token = self::fetchCsrf('/admin/vendor_home.php');
+
+        self::http('POST', '/admin/vendor_home.php', [
+            '_token'         => $token,
+            'booking_row_id' => (string) $ownId,
+            'to'             => 'cancelled',
+            'status_note'    => str_repeat('our calendar is full ', 40),
+        ]);
+
+        $stored = (string) $db->fetchValue('SELECT status_note FROM tblvendor_bookings WHERE id = :id', [':id' => $ownId]);
+        self::assertLessThanOrEqual(DealNote::MAX, mb_strlen($stored), 'the stored reason fits the column and the card');
+        self::assertStringEndsWith('…', $stored, 'a cut reason says so');
+    }
+
+    /**
+     * One byte in the wrong encoding must not swallow the sentence.
+     *
+     * `preg_replace('/\s+/u', …)` returns NULL on invalid UTF-8, and the whole
+     * reason used to collapse to '' because of it — the vendor pressed Decline
+     * with their words in the box and the couple were told nothing (found by
+     * posting from a terminal whose em dash was bytes 0x97, not UTF-8).
+     */
+    public function testADeclineReasonInTheWrongEncodingKeepsItsWords(): void
+    {
+        $cleaned = DealNote::clean("Already booked \x97 try our sister studio");
+        self::assertNotSame('', $cleaned, 'the reason must survive one bad byte');
+        self::assertStringContainsString('try our sister studio', $cleaned, 'and keep the rest of the sentence');
     }
 
     #[Group('integration')]
